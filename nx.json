@@ -1,0 +1,33 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "targetDefaults": {
+    "build": {
+      "cache": true,
+      "dependsOn": ["^build"],
+      "inputs": ["production", "^production"]
+    },
+    "test": {
+      "cache": true,
+      "inputs": ["default", "^production"]
+    },
+    "lint": {
+      "cache": true,
+      "inputs": ["default", "{workspaceRoot}/Cargo.toml"]
+    }
+  },
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "production": [
+      "default",
+      "!{projectRoot}/**/tests/**/*",
+      "!{projectRoot}/**/*_test.rs",
+      "!{projectRoot}/**/benches/**/*"
+    ],
+    "sharedGlobals": ["{workspaceRoot}/Cargo.lock"]
+  },
+  "workspaceLayout": {
+    "appsDir": ".",
+    "libsDir": "."
+  },
+  "defaultBase": "main"
+}

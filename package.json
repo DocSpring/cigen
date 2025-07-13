@@ -1,0 +1,15 @@
+{
+  "name": "cigen",
+  "version": "0.1.0",
+  "description": "A blazing-fast Rust CLI that compiles template-based definitions into complete CI pipelines",
+  "private": true,
+  "scripts": {
+    "nx": "nx"
+  },
+  "devDependencies": {
+    "nx": "21.2.2"
+  },
+  "workspaces": [
+    "."
+  ]
+}

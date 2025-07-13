@@ -60,6 +60,13 @@ The rule is: I (Claude) must ALWAYS search for the current version before writin
 
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
 
+**CRITICAL: Follow PROJECT_PLAN.md EXACTLY**
+- Complete ONLY the current task in PROJECT_PLAN.md
+- Do NOT jump ahead to future tasks
+- Do NOT create files or features that aren't explicitly requested
+- After completing a task, COMMIT it before moving to the next
+- Check off completed items in PROJECT_PLAN.md
+
 1. Set up foundation first (Cargo.toml, basic CLI with --help and --version)
 2. Establish testing infrastructure before adding features
 3. For each new feature:

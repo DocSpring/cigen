@@ -1,0 +1,74 @@
+{
+  "$schema": "./node_modules/nx/schemas/project-schema.json",
+  "name": "cigen",
+  "sourceRoot": "src",
+  "projectType": "application",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo build",
+        "cwd": "."
+      },
+      "configurations": {
+        "release": {
+          "command": "cargo build --release"
+        }
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo test",
+        "cwd": "."
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "cargo fmt -- --check",
+          "cargo clippy -- -D warnings"
+        ],
+        "cwd": ".",
+        "parallel": false
+      }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo fmt",
+        "cwd": "."
+      }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo check",
+        "cwd": "."
+      }
+    },
+    "run": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo run",
+        "cwd": "."
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "cargo clean",
+        "cwd": "."
+      }
+    }
+  },
+  "namedInputs": {
+    "rust": [
+      "{projectRoot}/src/**/*.rs",
+      "{projectRoot}/Cargo.toml",
+      "{projectRoot}/Cargo.lock"
+    ]
+  },
+  "tags": ["rust", "cli"]
+}
