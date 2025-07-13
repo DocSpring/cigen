@@ -37,6 +37,33 @@ else
     echo "✅ Lefthook is already installed ($(lefthook version))"
 fi
 
+# Install actionlint
+if ! command -v actionlint &> /dev/null; then
+    echo "📦 Installing actionlint (GitHub Actions linter)..."
+    
+    # Check if homebrew is available
+    if command -v brew &> /dev/null; then
+        echo "  Using Homebrew..."
+        brew install actionlint
+    elif command -v go &> /dev/null; then
+        echo "  Using Go..."
+        go install github.com/rhysd/actionlint/cmd/actionlint@latest
+    else
+        echo "❌ Neither Homebrew nor Go is available. Please install actionlint manually:"
+        echo "   brew install actionlint"
+        echo "   or"
+        echo "   go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+        echo ""
+        echo "Note: actionlint is optional but recommended for linting GitHub Actions workflows"
+    fi
+    
+    if command -v actionlint &> /dev/null; then
+        echo "✅ actionlint installed successfully"
+    fi
+else
+    echo "✅ actionlint is already installed ($(actionlint -version 2>&1 | head -n1))"
+fi
+
 # Install Lefthook git hooks
 echo "🔗 Installing git hooks..."
 lefthook install

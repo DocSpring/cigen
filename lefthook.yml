@@ -13,6 +13,17 @@ pre-commit:
     test:
       glob: "*.rs"
       run: cargo test
+    actionlint:
+      glob: ".github/workflows/*.{yml,yaml}"
+      run: |
+        if ! command -v actionlint &> /dev/null; then
+          echo "actionlint not found. Please install it:"
+          echo "  brew install actionlint"
+          echo "  or"
+          echo "  go install github.com/rhysd/actionlint/cmd/actionlint@latest"
+          exit 1
+        fi
+        actionlint {staged_files}
 
 pre-push:
   parallel: true
