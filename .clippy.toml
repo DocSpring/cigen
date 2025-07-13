@@ -1,0 +1,12 @@
+msrv = "1.88.0"
+warn-on-all-wildcard-imports = true
+allow-expect-in-tests = true
+allow-unwrap-in-tests = true
+allow-print-in-tests = true
+allow-dbg-in-tests = true
+too-many-lines-threshold = 150
+type-complexity-threshold = 250
+enum-variant-name-threshold = 5
+single-char-binding-names-threshold = 4
+too-many-arguments-threshold = 8
+trivial-copy-size-limit = 16

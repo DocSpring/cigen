@@ -24,6 +24,38 @@ cargo fmt
 cargo clippy
 ```
 
+## Version Management
+
+**CRITICAL**: NEVER rely on your own knowledge of package versions, tool versions, or dependency versions. They are ALWAYS out of date. You MUST:
+1. ALWAYS search the web to find the latest stable version of ANY package, tool, or dependency
+2. NEVER assume version numbers from memory
+3. ALWAYS verify current versions before adding them to any configuration file
+4. For download URLs or scripts, ALWAYS fetch the latest version dynamically or provide clear instructions for users to check the latest version
+
+### Examples of Version Mistakes Made:
+
+1. **Rust version**: Initially used 1.83.0 when 1.88.0 was available
+2. **Crate versions**: Used `tracing-subscriber = "0.3.20"` which didn't exist (latest was 0.3.19)
+3. **Lefthook setup script**: Hardcoded version 1.8.4 in the download URL instead of fetching latest
+
+### What YOU (Claude) Must Do:
+
+**WRONG APPROACH (what I did):**
+```bash
+# I wrote this without checking the actual latest version:
+LEFTHOOK_VERSION="1.8.4"  # This was me guessing from my outdated knowledge!
+```
+
+**CORRECT APPROACH (what I should have done):**
+1. First, search the web: "lefthook latest release github 2025"
+2. Find the actual latest version (e.g., maybe it's 1.10.2)
+3. THEN write the code with the correct version:
+```bash
+LEFTHOOK_VERSION="1.10.2"  # After verifying this is the actual latest version
+```
+
+The rule is: I (Claude) must ALWAYS search for the current version before writing ANY version number in code. The user shouldn't have to correct version numbers - I should get them right the first time by searching.
+
 ## Development Approach
 
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
