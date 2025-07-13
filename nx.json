@@ -3,31 +3,48 @@
   "targetDefaults": {
     "build": {
       "cache": true,
-      "dependsOn": ["^build"],
-      "inputs": ["production", "^production"]
+      "dependsOn": [
+        "^build"
+      ],
+      "inputs": [
+        "production",
+        "^production"
+      ]
     },
     "test": {
       "cache": true,
-      "inputs": ["default", "^production"]
+      "inputs": [
+        "default",
+        "^production"
+      ]
     },
     "lint": {
       "cache": true,
-      "inputs": ["default", "{workspaceRoot}/Cargo.toml"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/Cargo.toml"
+      ]
     }
   },
   "namedInputs": {
-    "default": ["{projectRoot}/**/*", "sharedGlobals"],
+    "default": [
+      "{projectRoot}/**/*",
+      "sharedGlobals"
+    ],
     "production": [
       "default",
       "!{projectRoot}/**/tests/**/*",
       "!{projectRoot}/**/*_test.rs",
       "!{projectRoot}/**/benches/**/*"
     ],
-    "sharedGlobals": ["{workspaceRoot}/Cargo.lock"]
+    "sharedGlobals": [
+      "{workspaceRoot}/Cargo.lock"
+    ]
   },
   "workspaceLayout": {
     "appsDir": ".",
     "libsDir": "."
   },
-  "defaultBase": "main"
+  "defaultBase": "main",
+  "nxCloudId": "687331913b87768ce953f761"
 }
