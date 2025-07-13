@@ -18,9 +18,30 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Install Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    
     - name: Install rustfmt and clippy
       run: |
         rustup component add rustfmt clippy
+    
+    - name: Cache npm dependencies
+      uses: actions/cache@v4
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
+    
+    - name: Cache Nx
+      uses: actions/cache@v4
+      with:
+        path: .nx
+        key: ${{ runner.os }}-nx-${{ github.sha }}
+        restore-keys: |
+          ${{ runner.os }}-nx-
     
     - name: Cache cargo dependencies
       uses: actions/cache@v4
@@ -35,17 +56,26 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-cargo-
     
-    - name: Download dependencies
+    - name: Install npm dependencies
+      run: npm ci
+    
+    - name: Add node_modules/.bin to PATH
+      run: echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
+    
+    - name: Verify Nx installation
+      run: nx --version
+    
+    - name: Download cargo dependencies
       run: cargo fetch --locked
     
     - name: Check formatting
-      run: cargo fmt -- --check
+      run: nx run cigen:format -- -- --check
     
-    - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+    - name: Run linting
+      run: nx run cigen:lint
     
     - name: Run tests
-      run: cargo test --verbose
+      run: nx run cigen:test
     
     - name: Build
-      run: cargo build --verbose
+      run: nx run cigen:build
