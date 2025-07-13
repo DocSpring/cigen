@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  NX_NO_CLOUD: true
 
 jobs:
   test:
