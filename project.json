@@ -26,10 +26,7 @@
     "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": [
-          "cargo fmt -- --check",
-          "cargo clippy -- -D warnings"
-        ],
+        "commands": ["cargo fmt -- --check", "cargo clippy -- -D warnings"],
         "cwd": ".",
         "parallel": false
       }

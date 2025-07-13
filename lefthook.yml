@@ -2,6 +2,33 @@
 # https://github.com/evilmartians/lefthook
 
 pre-commit:
+  jobs:
+    - run: npx ultracite format {staged_files}
+      glob:
+        - "*.js"
+        - "*.jsx"
+        - "*.ts"
+        - "*.tsx"
+        - "*.json"
+        - "*.jsonc"
+        - "*.css"
+        - "**/*.js"
+        - "**/*.jsx"
+        - "**/*.ts"
+        - "**/*.tsx"
+        - "**/*.json"
+        - "**/*.jsonc"
+        - "**/*.css"
+      stage_fixed: true
+    - run: npx prettier --write {staged_files}
+      glob:
+        - "*.yml"
+        - "*.yaml"
+        - "*.md"
+        - "**/*.yml"
+        - "**/*.yaml"
+        - "**/*.md"
+      stage_fixed: true
   parallel: true
   commands:
     fmt:
@@ -32,4 +59,3 @@ pre-push:
       run: cargo check
     test-all:
       run: cargo test --all
-

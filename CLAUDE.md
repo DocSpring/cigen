@@ -27,6 +27,7 @@ cargo clippy
 ## Version Management
 
 **CRITICAL**: NEVER rely on your own knowledge of package versions, tool versions, or dependency versions. They are ALWAYS out of date. You MUST:
+
 1. ALWAYS search the web to find the latest stable version of ANY package, tool, or dependency
 2. NEVER assume version numbers from memory
 3. ALWAYS verify current versions before adding them to any configuration file
@@ -41,15 +42,18 @@ cargo clippy
 ### What YOU (Claude) Must Do:
 
 **WRONG APPROACH (what I did):**
+
 ```bash
 # I wrote this without checking the actual latest version:
 LEFTHOOK_VERSION="1.8.4"  # This was me guessing from my outdated knowledge!
 ```
 
 **CORRECT APPROACH (what I should have done):**
+
 1. First, search the web: "lefthook latest release github 2025"
 2. Find the actual latest version (e.g., maybe it's 1.10.2)
 3. THEN write the code with the correct version:
+
 ```bash
 LEFTHOOK_VERSION="1.10.2"  # After verifying this is the actual latest version
 ```
@@ -61,6 +65,7 @@ The rule is: I (Claude) must ALWAYS search for the current version before writin
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
 
 **CRITICAL: Follow PROJECT_PLAN.md EXACTLY**
+
 - Complete ONLY the current task in PROJECT_PLAN.md
 - Do NOT jump ahead to future tasks
 - Do NOT create files or features that aren't explicitly requested
