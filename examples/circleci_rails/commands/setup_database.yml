@@ -1,0 +1,12 @@
+description: Setup Test Database
+steps:
+  - name: Setup Test Database
+    run: |
+      # rake db:test:prepare is too slow, do it with plain SQL
+      psql -U docspring -d "$DATABASE_URL" < db/structure.sql
+      STRUCTURE_SQL_HASH="$(cat db/structure.sql | shasum | awk '{print $1}')"
+      DATETIME="$(date --iso-8601=s)"
+      psql -U docspring -d "$DATABASE_URL" -c \
+        "INSERT INTO "ar_internal_metadata" (key,value,created_at,updated_at) VALUES \
+        ('environment','test','$DATETIME','$DATETIME'), \
+        ('schema_sha1','$STRUCTURE_SQL_HASH','$DATETIME','$DATETIME')"

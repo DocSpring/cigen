@@ -1,0 +1,28 @@
+image: ci_app_base
+# Rails assets aren't affected by architecture
+architectures: ["amd64"]
+resource_class: medium
+source_files: rails
+cache:
+  rails_assets:
+    restore: false
+    paths:
+      - public/assets
+  rails_assets_cache:
+    - tmp/cache/assets
+
+restore_cache:
+  - gems
+  - name: bootsnap
+    # Restore bootsnap cache if it has already run in the past,
+    # but don't wait for it as a dependency
+    dependency: false
+
+environment:
+  DATABASE_URL: "postgresql:does_not_exist"
+
+steps:
+  - name: Rails Assets Precompile
+    run: |
+      rails assets:clobber
+      rails assets:precompile

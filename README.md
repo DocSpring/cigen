@@ -2,6 +2,19 @@
 
 A CLI tool that generates highly-optimized CI configuration files. Reduce duplication, avoid vendor lock-in, and make your CI configuration far more maintainable.
 
+This tool can be used to build both static config and [dynamic config for CircleCI](https://circleci.com/docs/dynamic-config/). The CLI includes a file hashing feature that can be used during the initial setup workflow to skip jobs when no files have changed.
+
+## Features
+
+- First-class support for caching with configurable backends
+  - Automatically adds OS, version, and architecture to cache keys
+- First-class support for running jobs on multiple architectures and self-hosted runners
+- Automatic git checkout with extra caching support for self-hosted runners
+- Intelligent job skipping based on file changes
+- Automatic job dependencies with cache restoration
+- Written in Rust for performance
+- Powerful templating engine ([Tera](https://github.com/Keats/tera))
+
 ## Why did we build this?
 
 DocSpring's CI config has become very complex over time. We started by implementing highly efficient caching optimizations that skip jobs entirely when a set of source files hasn't changed. We then needed to build multi-architecture Docker images for on-premise deployments (ARM and AMD). So we needed to run our test suite (and all dependent jobs) on both architectures.
@@ -31,7 +44,7 @@ We automatically add a highly-optimized git checkout step to the beginning of ea
 
 Most CI providers only support caching as a second-class feature - something you add as a "step" during your job. `cigen` makes caching an integral part of your CI config. Every job MUST provide a list of file patterns. If none of those files have changed, the job is skipped and the existing cache is used. We inject all of the caching steps automatically.
 
-#### High-level CI features for every platform
+#### Cross-platform CI config
 
 CI providers often solve the same problem in different ways. e.g. to avoid duplication in your config, GitHub actions has "reusable workflows" while CircleCI supports "commands".
 

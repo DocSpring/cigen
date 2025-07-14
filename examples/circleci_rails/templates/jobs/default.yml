@@ -1,0 +1,12 @@
+environment:
+  DOCKER_ARCH: "{{ arch }}"
+
+docker: ci_base
+
+resource_class: "medium"
+self_hosted: false
+# architectures: ["amd64"]
+
+default_steps:
+  - optimized_git_checkout
+  - set_env

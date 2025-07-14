@@ -1,0 +1,62 @@
+# cigen configuration
+version: 1
+
+# CI provider to target
+provider: circleci
+output_path: ./build
+
+# Cache backend configuration
+caches:
+  # File cache for artifacts (gems, npm packages, etc.)
+  artifacts:
+    backend: circleci
+
+  # Job status cache for skipping unchanged jobs
+  job_status:
+    backend: redis
+    config:
+      url: ${CI_CACHE_REDIS_URL}
+
+# Architecture matrix for multi-arch support
+architectures:
+  - amd64
+  - arm64
+
+# Resource class mapping
+resource_classes:
+  amd64:
+    large: large
+    xlarge: xlarge
+    medium: medium
+    self_hosted: docspring/ci-runner
+  arm64:
+    large: arm.large
+    medium: arm.medium
+
+# File groups for cache keys (artifacts and job status)
+source_file_groups:
+  bundler:
+    - Gemfile
+    - Gemfile.lock
+    - .ruby-version
+  npm:
+    - package-lock.json
+    - package.json
+    - .nvmrc
+  rails:
+    - app/
+    - config/
+    - db/
+    - lib/
+    - public/
+    - Rakefile
+    - .ruby-version
+    - Gemfile
+  rspec:
+    - (rails)
+    - spec/
+
+# Workflows to generate
+workflows:
+  - name: setup
+    template: workflows/setup.yml

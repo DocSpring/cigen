@@ -3,6 +3,8 @@ circleci_config_reference
 
 PROJECT_PLAN.md
 
+examples/**/build/
+
 # Nx
 .nx/
 node_modules/
@@ -41,3 +43,4 @@ flamegraph.svg
 # Documentation
 /target/doc
 /target/criterion
+

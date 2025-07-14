@@ -1,0 +1,19 @@
+image: build_libs
+architectures: ["arm64", "amd64"]
+resource_class: large
+source_files: bundler
+cache_paths:
+  gems:
+    - .bundle
+    - vendor/bundle
+
+environment:
+  BUNDLE_GEMFILE: "Gemfile"
+
+steps:
+  - name: Bundle Install
+    run: |
+      bundle config set --local deployment 'true'
+      bundle check || bundle install
+      bundle binstubs --all
+      bundle clean --force

@@ -1,0 +1,44 @@
+image: ci_app_base
+architectures: ["arm64", "amd64"]
+resource_class: large
+source_files: rspec
+parallelism: 2
+
+restore_cache:
+  - gems
+  - npm_packages
+  - name: bootsnap
+    dependency: false
+  - rails_assets
+
+docker:
+  - postgres
+  - redis
+  - minio
+
+steps:
+  - setup_database
+  - name: Split RSpec tests by timing
+    run: |
+      circleci tests glob "spec/**/*_spec.rb" \
+        | circleci tests split --split-by=timings \
+        > /tmp/split-rspec-tests
+
+  - name: Run RSpec
+    run: |
+      rspec \
+        --seed << pipeline.number >> \
+        --format RspecJunitFormatter \
+        --out spec/results/rspec.xml \
+        $(cat /tmp/split-rspec-tests)
+
+  - name: Delete artifacts for successful job
+    run: rm -rf spec/artifacts log
+  - store_test_results:
+      path: spec/results/rspec.xml
+  - store_artifacts:
+      path: spec/artifacts
+  - store_artifacts:
+      path: coverage
+  - store_artifacts:
+      path: log

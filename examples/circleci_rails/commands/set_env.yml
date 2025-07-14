@@ -1,0 +1,14 @@
+description: Set environment variables and /etc/hosts
+parameters:
+  env:
+    type: string
+    description: test/development/production
+    default: test
+steps:
+  - name: Set environment variables and /etc/hosts
+    run: |
+      echo "export RAILS_ENV=\"<< parameters.env >>\"" >> "${BASH_ENV}"
+      echo "export RACK_ENV=\"<< parameters.env >>\"" >> "${BASH_ENV}"
+      echo "export NODE_ENV=\"<< parameters.env >>\"" >> "${BASH_ENV}"
+      # Set up /etc/hosts
+      echo "{{ read('etc-hosts-dev.txt') | trim }}" >> /etc/hosts
