@@ -1,6 +1,14 @@
 # cigen
 
-A CLI tool that generates CI pipeline configurations from templates, with built-in support for Nx monorepos.
+A CLI tool that generates highly-optimized CI configuration files. Reduce duplication, avoid vendor lock-in, and make your CI configuration far more maintainable.
+
+## Why did we build this?
+
+DocSpring's CI config has become very complex over time. We started by implementing highly efficient caching optimizations that skip jobs entirely when a set of source files hasn't changed. We then needed to build multi-architecture Docker images for on-premise deployments (ARM and AMD). So we needed to run our test suite (and all dependent jobs) on both architectures.
+
+Then we started experimenting with self-hosted runners. Our self-hosted runners run in a different country to CircleCI so they need their own local caching for packages. They also need a cache of our git repo since cloning the entire repo from GitHub each time is very slow. I wanted to be able to change one line in our config to send jobs to our self-hosted runners and automatically use the right caching config.
+
+We had built our own internal CI config generation system in Ruby, but it had started to become very unmaintainable as we added all of these features. It was time to rewrite it in Rust and share our work with other companies who have similar needs.
 
 ## Overview
 
@@ -11,14 +19,31 @@ A CLI tool that generates CI pipeline configurations from templates, with built-
 - Supporting multiple CI providers (starting with CircleCI)
 - Providing plugin-based architecture for cache backends and CI providers
 
-## Prerequisites
+## Philosophy
 
-- Rust (will automatically use 1.88.0 via `rust-toolchain.toml`)
-- Git
+`cigen` is highly opinionated about CI/CD configuration.
 
-## Getting Started
+#### Git checkout should be opt-out, not opt-in
 
-### Installation
+We automatically add a highly-optimized git checkout step to the beginning of each job, which includes caching for remote runners. The git checkout step can be skipped for jobs that don't need it.
+
+#### Jobs should be skipped if nothing has changed
+
+Most CI providers only support caching as a second-class feature - something you add as a "step" during your job. `cigen` makes caching an integral part of your CI config. Every job MUST provide a list of file patterns. If none of those files have changed, the job is skipped and the existing cache is used. We inject all of the caching steps automatically.
+
+#### High-level CI features for every platform
+
+CI providers often solve the same problem in different ways. e.g. to avoid duplication in your config, GitHub actions has "reusable workflows" while CircleCI supports "commands".
+
+`cigen` takes the best ideas from each provider and supports our own set of core features. You write your config once, then we compile it to use your chosen CI provider's native features. This avoids vendor lock-in and makes it easier to migrate to other CI providers.
+
+#### You can still use native CI provider features
+
+You can still write a step that uses GitHub's "Actions" or CircleCI's "orbs". (We'll just raise a validation error if you try to use an "orb" on GitHub actions.)
+
+---
+
+## Development Setup
 
 Clone the repository:
 
@@ -27,26 +52,18 @@ git clone https://github.com/DocSpring/cigen.git
 cd cigen
 ```
 
-### Development Setup
+Prerequisites:
 
-1. **Install Rust** (if not already installed):
+- Rust (will automatically use 1.88.0 via `rust-toolchain.toml`)
+- Git
 
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   ```
+1. **Run the setup script** (installs git hooks and checks your environment):
 
-   NOTE: Homebrew is not recommended for installing Rust.
-
-2. **The project will automatically use the correct Rust version**:
-
-   When you run any `cargo` command, it will automatically download and use Rust 1.88.0 with rustfmt and clippy included (configured in `rust-toolchain.toml`).
-
-3. **Run the setup script** (installs git hooks and checks your environment):
    ```bash
    ./scripts/setup.sh
    ```
 
-4. **Build the project**:
+2. **Build the project**:
    ```bash
    cargo build
    ```
@@ -145,6 +162,7 @@ chmod +x /usr/local/bin/lefthook
 ```
 
 The git hooks will:
+
 - **pre-commit**: Run `cargo fmt --check`, `cargo clippy`, and `cargo test`
 - **pre-push**: Run full checks including `cargo check`
 
