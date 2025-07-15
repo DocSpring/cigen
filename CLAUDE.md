@@ -24,6 +24,19 @@ cargo fmt
 cargo clippy
 ```
 
+## Rust Code Style
+
+**IMPORTANT**: Always use inline format variables in Rust. Clippy enforces this with the `uninlined_format_args` rule.
+
+Examples:
+
+- ❌ WRONG: `println!("{}", variable)`
+- ✅ CORRECT: `println!("{variable}")`
+- ❌ WRONG: `format!("{}/{}", workflow_name, job_name)`
+- ✅ CORRECT: `format!("{workflow_name}/{job_name}")`
+- ❌ WRONG: `println!("Value: {}", value)`
+- ✅ CORRECT: `println!("Value: {value}")`
+
 ## Version Management
 
 **CRITICAL**: NEVER rely on your own knowledge of package versions, tool versions, or dependency versions. They are ALWAYS out of date. You MUST:

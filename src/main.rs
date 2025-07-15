@@ -133,7 +133,7 @@ fn inspect_command(config_path: &str, object_type: InspectType, path: &str) -> R
         }
         InspectType::Job => {
             if let Some(job) = loaded.jobs.get(path) {
-                println!("{job:#?}");
+                job.pretty_print();
             } else {
                 anyhow::bail!("Job not found: {}", path);
             }
