@@ -20,8 +20,8 @@ cargo test
 # Format code
 cargo fmt
 
-# Lint code
-cargo clippy
+# Lint code (use the same flags as the git hook)
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
 ## Rust Code Style

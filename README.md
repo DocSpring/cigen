@@ -13,7 +13,7 @@ This tool can be used to build both static config and [dynamic config for Circle
 - Intelligent job skipping based on file changes
 - Automatic job dependencies with cache restoration
 - Written in Rust
-- Powerful templating engine ([Tera](https://github.com/Keats/tera))
+- Powerful templating engine ([MiniJinja](https://github.com/mitsuhiko/minijinja))
 - Beautiful and descriptive error messages ([miette](https://docs.rs/miette/latest/miette/))
 
 ## Why did we build this?

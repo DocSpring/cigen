@@ -123,6 +123,19 @@ With this separation, teams declare *what* to cache (e.g., `vendor/bundle`) and 
 * `cigen build` – generate provider YAML.
 * `cigen test` – validate templates & config schema.
 
+### Templating Engine Requirements
+
+* **Engine Choice:** Utilize a Jinja‑style Rust engine (e.g., **MiniJinja**) that supports variables, includes, filters, and **rich runtime errors**.
+* **Diagnostics:** All template errors must return line & column information and integrate with **miette** for colourful CLI diagnostics.
+* **Extensibility:** Users can register custom filters/functions; filters may execute shell commands or other logic as needed.
+* **Include & Filters Example:**
+
+  ```jinja
+  echo "{{ read('etc-hosts-dev.txt') | strip }}" >> /etc/hosts
+  ```
+
+  where `read` is a builtin function and `strip` is a filter.
+
 ### Core Template Library
 
 * **Purpose:** Provide reusable, first‑class snippets for common tasks to keep templates concise.

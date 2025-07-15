@@ -85,6 +85,18 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Install miette error reporter for better error display
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .unicode(true)
+                .context_lines(3)
+                .build(),
+        )
+    }))
+    .unwrap();
+
     let cli = Cli::parse();
 
     // Initialize logging based on verbose flag
@@ -95,26 +107,50 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Init { template }) => {
+            // Don't change working directory for init command
             commands::init_command(&cli.config, template)?;
         }
-        Some(Commands::Validate) => {
-            commands::validate_command(&cli.config, &cli_vars)?;
-        }
-        Some(Commands::Generate { output }) => {
-            commands::generate_command(&cli.config, output, &cli_vars)?;
-        }
-        Some(Commands::List { resource_type }) => {
-            commands::list_command(&cli.config, resource_type, &cli_vars)?;
-        }
-        Some(Commands::Inspect { object_type, path }) => {
-            commands::inspect_command(&cli.config, object_type, path, &cli_vars)?;
-        }
-        Some(Commands::Graph { workflow, output }) => {
-            commands::graph_command(&cli.config, workflow, output, &cli_vars)?;
-        }
-        None => {
-            // Default to generate command
-            commands::generate_command(&cli.config, None, &cli_vars)?;
+        _ => {
+            // For all other commands, change to config directory
+            let config_path = std::path::Path::new(&cli.config);
+            let config_dir = if config_path.is_absolute() {
+                config_path.to_path_buf()
+            } else {
+                std::env::current_dir()?.join(config_path)
+            };
+
+            if config_dir.exists() {
+                std::env::set_current_dir(&config_dir)?;
+                tracing::debug!("Changed working directory to: {}", config_dir.display());
+            } else {
+                return Err(anyhow::anyhow!(
+                    "Config directory does not exist: {}",
+                    config_dir.display()
+                ));
+            }
+
+            match cli.command {
+                Some(Commands::Validate) => {
+                    commands::validate_command(&cli_vars)?;
+                }
+                Some(Commands::Generate { output }) => {
+                    commands::generate_command(output, &cli_vars)?;
+                }
+                Some(Commands::List { resource_type }) => {
+                    commands::list_command(resource_type, &cli_vars)?;
+                }
+                Some(Commands::Inspect { object_type, path }) => {
+                    commands::inspect_command(object_type, path, &cli_vars)?;
+                }
+                Some(Commands::Graph { workflow, output }) => {
+                    commands::graph_command(workflow, output, &cli_vars)?;
+                }
+                None => {
+                    // Default to generate command
+                    commands::generate_command(None, &cli_vars)?;
+                }
+                _ => unreachable!(),
+            }
         }
     }
 

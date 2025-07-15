@@ -1,14 +1,15 @@
 use anyhow::Result;
-use serde_yaml::Value;
+use miette::Result as MietteResult;
+use minijinja::{Environment, Value};
+use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
 use std::path::Path;
-use tera::{Context, Tera};
 
 use super::functions::register_functions;
 use super::variables::VariableResolver;
 
 pub struct TemplateEngine {
-    tera: Tera,
+    env: Environment<'static>,
     resolver: VariableResolver,
 }
 
@@ -20,17 +21,21 @@ impl Default for TemplateEngine {
 
 impl TemplateEngine {
     pub fn new() -> Self {
-        let mut tera = Tera::new("templates/**/*").unwrap_or_else(|_| Tera::new("").unwrap());
-        register_functions(&mut tera);
+        let mut env = Environment::new();
+
+        // Configure minijinja to fail on undefined variables
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+
+        register_functions(&mut env);
 
         Self {
-            tera,
+            env,
             resolver: VariableResolver::new(),
         }
     }
 
     /// Add variables from various sources
-    pub fn add_vars_section(&mut self, vars: &HashMap<String, Value>) {
+    pub fn add_vars_section(&mut self, vars: &HashMap<String, YamlValue>) {
         self.resolver.add_vars_section(vars);
     }
 
@@ -43,18 +48,53 @@ impl TemplateEngine {
     }
 
     /// Render a template string with current variables
-    pub fn render_string(&mut self, template: &str) -> Result<String> {
-        let mut context = Context::new();
-
-        // Add all variables to context
-        for (key, value) in self.resolver.get_variables() {
-            context.insert(key, value);
+    pub fn render_string(&mut self, template: &str) -> MietteResult<String> {
+        // Convert variables to MiniJinja format
+        let mut context = HashMap::new();
+        for (key, yaml_value) in self.resolver.get_variables() {
+            // Convert YamlValue to MiniJinja Value
+            let value = yaml_value_to_minijinja_value(yaml_value);
+            context.insert(key.clone(), value);
         }
 
-        let rendered = self
-            .tera
-            .render_str(template, &context)
-            .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))?;
+        let rendered = self.env.render_str(template, &context).map_err(|e| {
+            // MiniJinja provides excellent error information
+            let error_msg = format!("{e}");
+
+            // Extract line/column from MiniJinja error
+            let line_col = if let Some(range) = e.range() {
+                // Convert byte offset to line/column
+                let line = template[..range.start].lines().count();
+                let col = if let Some(last_line) = template[..range.start].lines().last() {
+                    last_line.len() + 1
+                } else {
+                    range.start + 1
+                };
+                Some((line, col, range.start, range.end))
+            } else {
+                None
+            };
+
+            // Create a helpful error message with source context
+            if let Some((line, col, start, end)) = line_col {
+                miette::miette! {
+                    labels = vec![
+                        miette::LabeledSpan::at(start..end, "error here")
+                    ],
+                    "Template error at line {line}, column {col}:\n{error_msg}",
+                    line = line,
+                    col = col,
+                    error_msg = error_msg
+                }
+                .with_source_code(template.to_string())
+            } else {
+                miette::miette! {
+                    "Template error:\n{error_msg}",
+                    error_msg = error_msg
+                }
+                .with_source_code(template.to_string())
+            }
+        })?;
         Ok(rendered)
     }
 
@@ -62,14 +102,14 @@ impl TemplateEngine {
     pub fn is_template_file(path: &Path) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
-            .map(|ext| ext == "tera")
+            .map(|ext| ext == "j2")
             .unwrap_or(false)
     }
 
-    /// Render a file, handling both .yml and .yml.tera files
-    pub fn render_file(&mut self, content: &str, is_template: bool) -> Result<String> {
+    /// Render a file, handling both .yml and .yml.j2 files
+    pub fn render_file(&mut self, content: &str, is_template: bool) -> MietteResult<String> {
         if is_template {
-            // Full template rendering for .tera files
+            // Full template rendering for .j2 files
             self.render_string(content)
         } else {
             // Basic variable substitution for regular .yml files
@@ -78,11 +118,42 @@ impl TemplateEngine {
     }
 }
 
+/// Convert YamlValue to MiniJinja Value
+fn yaml_value_to_minijinja_value(yaml_value: &YamlValue) -> Value {
+    match yaml_value {
+        YamlValue::Null => Value::UNDEFINED,
+        YamlValue::Bool(b) => Value::from(*b),
+        YamlValue::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::from(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::from(f)
+            } else {
+                Value::UNDEFINED
+            }
+        }
+        YamlValue::String(s) => Value::from(s.clone()),
+        YamlValue::Sequence(seq) => {
+            let vec: Vec<Value> = seq.iter().map(yaml_value_to_minijinja_value).collect();
+            Value::from(vec)
+        }
+        YamlValue::Mapping(map) => {
+            let mut hash = HashMap::new();
+            for (k, v) in map {
+                if let YamlValue::String(key) = k {
+                    hash.insert(key.clone(), yaml_value_to_minijinja_value(v));
+                }
+            }
+            Value::from_serialize(&hash)
+        }
+        _ => Value::UNDEFINED,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::path::PathBuf;
 
     #[test]
     fn test_basic_template_rendering() {
@@ -90,8 +161,8 @@ mod tests {
 
         // Add some variables
         let mut vars = HashMap::new();
-        vars.insert("name".to_string(), Value::String("test".to_string()));
-        vars.insert("version".to_string(), Value::String("1.0".to_string()));
+        vars.insert("name".to_string(), YamlValue::String("test".to_string()));
+        vars.insert("version".to_string(), YamlValue::String("1.0".to_string()));
         engine.add_vars_section(&vars);
 
         // Test basic variable substitution
@@ -105,7 +176,10 @@ mod tests {
         let mut engine = TemplateEngine::new();
 
         let mut vars = HashMap::new();
-        vars.insert("name".to_string(), Value::String("  test  ".to_string()));
+        vars.insert(
+            "name".to_string(),
+            YamlValue::String("  test  ".to_string()),
+        );
         engine.add_vars_section(&vars);
 
         let template = "Hello {{ name | trim | upper }}";
@@ -118,10 +192,10 @@ mod tests {
         let mut engine = TemplateEngine::new();
 
         let mut vars = HashMap::new();
-        vars.insert("use_postgres".to_string(), Value::Bool(true));
+        vars.insert("use_postgres".to_string(), YamlValue::Bool(true));
         vars.insert(
             "postgres_version".to_string(),
-            Value::String("16.1".to_string()),
+            YamlValue::String("16.1".to_string()),
         );
         engine.add_vars_section(&vars);
 
@@ -141,10 +215,10 @@ services:
         let mut engine = TemplateEngine::new();
 
         let mut vars = HashMap::new();
-        let envs = Value::Sequence(vec![
-            Value::String("dev".to_string()),
-            Value::String("staging".to_string()),
-            Value::String("prod".to_string()),
+        let envs = YamlValue::Sequence(vec![
+            YamlValue::String("dev".to_string()),
+            YamlValue::String("staging".to_string()),
+            YamlValue::String("prod".to_string()),
         ]);
         vars.insert("environments".to_string(), envs);
         engine.add_vars_section(&vars);
@@ -163,19 +237,15 @@ deploy_{{ env }}:
 
     #[test]
     fn test_is_template_file() {
-        assert!(TemplateEngine::is_template_file(&PathBuf::from(
-            "config.yml.tera"
+        assert!(TemplateEngine::is_template_file(Path::new("config.yml.j2")));
+        assert!(TemplateEngine::is_template_file(Path::new(
+            "jobs/test.yaml.j2"
         )));
-        assert!(TemplateEngine::is_template_file(&PathBuf::from(
-            "jobs/test.yaml.tera"
-        )));
-        assert!(!TemplateEngine::is_template_file(&PathBuf::from(
-            "config.yml"
-        )));
-        assert!(!TemplateEngine::is_template_file(&PathBuf::from(
+        assert!(!TemplateEngine::is_template_file(Path::new("config.yml")));
+        assert!(!TemplateEngine::is_template_file(Path::new(
             "jobs/test.yaml"
         )));
-        assert!(!TemplateEngine::is_template_file(&PathBuf::from("config")));
+        assert!(!TemplateEngine::is_template_file(Path::new("config")));
     }
 
     #[test]
@@ -185,7 +255,7 @@ deploy_{{ env }}:
         let mut vars = HashMap::new();
         vars.insert(
             "postgres_version".to_string(),
-            Value::String("16.1".to_string()),
+            YamlValue::String("16.1".to_string()),
         );
         engine.add_vars_section(&vars);
 
@@ -205,10 +275,10 @@ services:
         let mut engine = TemplateEngine::new();
 
         let mut vars = HashMap::new();
-        vars.insert("use_postgres".to_string(), Value::Bool(true));
+        vars.insert("use_postgres".to_string(), YamlValue::Bool(true));
         vars.insert(
             "postgres_version".to_string(),
-            Value::String("16.1".to_string()),
+            YamlValue::String("16.1".to_string()),
         );
         engine.add_vars_section(&vars);
 
@@ -220,7 +290,7 @@ services:
 {% endif %}
 "#;
 
-        // Test .tera file (should process full template logic)
+        // Test .j2 file (should process full template logic)
         let result = engine.render_file(content, true).unwrap();
         assert!(result.contains("postgres:16.1"));
     }
@@ -232,12 +302,6 @@ services:
         let template = "Hello {{ missing_var }}";
         let result = engine.render_string(template);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .to_string()
-                .contains("Template rendering error")
-        );
     }
 
     #[test]
@@ -248,7 +312,7 @@ services:
         let mut vars = HashMap::new();
         vars.insert(
             "test_var".to_string(),
-            Value::String("from_vars".to_string()),
+            YamlValue::String("from_vars".to_string()),
         );
         engine.add_vars_section(&vars);
 

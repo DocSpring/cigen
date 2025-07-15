@@ -1,20 +1,20 @@
 # Templating System
 
-Cigen uses [Tera](https://tera.netlify.app/) for templating, providing flexible variable substitution and control structures in configuration files.
+Cigen uses [MiniJinja](https://github.com/mitsuhiko/minijinja) for templating, providing flexible variable substitution and control structures in configuration files.
 
 ## File Types
 
 ### Standard YAML Files (`.yml`, `.yaml`)
 
-- Support basic Tera templating while maintaining valid YAML structure
+- Support basic MiniJinja templating while maintaining valid YAML structure
 - Can use variable substitution: `image: postgres:{{ postgres_version }}`
 - Can use inline loops within quotes: `command: "{% for env in envs %}{{ env }} {% endfor %}"`
 - Must remain valid YAML for IDE schema validation and helpful error reporting
 - Recommended for most configuration files
 
-### Template Files (`.yml.tera`, `.yaml.tera`)
+### Template Files (`.yml.j2`, `.yaml.j2`)
 
-- Full Tera templating power with control structures
+- Full MiniJinja templating power with control structures
 - Can break YAML syntax with conditionals and loops
 - No schema validation attempted by IDEs
 - Use when you need complex templating logic
@@ -71,10 +71,10 @@ environment:
   PATH: '{% for dir in path_dirs %}{{ dir }}:{% endfor %}$PATH'
 ```
 
-### Complex Templating (.yml.tera)
+### Complex Templating (.yml.j2)
 
 ```yaml
-# workflows.yml.tera
+# workflows.yml.j2
 {% if use_postgres %}
 services:
   postgres:
@@ -106,7 +106,7 @@ steps:
 
 ### Filters
 
-All standard Tera filters are available:
+All standard MiniJinja filters are available:
 
 - `trim` - Remove whitespace
 - `upper` - Convert to uppercase
@@ -116,7 +116,7 @@ All standard Tera filters are available:
 
 ## Best Practices
 
-1. **Use `.yml` for most files** - Start with standard YAML and only use `.yml.tera` when you need complex control structures
+1. **Use `.yml` for most files** - Start with standard YAML and only use `.yml.j2` when you need complex control structures
 2. **Keep vars organized** - Use a dedicated `vars.yml` file for complex variable sets
 3. **Environment-specific overrides** - Use environment variables for deployment-specific values
 4. **Readable templates** - Use meaningful variable names and add comments for complex logic
@@ -125,6 +125,6 @@ All standard Tera filters are available:
 ## Error Handling
 
 - **Template errors** show the exact line and column where the error occurred
-- **Undefined variables** will cause Tera to crash with an error - all variables used in templates must be defined
+- **Undefined variables** will cause MiniJinja to crash with an error - all variables used in templates must be defined
 - **Variable errors** indicate which variables are missing or invalid
 - **YAML errors** (for `.yml` files) show both the template source and rendered output location

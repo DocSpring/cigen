@@ -46,7 +46,7 @@ impl VariableResolver {
         }
     }
 
-    /// Get all variables as a HashMap for Tera context
+    /// Get all variables as a HashMap for MiniJinja templates
     pub fn get_variables(&self) -> &HashMap<String, Value> {
         &self.variables
     }

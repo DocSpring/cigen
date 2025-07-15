@@ -9,13 +9,12 @@ use cigen::graph::DependencyGraph;
 use cigen::loader::ConfigLoader;
 
 pub fn graph_command(
-    config_path: &str,
     workflow_filter: Option<String>,
     output_path: Option<String>,
     cli_vars: &HashMap<String, String>,
 ) -> Result<()> {
     // Load all configuration
-    let mut loader = ConfigLoader::new_with_vars(config_path, cli_vars)?;
+    let mut loader = ConfigLoader::new_with_vars(cli_vars)?;
     let loaded = loader.load_all()?;
 
     // Filter jobs by workflow if specified

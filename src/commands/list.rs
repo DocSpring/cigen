@@ -12,18 +12,17 @@ pub enum ListType {
 }
 
 pub fn list_command(
-    config_path: &str,
     resource_type: Option<ListType>,
     cli_vars: &HashMap<String, String>,
 ) -> Result<()> {
     // Load everything
-    let mut loader = ConfigLoader::new_with_vars(config_path, cli_vars)?;
+    let mut loader = ConfigLoader::new_with_vars(cli_vars)?;
     let loaded = loader.load_all()?;
 
     match resource_type {
         None => {
             // List all resources
-            println!("Configuration: {config_path}\n");
+            println!("Configuration: {}\n", std::env::current_dir()?.display());
 
             list_workflows(&loaded)?;
             println!();

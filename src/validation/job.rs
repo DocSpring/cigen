@@ -40,7 +40,7 @@ impl JobValidator {
 
         // Note: Data-level validation (service references, cache references, etc.)
         // should happen AFTER template processing, not on raw YAML files.
-        // Raw job files may contain Tera variables that need to be resolved first.
+        // Raw job files may contain MiniJinja variables that need to be resolved first.
         //
         // However, we still need to preserve span information from the original YAML
         // so we can show beautiful miette errors pointing to the source locations

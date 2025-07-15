@@ -1,36 +1,40 @@
-use std::collections::HashMap;
-use tera::{Result as TeraResult, Value};
+use minijinja::{Environment, Error, Value};
 
 /// Read function for templates - reads file content relative to config directory
-pub fn read_function(args: &HashMap<String, Value>) -> TeraResult<Value> {
-    let filename = args
-        .get("filename")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| tera::Error::msg("read() function requires a filename argument"))?;
+pub fn read_function(filename: Value) -> Result<Value, Error> {
+    let filename = filename.as_str().ok_or_else(|| {
+        Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            "read() function requires a filename string",
+        )
+    })?;
 
     // TODO: Pass config directory path from context
-    let config_dir = std::env::current_dir().unwrap();
+    let config_dir = std::env::current_dir().map_err(|e| {
+        Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            format!("Failed to get current directory: {e}"),
+        )
+    })?;
     let file_path = config_dir.join(filename);
 
     match std::fs::read_to_string(&file_path) {
-        Ok(content) => Ok(Value::String(content)),
-        Err(e) => Err(tera::Error::msg(format!(
-            "Failed to read file '{}': {}",
-            file_path.display(),
-            e
-        ))),
+        Ok(content) => Ok(Value::from(content)),
+        Err(e) => Err(Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            format!("Failed to read file '{}': {}", file_path.display(), e),
+        )),
     }
 }
 
-/// Register all custom functions with Tera
-pub fn register_functions(tera: &mut tera::Tera) {
-    tera.register_function("read", read_function);
+/// Register all custom functions with MiniJinja
+pub fn register_functions(env: &mut Environment) {
+    env.add_function("read", read_function);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use std::fs;
     use std::io::Write;
     use std::sync::Mutex;
@@ -56,14 +60,8 @@ mod tests {
         std::env::set_current_dir(&temp_dir).unwrap();
 
         // Test the read function
-        let mut args = HashMap::new();
-        args.insert(
-            "filename".to_string(),
-            Value::String("test.txt".to_string()),
-        );
-
-        let result = read_function(&args).unwrap();
-        if let Value::String(content) = result {
+        let result = read_function(Value::from("test.txt")).unwrap();
+        if let Some(content) = result.as_str() {
             assert!(content.contains("Hello, World!"));
             assert!(content.contains("This is a test file."));
         } else {
@@ -82,13 +80,7 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&temp_dir).unwrap();
 
-        let mut args = HashMap::new();
-        args.insert(
-            "filename".to_string(),
-            Value::String("nonexistent.txt".to_string()),
-        );
-
-        let result = read_function(&args);
+        let result = read_function(Value::from("nonexistent.txt"));
         assert!(result.is_err());
         assert!(
             result
@@ -101,27 +93,14 @@ mod tests {
     }
 
     #[test]
-    fn test_read_function_no_filename() {
-        let args = HashMap::new();
-
-        let result = read_function(&args);
+    fn test_read_function_invalid_arg() {
+        let result = read_function(Value::from(42));
         assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "read() function requires a filename argument"
-        );
-    }
-
-    #[test]
-    fn test_read_function_invalid_filename() {
-        let mut args = HashMap::new();
-        args.insert("filename".to_string(), Value::Number(42.into()));
-
-        let result = read_function(&args);
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "read() function requires a filename argument"
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("requires a filename string")
         );
     }
 
@@ -141,19 +120,17 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&temp_dir).unwrap();
 
-        // Test with Tera template engine
-        let mut tera =
-            tera::Tera::new("templates/**/*").unwrap_or_else(|_| tera::Tera::new("").unwrap());
-        register_functions(&mut tera);
+        // Test with MiniJinja template engine
+        let mut env = Environment::new();
+        register_functions(&mut env);
 
         let template = r#"
 steps:
   - run: |
-      {{ read(filename="script.sh") | trim }}
+      {{ read('script.sh') | trim }}
 "#;
 
-        let context = tera::Context::new();
-        let result = tera.render_str(template, &context).unwrap();
+        let result = env.render_str(template, ()).unwrap();
 
         assert!(result.contains("#!/bin/bash"));
         assert!(result.contains("echo 'Setting up environment'"));
