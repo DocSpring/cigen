@@ -5,6 +5,8 @@ use tracing::{debug, info};
 use super::command::CommandValidator;
 use super::config::ConfigValidator;
 use super::job::JobValidator;
+use super::post_template::PostTemplateValidator;
+use crate::templating::TemplateEngine;
 
 pub struct Validator {
     command_validator: CommandValidator,
@@ -187,5 +189,11 @@ impl Validator {
         }
 
         Ok(command_count)
+    }
+
+    /// Validate rendered files after template processing
+    pub fn validate_rendered_files(&self, template_engine: &mut TemplateEngine) -> Result<()> {
+        let mut post_validator = PostTemplateValidator::new(self, template_engine);
+        post_validator.validate_all()
     }
 }

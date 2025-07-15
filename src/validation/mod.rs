@@ -3,6 +3,7 @@ mod config;
 pub mod data;
 mod error_reporter;
 mod job;
+mod post_template;
 mod schemas;
 mod validator;
 
