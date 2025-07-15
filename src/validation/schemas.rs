@@ -50,3 +50,7 @@ pub fn get_config_base_schema() -> Result<Value, serde_json::Error> {
 pub fn get_job_schema() -> Result<Value, serde_json::Error> {
     serde_json::from_str(JOB_SCHEMA)
 }
+
+pub fn get_command_schema() -> Result<Value, serde_json::Error> {
+    serde_json::from_str(COMMAND_SCHEMA)
+}

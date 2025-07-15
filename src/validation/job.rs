@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use serde_yaml;
 use std::path::Path;
+use tracing::debug;
 
 use super::schemas::{SchemaRetriever, get_job_schema};
 
@@ -31,7 +32,7 @@ impl JobValidator {
         // Validate
         match validator.validate(&yaml_value) {
             Ok(()) => {
-                println!("✓ Job validation passed: {job_path:?}");
+                debug!("    ✓ Job validation passed: {job_path:?}");
                 Ok(())
             }
             Err(error) => {

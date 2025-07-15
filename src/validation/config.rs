@@ -82,7 +82,7 @@ impl ConfigValidator {
 
         match validator.validate(config) {
             Ok(()) => {
-                debug!("✓ Merged config validation passed");
+                info!("✓ Merged config validation passed");
                 Ok(())
             }
             Err(error) => {

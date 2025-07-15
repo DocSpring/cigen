@@ -1,12 +1,14 @@
 use anyhow::Result;
 use std::path::Path;
-use tracing::debug;
+use tracing::{debug, info};
 
+use super::command::CommandValidator;
 use super::config::ConfigValidator;
 use super::job::JobValidator;
 use super::merger::ConfigMerger;
 
 pub struct Validator {
+    command_validator: CommandValidator,
     config_validator: ConfigValidator,
     job_validator: JobValidator,
     merger: ConfigMerger,
@@ -15,6 +17,7 @@ pub struct Validator {
 impl Validator {
     pub fn new() -> Result<Self> {
         Ok(Self {
+            command_validator: CommandValidator::new(),
             config_validator: ConfigValidator::new(),
             job_validator: JobValidator::new(),
             merger: ConfigMerger::new(),
@@ -75,6 +78,8 @@ impl Validator {
 
         // Merge all configs together
         if !split_configs.is_empty() {
+            info!("✓ All split configs validated: {config_dir:?}");
+
             debug!("Merging configurations...");
             let merged = self.merger.merge_configs(main_config, split_configs)?;
 
@@ -83,10 +88,85 @@ impl Validator {
             self.config_validator.validate_merged(&merged)?;
         }
 
-        // TODO: Validate job files in workflows/
-        // TODO: Validate command files
+        // Validate job files in workflows/
+        let workflows_dir = base_path.join("workflows");
+        if workflows_dir.exists() && workflows_dir.is_dir() {
+            debug!("Validating job files...");
+            let job_count = self.validate_jobs_in_directory(&workflows_dir)?;
+            if job_count > 0 {
+                info!("✓ All {} job files validated successfully", job_count);
+            }
+        }
+
+        // Validate command files in commands/
+        let commands_dir = base_path.join("commands");
+        if commands_dir.exists() && commands_dir.is_dir() {
+            debug!("Validating command files...");
+            let command_count = self.validate_commands_in_directory(&commands_dir)?;
+            if command_count > 0 {
+                info!(
+                    "✓ All {} command files validated successfully",
+                    command_count
+                );
+            }
+        }
+
         // TODO: Validate references (services, caches, etc.)
 
         Ok(())
+    }
+
+    fn validate_jobs_in_directory(&self, dir: &Path) -> Result<usize> {
+        use std::fs;
+        let mut job_count = 0;
+
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Recursively validate subdirectories
+                job_count += self.validate_jobs_in_directory(&path)?;
+            } else if path.is_file() {
+                // Check if it's a YAML file in a jobs/ directory
+                if let Some(parent) = path.parent() {
+                    if let Some(parent_name) = parent.file_name() {
+                        if parent_name == "jobs" {
+                            if let Some(ext) = path.extension() {
+                                if ext == "yml" || ext == "yaml" {
+                                    debug!("  Validating job {:?}...", path.file_name().unwrap());
+                                    self.job_validator.validate_job(&path)?;
+                                    job_count += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(job_count)
+    }
+
+    fn validate_commands_in_directory(&self, dir: &Path) -> Result<usize> {
+        use std::fs;
+        let mut command_count = 0;
+
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == "yml" || ext == "yaml" {
+                        debug!("  Validating command {:?}...", path.file_name().unwrap());
+                        self.command_validator.validate_command(&path)?;
+                        command_count += 1;
+                    }
+                }
+            }
+        }
+
+        Ok(command_count)
     }
 }

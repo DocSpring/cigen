@@ -20,9 +20,9 @@ struct Cli {
     #[arg(short, long, default_value = ".cigen", global = true)]
     config: String,
 
-    /// Enable verbose output
-    #[arg(short, long, global = true)]
-    verbose: bool,
+    /// Enable verbose output (use -vv for debug output)
+    #[arg(short, long, global = true, action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 #[derive(Subcommand)]
@@ -70,14 +70,13 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn init_logging(verbose: bool) {
+fn init_logging(verbose: u8) {
     use tracing_subscriber::EnvFilter;
 
-    let filter = if verbose {
-        EnvFilter::new("cigen=debug,info")
-    } else {
-        // Only show warnings and errors by default
-        EnvFilter::new("cigen=warn,error")
+    let filter = match verbose {
+        0 => EnvFilter::new("cigen=warn"), // Default: warnings and errors only
+        1 => EnvFilter::new("cigen=info"), // -v: info messages
+        _ => EnvFilter::new("cigen=debug"), // -vv or more: full debug
     };
 
     tracing_subscriber::fmt()
