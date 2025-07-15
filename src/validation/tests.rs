@@ -48,7 +48,7 @@ output_path: ./build
     let result = validator.validate_config(&config_path);
     assert!(result.is_err());
     let error_msg = result.unwrap_err().to_string();
-    assert!(error_msg.contains("Validation failed"));
+    assert!(error_msg.contains("Schema validation failed"));
 }
 
 #[test]

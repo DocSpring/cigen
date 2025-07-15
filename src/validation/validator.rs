@@ -6,6 +6,7 @@ use super::command::CommandValidator;
 use super::config::ConfigValidator;
 use super::job::JobValidator;
 use super::merger::ConfigMerger;
+use crate::models::Config;
 
 pub struct Validator {
     command_validator: CommandValidator,
@@ -76,8 +77,8 @@ impl Validator {
             }
         }
 
-        // Merge all configs together
-        if !split_configs.is_empty() {
+        // Merge all configs together and get final config for data validation
+        let _final_config = if !split_configs.is_empty() {
             info!("✓ All split configs validated: {config_dir:?}");
 
             debug!("Merging configurations...");
@@ -86,7 +87,15 @@ impl Validator {
             // Validate the merged config against the full schema
             debug!("Validating merged configuration...");
             self.config_validator.validate_merged(&merged)?;
-        }
+
+            // Parse merged config for data validation
+            let merged_yaml = serde_yaml::to_string(&merged)?;
+            Config::from_yaml(&merged_yaml)?
+        } else {
+            // Use main config for data validation
+            let main_yaml = serde_yaml::to_string(&main_config)?;
+            Config::from_yaml(&main_yaml)?
+        };
 
         // Validate job files in workflows/
         let workflows_dir = base_path.join("workflows");

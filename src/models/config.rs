@@ -53,7 +53,7 @@ pub struct Service {
     pub image: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub environment: Option<HashMap<String, String>>,
+    pub environment: Option<ServiceEnvironment>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ports: Option<Vec<String>>,
@@ -63,6 +63,15 @@ pub struct Service {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ServiceEnvironment {
+    /// Environment variables as key-value pairs
+    Map(HashMap<String, String>),
+    /// Environment variables as array of KEY=value strings
+    Array(Vec<String>),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

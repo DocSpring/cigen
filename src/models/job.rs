@@ -1,4 +1,5 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
@@ -17,6 +18,10 @@ pub struct Job {
     pub parallelism: Option<u32>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, deserialize_with = "deserialize_cache_definitions")]
+    pub cache: Option<HashMap<String, CacheDefinition>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub restore_cache: Option<Vec<CacheRestore>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -24,6 +29,84 @@ pub struct Job {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<Step>>,
+}
+
+/// Intermediate parsing structure for cache definitions that handles multiple YAML formats
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CacheDefinitionRaw {
+    /// Simple string format: `cache_name: "path/to/cache"`
+    Simple(String),
+    /// Array format: `cache_name: ["path1", "path2"]`
+    Array(Vec<String>),
+    /// Object format: `cache_name: { paths: ["path1"], restore: false }`
+    Object {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<CachePathSpec>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        paths: Option<CachePathSpec>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        restore: Option<bool>,
+    },
+}
+
+/// Path specification that can be either a string or array
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CachePathSpec {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+/// Final normalized cache definition
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheDefinition {
+    pub paths: Vec<String>,
+    pub restore: bool,
+}
+
+impl From<CacheDefinitionRaw> for CacheDefinition {
+    fn from(raw: CacheDefinitionRaw) -> Self {
+        match raw {
+            CacheDefinitionRaw::Simple(path) => CacheDefinition {
+                paths: vec![path],
+                restore: true,
+            },
+            CacheDefinitionRaw::Array(paths) => CacheDefinition {
+                paths,
+                restore: true,
+            },
+            CacheDefinitionRaw::Object {
+                path,
+                paths,
+                restore,
+            } => {
+                let final_paths = match (path, paths) {
+                    (Some(path_spec), None) => match path_spec {
+                        CachePathSpec::Single(p) => vec![p],
+                        CachePathSpec::Multiple(ps) => ps,
+                    },
+                    (None, Some(paths_spec)) => match paths_spec {
+                        CachePathSpec::Single(p) => vec![p],
+                        CachePathSpec::Multiple(ps) => ps,
+                    },
+                    (Some(_), Some(paths_spec)) => {
+                        // If both are specified, prefer paths
+                        match paths_spec {
+                            CachePathSpec::Single(p) => vec![p],
+                            CachePathSpec::Multiple(ps) => ps,
+                        }
+                    }
+                    (None, None) => vec![], // Invalid but we'll let validation catch this
+                };
+
+                CacheDefinition {
+                    paths: final_paths,
+                    restore: restore.unwrap_or(true),
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,5 +177,23 @@ impl Job {
         }
 
         refs
+    }
+}
+
+/// Custom deserializer for cache definitions that handles multiple YAML formats
+fn deserialize_cache_definitions<'de, D>(
+    deserializer: D,
+) -> Result<Option<HashMap<String, CacheDefinition>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let raw_map: Option<HashMap<String, CacheDefinitionRaw>> = Option::deserialize(deserializer)?;
+
+    match raw_map {
+        Some(map) => {
+            let converted_map = map.into_iter().map(|(k, v)| (k, v.into())).collect();
+            Ok(Some(converted_map))
+        }
+        None => Ok(None),
     }
 }

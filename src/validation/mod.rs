@@ -1,5 +1,6 @@
 mod command;
 mod config;
+mod data;
 mod error_reporter;
 mod job;
 mod merger;

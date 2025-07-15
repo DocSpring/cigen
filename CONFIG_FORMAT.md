@@ -205,7 +205,7 @@ steps:
       echo "{{ read('etc-hosts.txt') | trim }}" >> /etc/hosts
 ```
 
-**Why:** First-class template support using Jinja2-style syntax reduces duplication and enables dynamic configuration.
+**Why:** First-class template support using Jinja2-style syntax (Tera template engine) reduces duplication and enables dynamic configuration.
 
 ### 8. Schema Validation
 
