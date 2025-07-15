@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-use cigen::loader::ConfigLoader;
+mod commands;
 
 #[derive(Parser)]
 #[command(
@@ -43,21 +43,21 @@ enum Commands {
         output: Option<String>,
     },
 
+    /// List available resources
+    List {
+        /// Optional resource type to list (if not specified, lists all)
+        #[arg(value_enum)]
+        resource_type: Option<commands::ListType>,
+    },
+
     /// Inspect internal object model
     Inspect {
         #[arg(value_enum)]
-        object_type: InspectType,
+        object_type: commands::InspectType,
 
         #[arg(help = "Path to the object (e.g., 'test/bootsnap' for a job)")]
         path: String,
     },
-}
-
-#[derive(Debug, Clone, clap::ValueEnum)]
-enum InspectType {
-    Config,
-    Job,
-    Command,
 }
 
 fn main() -> Result<()> {
@@ -68,20 +68,23 @@ fn main() -> Result<()> {
 
     match cli.command {
         Some(Commands::Init { template }) => {
-            init_command(&cli.config, template)?;
+            commands::init_command(&cli.config, template)?;
         }
         Some(Commands::Validate) => {
-            validate_command(&cli.config)?;
+            commands::validate_command(&cli.config)?;
         }
         Some(Commands::Generate { output }) => {
-            generate_command(&cli.config, output)?;
+            commands::generate_command(&cli.config, output)?;
+        }
+        Some(Commands::List { resource_type }) => {
+            commands::list_command(&cli.config, resource_type)?;
         }
         Some(Commands::Inspect { object_type, path }) => {
-            inspect_command(&cli.config, object_type, &path)?;
+            commands::inspect_command(&cli.config, object_type, &path)?;
         }
         None => {
             // Default to generate command
-            generate_command(&cli.config, None)?;
+            commands::generate_command(&cli.config, None)?;
         }
     }
 
@@ -102,61 +105,4 @@ fn init_logging(verbose: u8) {
         .with_target(false)
         .without_time()
         .init();
-}
-
-fn init_command(config_path: &str, template: Option<String>) -> Result<()> {
-    println!("Initializing new cigen project in: {config_path}");
-    if let Some(template) = template {
-        println!("Using template: {template}");
-    }
-    // TODO: Implement project initialization
-    anyhow::bail!("Init command not yet implemented");
-}
-
-fn generate_command(config_path: &str, output: Option<String>) -> Result<()> {
-    println!("Generating CI configuration from: {config_path}");
-    if let Some(output) = output {
-        println!("Output directory: {output}");
-    }
-    // TODO: Implement CI generation
-    anyhow::bail!("Generate command not yet implemented");
-}
-
-fn inspect_command(config_path: &str, object_type: InspectType, path: &str) -> Result<()> {
-    // Load everything
-    let loader = ConfigLoader::new(config_path)?;
-    let loaded = loader.load_all()?;
-
-    match object_type {
-        InspectType::Config => {
-            println!("{:#?}", loaded.config);
-        }
-        InspectType::Job => {
-            if let Some(job) = loaded.jobs.get(path) {
-                job.pretty_print();
-            } else {
-                anyhow::bail!("Job not found: {}", path);
-            }
-        }
-        InspectType::Command => {
-            if let Some(command) = loaded.commands.get(path) {
-                println!("{command:#?}");
-            } else {
-                anyhow::bail!("Command not found: {}", path);
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn validate_command(config_path: &str) -> Result<()> {
-    println!("Validating configuration directory: {config_path}");
-
-    // The loader runs all validation as part of loading
-    let loader = ConfigLoader::new(config_path)?;
-    let _loaded = loader.load_all()?;
-
-    println!("\n✅ All validations passed!");
-    Ok(())
 }
