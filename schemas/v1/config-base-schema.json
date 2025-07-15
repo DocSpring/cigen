@@ -14,6 +14,13 @@
       "description": "Schema version",
       "const": 1
     },
+    "anchors": {
+      "type": "object",
+      "description": "YAML anchors for reusing configuration",
+      "patternProperties": {
+        "^[a-zA-Z_][a-zA-Z0-9_]*$": {}
+      }
+    },
     "provider": {
       "type": "string",
       "description": "CI provider to target",
@@ -101,6 +108,106 @@
             "description": "File path, directory, or reference to another group (e.g., '(rails)')"
           },
           "minItems": 1
+        }
+      }
+    },
+    "docker": {
+      "type": "object",
+      "description": "Docker configuration and authentication",
+      "properties": {
+        "default_auth": {
+          "type": "string",
+          "description": "Default auth configuration to use for Docker images"
+        },
+        "auth": {
+          "type": "object",
+          "description": "Named Docker registry authentication configurations",
+          "patternProperties": {
+            "^[a-z_]+$": {
+              "type": "object",
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "description": "Registry username or environment variable reference"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Registry password or environment variable reference"
+                }
+              },
+              "required": ["username", "password"]
+            }
+          }
+        }
+      }
+    },
+    "services": {
+      "type": "object",
+      "description": "Service container definitions",
+      "patternProperties": {
+        "^[a-z_]+$": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "type": "string",
+              "description": "Docker image for the service"
+            },
+            "auth": {
+              "type": "string",
+              "description": "Auth configuration name (references docker.auth.*)"
+            },
+            "environment": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "description": "Environment variables as key-value pairs",
+                  "patternProperties": {
+                    "^[A-Z_]+$": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "array",
+                  "description": "Environment variables as array of KEY=value strings",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "entrypoint": {
+              "type": "string",
+              "description": "Override the default entrypoint"
+            },
+            "command": {
+              "type": "string",
+              "description": "Command to run in the container"
+            },
+            "health_check": {
+              "type": "object",
+              "description": "Health check configuration",
+              "properties": {
+                "command": {
+                  "type": "string",
+                  "description": "Command to run for health check"
+                },
+                "interval": {
+                  "type": "string",
+                  "description": "Time between health checks"
+                },
+                "timeout": {
+                  "type": "string",
+                  "description": "Health check timeout"
+                },
+                "retries": {
+                  "type": "integer",
+                  "description": "Number of retries before marking unhealthy"
+                }
+              }
+            }
+          },
+          "required": ["image"]
         }
       }
     }

@@ -1,20 +1,22 @@
-docker_auth: &docker_auth
-  username: $DOCKERHUB_USERNAME
-  password: $DOCKERHUB_TOKEN
-
 docker:
+  default_auth: docker_hub
+  auth:
+    docker_hub:
+      username: $DOCKERHUB_USERNAME
+      password: $DOCKERHUB_TOKEN
+
+services:
   postgres:
     image: cimg/postgres:{{ postgres_version }}
     environment:
       POSTGRES_USER: docspring
       POSTGRES_DB: docspring_test
-    auth: *docker_auth
+
   redis:
     image: cimg/redis:{{ redis_version }}
-    auth: *docker_auth
+
   minio:
     image: minio/minio:{{ minio_version }}
-    auth: *docker_auth
     environment:
       - MINIO_ROOT_USER=docspring-minio
       - MINIO_ROOT_PASSWORD=minio123123

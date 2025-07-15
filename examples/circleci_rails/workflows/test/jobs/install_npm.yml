@@ -2,9 +2,8 @@ image: build_libs
 architectures: ["arm64", "amd64"]
 resource_class: large
 source_files: npm
-cache_paths:
-  npm_packages:
-    - node_modules
+cache:
+  npm_packages: node_modules
 
 steps:
   - name: Install npm packages

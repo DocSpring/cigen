@@ -37,32 +37,64 @@
       "description": "Number of parallel instances of this job",
       "minimum": 1
     },
-    "cache_paths": {
+    "cache": {
       "type": "object",
-      "description": "Named cache paths for this job",
+      "description": "Named caches for this job",
       "patternProperties": {
         "^[a-z_]+$": {
           "oneOf": [
             {
+              "type": "string",
+              "description": "Shorthand: single path (restore defaults to true)"
+            },
+            {
               "type": "array",
+              "description": "Shorthand: array of paths (restore defaults to true)",
               "items": {
                 "type": "string"
               }
             },
             {
               "type": "object",
+              "description": "Full format with restore control",
               "properties": {
                 "restore": {
                   "type": "boolean",
-                  "description": "Whether to restore this cache"
+                  "description": "Whether to restore this cache (default: true)",
+                  "default": true
+                },
+                "path": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "description": "Single path"
+                    },
+                    {
+                      "type": "array",
+                      "description": "Array of paths",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
                 },
                 "paths": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "description": "Single path"
+                    },
+                    {
+                      "type": "array",
+                      "description": "Array of paths",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
                 }
-              }
+              },
+              "oneOf": [{ "required": ["path"] }, { "required": ["paths"] }]
             }
           ]
         }
@@ -94,11 +126,12 @@
         ]
       }
     },
-    "docker": {
+    "services": {
       "type": "array",
-      "description": "Additional Docker containers to run",
+      "description": "Service containers to run with this job",
       "items": {
-        "type": "string"
+        "type": "string",
+        "description": "Reference to a service defined in config"
       }
     },
     "environment": {

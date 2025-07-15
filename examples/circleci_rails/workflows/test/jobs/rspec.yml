@@ -11,7 +11,7 @@ restore_cache:
     dependency: false
   - rails_assets
 
-docker:
+services:
   - postgres
   - redis
   - minio

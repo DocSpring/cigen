@@ -2,11 +2,10 @@ image: ci_app_base
 architectures: ["arm64", "amd64"]
 resource_class: medium
 source_files: rails
-cache_paths:
+cache:
   bootsnap:
+    path: tmp/cache/bootsnap
     restore: false
-    paths:
-      - tmp/cache/bootsnap
 
 restore_cache:
   - gems

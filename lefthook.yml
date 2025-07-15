@@ -3,6 +3,25 @@
 
 pre-commit:
   jobs:
+    - name: trim-trailing-whitespace
+      run: |
+        for file in {staged_files}; do
+          if [[ -f "$file" ]]; then
+            # Remove trailing whitespace (portable sed usage)
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+              sed -i '' 's/[[:space:]]*$//' "$file"
+            else
+              sed -i 's/[[:space:]]*$//' "$file"
+            fi
+            # Ensure file ends with newline
+            if [[ -s "$file" && -z $(tail -c 1 "$file" | od -An -tx1) ]]; then
+              echo >> "$file"
+            fi
+          fi
+        done
+      file_types:
+        - text
+      stage_fixed: true
     - run: npx ultracite format {staged_files}
       glob:
         - "*.js"

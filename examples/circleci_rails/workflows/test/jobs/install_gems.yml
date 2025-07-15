@@ -2,7 +2,7 @@ image: build_libs
 architectures: ["arm64", "amd64"]
 resource_class: large
 source_files: bundler
-cache_paths:
+cache:
   gems:
     - .bundle
     - vendor/bundle

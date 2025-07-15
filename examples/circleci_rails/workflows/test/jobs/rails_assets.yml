@@ -5,11 +5,9 @@ resource_class: medium
 source_files: rails
 cache:
   rails_assets:
+    path: public/assets
     restore: false
-    paths:
-      - public/assets
-  rails_assets_cache:
-    - tmp/cache/assets
+  rails_assets_cache: tmp/cache/assets
 
 restore_cache:
   - gems
