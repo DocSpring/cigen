@@ -81,6 +81,18 @@ enum Commands {
         /// Save graph to PNG file
         #[arg(short, long)]
         output: Option<String>,
+
+        /// DPI for graph output (default: 120)
+        #[arg(long = "graph-dpi")]
+        graph_dpi: Option<u32>,
+
+        /// Graph size in inches (default: "15,10")
+        #[arg(long = "graph-size")]
+        graph_size: Option<String>,
+
+        /// Color for graph text and lines (default: "white")
+        #[arg(long = "graph-color")]
+        graph_color: Option<String>,
     },
 }
 
@@ -146,8 +158,21 @@ fn main() -> Result<()> {
                 Some(Commands::Inspect { object_type, path }) => {
                     commands::inspect_command(object_type, path, &cli_vars)?;
                 }
-                Some(Commands::Graph { workflow, output }) => {
-                    commands::graph_command(workflow, output, &cli_vars)?;
+                Some(Commands::Graph {
+                    workflow,
+                    output,
+                    graph_dpi,
+                    graph_size,
+                    graph_color,
+                }) => {
+                    commands::graph_command(
+                        workflow,
+                        output,
+                        graph_dpi,
+                        graph_size,
+                        graph_color,
+                        &cli_vars,
+                    )?;
                 }
                 None => {
                     // Default to generate command

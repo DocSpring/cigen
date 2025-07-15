@@ -216,6 +216,31 @@
           "required": ["image"]
         }
       }
+    },
+    "graph": {
+      "type": "object",
+      "description": "Graph visualization settings",
+      "properties": {
+        "dpi": {
+          "type": "integer",
+          "description": "DPI for graph output",
+          "default": 120,
+          "minimum": 50,
+          "maximum": 600
+        },
+        "size": {
+          "type": "string",
+          "description": "Graph size in inches (width,height)",
+          "default": "15,10",
+          "pattern": "^\\d+(\\.\\d+)?,\\d+(\\.\\d+)?$"
+        },
+        "color": {
+          "type": "string",
+          "description": "Color for graph text and lines",
+          "default": "white"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

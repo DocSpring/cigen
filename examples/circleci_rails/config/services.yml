@@ -7,7 +7,7 @@ docker:
 
 services:
   postgres:
-    image: cimg/{{ unknown }}postgres:{{ postgres_version }}
+    image: cimg/postgres:{{ postgres_version }}
     environment:
       POSTGRES_USER: docspring
       POSTGRES_DB: docspring_test

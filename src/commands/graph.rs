@@ -11,6 +11,9 @@ use cigen::loader::ConfigLoader;
 pub fn graph_command(
     workflow_filter: Option<String>,
     output_path: Option<String>,
+    cli_dpi: Option<u32>,
+    cli_size: Option<String>,
+    cli_color: Option<String>,
     cli_vars: &HashMap<String, String>,
 ) -> Result<()> {
     // Load all configuration
@@ -40,7 +43,20 @@ pub fn graph_command(
     // Create dependency graph
     let graph = DependencyGraph::new(&filtered_jobs)?;
 
-    let dot_output = generate_dot(&graph);
+    // Determine graph settings with precedence: CLI > config > defaults
+    let dpi = cli_dpi
+        .or(loaded.config.graph.as_ref().and_then(|g| g.dpi))
+        .unwrap_or(120);
+
+    let size = cli_size
+        .or(loaded.config.graph.as_ref().and_then(|g| g.size.clone()))
+        .unwrap_or_else(|| "15,10".to_string());
+
+    let color = cli_color
+        .or(loaded.config.graph.as_ref().and_then(|g| g.color.clone()))
+        .unwrap_or_else(|| "white".to_string());
+
+    let dot_output = generate_dot(&graph, dpi, &size, &color);
     if let Some(path) = output_path {
         if path.ends_with(".dot") {
             std::fs::write(&path, &dot_output)?;
@@ -57,22 +73,22 @@ pub fn graph_command(
     Ok(())
 }
 
-fn generate_dot(graph: &DependencyGraph) -> String {
+fn generate_dot(graph: &DependencyGraph, dpi: u32, size: &str, color: &str) -> String {
     let mut output = String::new();
     output.push_str("digraph JobDependencies {\n");
     output.push_str("  bgcolor=transparent;\n");
     output.push_str("  rankdir=LR;\n");
-    output.push_str("  dpi=120;\n");
-    output.push_str("  size=\"15,10\";\n");
+    output.push_str(&format!("  dpi={dpi};\n"));
+    output.push_str(&format!("  size=\"{size}\";\n"));
     output.push_str("  ratio=fill;\n");
     output.push_str("  nodesep=1.2;\n");
     output.push_str("  ranksep=1.8;\n");
-    output.push_str(
-        "  node [shape=box, style=\"rounded,filled\", fontname=\"Arial\", fontsize=20, color=white, fontcolor=white, fillcolor=transparent, penwidth=2, margin=50];\n",
-    );
-    output.push_str(
-        "  edge [fontname=\"Arial\", fontsize=18, color=white, fontcolor=white, penwidth=2, minlen=2];\n",
-    );
+    output.push_str(&format!(
+        "  node [shape=box, style=\"rounded,filled\", fontname=\"Arial\", fontsize=20, color=\"{color}\", fontcolor=\"{color}\", fillcolor=transparent, penwidth=2, margin=50];\n"
+    ));
+    output.push_str(&format!(
+        "  edge [fontname=\"Arial\", fontsize=20, color=\"{color}\", fontcolor=\"{color}\", penwidth=2, minlen=2];\n"
+    ));
     output.push('\n');
 
     // Group by workflow
@@ -93,14 +109,14 @@ fn generate_dot(graph: &DependencyGraph) -> String {
         output.push_str(&format!("  subgraph cluster_{workflow} {{\n"));
         output.push_str(&format!("    label=<<B>{workflow}</B>>;\n"));
         output.push_str("    style=\"filled,rounded\";\n");
-        output.push_str("    color=white;\n");
-        output.push_str("    fontcolor=white;\n");
+        output.push_str(&format!("    color=\"{color}\";\n"));
+        output.push_str(&format!("    fontcolor=\"{color}\";\n"));
         output.push_str("    fontname=\"Arial\";\n");
-        output.push_str("    fontsize=22;\n");
+        output.push_str("    fontsize=20;\n");
         output.push_str("    fillcolor=transparent;\n");
         output.push_str("    penwidth=2;\n");
         output.push_str("    margin=60;\n");
-        output.push_str("    node [margin=0.4,style=filled,color=white,fontcolor=white,fillcolor=transparent,penwidth=2];\n");
+        output.push_str(&format!("    node [margin=0.4,style=filled,color=\"{color}\",fontcolor=\"{color}\",fillcolor=transparent,penwidth=2];\n"));
 
         for job in jobs {
             let short_name = job.split('/').nth(1).unwrap_or(&job);

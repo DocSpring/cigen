@@ -34,6 +34,21 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vars: Option<HashMap<String, serde_yaml::Value>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<GraphConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dpi: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
