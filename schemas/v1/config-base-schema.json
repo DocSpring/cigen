@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://cigen.io/schemas/v1/config-base-schema.json",
+  "title": "CIGen Configuration Base Schema",
+  "description": "Base schema for cigen configuration fragments - allows any subset of properties",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation"
+    },
+    "version": {
+      "type": "integer",
+      "description": "Schema version",
+      "const": 1
+    },
+    "provider": {
+      "type": "string",
+      "description": "CI provider to target",
+      "enum": ["circleci", "github-actions"]
+    },
+    "output_path": {
+      "type": "string",
+      "description": "Path where generated CI config will be written",
+      "default": "./build"
+    },
+    "caches": {
+      "type": "object",
+      "description": "Cache backend configuration",
+      "properties": {
+        "artifacts": {
+          "type": "object",
+          "description": "File cache for build artifacts",
+          "required": ["backend"],
+          "properties": {
+            "backend": {
+              "type": "string",
+              "enum": ["circleci", "s3", "minio", "redis"]
+            },
+            "config": {
+              "type": "object",
+              "description": "Backend-specific configuration"
+            }
+          }
+        },
+        "job_status": {
+          "type": "object",
+          "description": "Job status cache for skipping unchanged jobs",
+          "required": ["backend"],
+          "properties": {
+            "backend": {
+              "type": "string",
+              "enum": ["redis", "s3", "dynamodb", "file"]
+            },
+            "config": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string",
+                  "description": "Connection URL (for redis, etc)"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "architectures": {
+      "type": "array",
+      "description": "Target architectures for multi-arch builds",
+      "items": {
+        "type": "string",
+        "enum": ["amd64", "arm64"]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "resource_classes": {
+      "type": "object",
+      "description": "Resource class mapping per architecture",
+      "patternProperties": {
+        "^(amd64|arm64)$": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z_]+$": {
+              "type": "string",
+              "description": "Resource class identifier"
+            }
+          }
+        }
+      }
+    },
+    "source_file_groups": {
+      "type": "object",
+      "description": "Named groups of files for cache key generation",
+      "patternProperties": {
+        "^[a-z_]+$": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "description": "File path, directory, or reference to another group (e.g., '(rails)')"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

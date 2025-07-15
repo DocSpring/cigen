@@ -1,5 +1,4 @@
-# cigen configuration
-version: 1
+$schema: ../../schemas/v1/config-schema.json
 
 # CI provider to target
 provider: circleci
@@ -32,31 +31,3 @@ resource_classes:
   arm64:
     large: arm.large
     medium: arm.medium
-
-# File groups for cache keys (artifacts and job status)
-source_file_groups:
-  bundler:
-    - Gemfile
-    - Gemfile.lock
-    - .ruby-version
-  npm:
-    - package-lock.json
-    - package.json
-    - .nvmrc
-  rails:
-    - app/
-    - config/
-    - db/
-    - lib/
-    - public/
-    - Rakefile
-    - .ruby-version
-    - Gemfile
-  rspec:
-    - (rails)
-    - spec/
-
-# Workflows to generate
-workflows:
-  - name: setup
-    template: workflows/setup.yml

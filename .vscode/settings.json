@@ -1,0 +1,32 @@
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[javascript][typescript][javascriptreact][typescriptreact][json][jsonc][css][graphql]": {
+    "editor.defaultFormatter": "biomejs.biome"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "editor.formatOnSave": true,
+  "editor.formatOnPaste": true,
+  "emmet.showExpandedAbbreviation": "never",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.biome": "explicit",
+    "source.organizeImports.biome": "explicit"
+  },
+  "yaml.schemas": {
+    "./schemas/v1/config-schema.json": [
+      ".cigen/config.yml",
+      "examples/*/config.yml"
+    ],
+    "./schemas/v1/config-base-schema.json": [
+      ".cigen/config/*.yml",
+      "examples/*/config/*.yml"
+    ],
+    "./schemas/v1/job-schema.json": [
+      ".cigen/**/workflows/**/*.yml",
+      "examples/**/workflows/**/*.yml"
+    ],
+    "./schemas/v1/command-schema.json": [
+      ".cigen/**/commands/*.yml",
+      "examples/**/commands/*.yml"
+    ]
+  }
+}

@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://cigen.io/schemas/v1/job-schema.json",
+  "title": "CIGen Job Schema",
+  "description": "Schema for job definition files in workflows",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation"
+    },
+    "image": {
+      "type": "string",
+      "description": "Docker image to use for the job"
+    },
+    "architectures": {
+      "type": "array",
+      "description": "Target architectures for this job",
+      "items": {
+        "type": "string",
+        "enum": ["amd64", "arm64"]
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "resource_class": {
+      "type": "string",
+      "description": "Resource class size (e.g., small, medium, large, xlarge)",
+      "enum": ["small", "medium", "large", "xlarge", "2xlarge", "self_hosted"]
+    },
+    "source_files": {
+      "type": "string",
+      "description": "Reference to a source file group defined in config"
+    },
+    "parallelism": {
+      "type": "integer",
+      "description": "Number of parallel instances of this job",
+      "minimum": 1
+    },
+    "cache_paths": {
+      "type": "object",
+      "description": "Named cache paths for this job",
+      "patternProperties": {
+        "^[a-z_]+$": {
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "restore": {
+                  "type": "boolean",
+                  "description": "Whether to restore this cache"
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "restore_cache": {
+      "type": "array",
+      "description": "List of caches to restore before running steps",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Name of cache to restore"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name of cache to restore"
+              },
+              "dependency": {
+                "type": "boolean",
+                "description": "Whether this is a required dependency"
+              }
+            },
+            "required": ["name"]
+          }
+        ]
+      }
+    },
+    "docker": {
+      "type": "array",
+      "description": "Additional Docker containers to run",
+      "items": {
+        "type": "string"
+      }
+    },
+    "environment": {
+      "type": "object",
+      "description": "Environment variables for the job",
+      "patternProperties": {
+        "^[A-Z_]+$": {
+          "type": "string"
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Steps to execute in the job",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "description": "Reference to a command template"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Step name"
+              },
+              "run": {
+                "type": "string",
+                "description": "Shell command to execute"
+              },
+              "store_test_results": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Path to test results"
+                  }
+                }
+              },
+              "store_artifacts": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "Path to artifacts to store"
+                  },
+                  "destination": {
+                    "type": "string",
+                    "description": "Optional destination path"
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "additionalProperties": false
+}

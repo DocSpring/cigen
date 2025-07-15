@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://cigen.io/schemas/v1/command-schema.json",
+  "title": "CIGen Command Schema",
+  "description": "Schema for reusable command templates",
+  "type": "object",
+  "required": ["description", "steps"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for validation"
+    },
+    "description": {
+      "type": "string",
+      "description": "Description of what this command does"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Parameters that can be passed to this command",
+      "patternProperties": {
+        "^[a-z_]+$": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["string", "integer", "boolean", "number"],
+              "description": "Parameter type"
+            },
+            "description": {
+              "type": "string",
+              "description": "Description of the parameter"
+            },
+            "default": {
+              "description": "Default value for the parameter"
+            },
+            "enum": {
+              "type": "array",
+              "description": "Allowed values for the parameter"
+            }
+          }
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "description": "Steps to execute in this command",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Step name"
+          },
+          "run": {
+            "type": "string",
+            "description": "Shell command to execute"
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

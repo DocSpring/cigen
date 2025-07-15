@@ -1,6 +1,6 @@
-# cigen
+# CIGen
 
-A CLI tool that generates highly-optimized CI configuration files. Reduce duplication, avoid vendor lock-in, and make your CI configuration far more maintainable.
+CIGen makes your CI configuration files more maintainable. Reduce duplication, avoid vendor lock-in.
 
 This tool can be used to build both static config and [dynamic config for CircleCI](https://circleci.com/docs/dynamic-config/). The CLI includes a file hashing feature that can be used during the initial setup workflow to skip jobs when no files have changed.
 
