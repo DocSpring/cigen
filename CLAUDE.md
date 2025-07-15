@@ -8,6 +8,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See `PRD.txt` for the complete product requirements and specifications.
 
+## Shell Script Compatibility
+
+**CRITICAL**: When writing shell scripts or commands (especially for version detection), ensure full compatibility across all systems:
+
+1. **Use POSIX-compliant features only** - No GNU-specific flags or modern bash features
+2. **Test compatibility** with both BSD (macOS) and GNU (Linux) versions of tools
+3. **Avoid these common incompatibilities**:
+   - `grep -P` (PCRE) - Not available on BSD grep
+   - `grep -o` with complex patterns - Behavior differs between implementations
+   - `sed -i` without backup extension on macOS
+   - Modern bash features like `[[` conditions or arrays
+
+4. **Preferred patterns**:
+   - Use `grep -E` instead of `grep -P` for extended regex
+   - Use simple `grep | grep` chains instead of complex single patterns
+   - Always provide backup extension for `sed -i`: `sed -i.bak` (then delete .bak file)
+   - Use `/bin/sh` compatible syntax, not bash-specific
+
+5. **Example of compatible version extraction**:
+
+   ```bash
+   # Good - works everywhere
+   ruby --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1
+
+   # Bad - GNU grep only
+   ruby --version | grep -oP '\d+\.\d+\.\d+'
+   ```
+
 ## Build Commands
 
 ```bash
