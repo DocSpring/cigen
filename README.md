@@ -1,18 +1,18 @@
 # CIGen
 
-CIGen makes your CI configuration files more maintainable. Reduce duplication, avoid vendor lock-in.
+CIGen makes your CI configuration files more maintainable and has many built-in power features to make them more efficient. Especially beneficial for monorepos.
 
-This tool can be used to build both static config and [dynamic config for CircleCI](https://circleci.com/docs/dynamic-config/). The CLI includes a file hashing feature that can be used during the initial setup workflow to skip jobs when no files have changed.
+This tool can be used to build both static config and [dynamic config for CircleCI](https://circleci.com/docs/dynamic-config/). The CLI includes a file hashing feature that can be used during the initial setup workflow to skip jobs when no files have changed.r
 
 ## Features
 
-- Written in Rust
 - First-class support for caching with configurable backends
   - Automatically adds OS, version, and architecture to cache keys
 - First-class support for running jobs on multiple architectures and self-hosted runners
 - Automatic git checkout with extra caching support for self-hosted runners
 - Intelligent job skipping based on file changes
 - Automatic job dependencies with cache restoration
+- Written in Rust
 - Powerful templating engine ([Tera](https://github.com/Keats/tera))
 - Beautiful and descriptive error messages ([miette](https://docs.rs/miette/latest/miette/))
 

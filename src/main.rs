@@ -60,6 +60,16 @@ enum Commands {
         )]
         path: Option<String>,
     },
+
+    /// Display job dependency graph
+    Graph {
+        /// Workflow name to display (shows all workflows if not specified)
+        workflow: Option<String>,
+
+        /// Output format
+        #[arg(short, long, value_enum, default_value = "tree")]
+        format: commands::GraphFormat,
+    },
 }
 
 fn main() -> Result<()> {
@@ -83,6 +93,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Inspect { object_type, path }) => {
             commands::inspect_command(&cli.config, object_type, path)?;
+        }
+        Some(Commands::Graph { workflow, format }) => {
+            commands::graph_command(&cli.config, workflow, format)?;
         }
         None => {
             // Default to generate command

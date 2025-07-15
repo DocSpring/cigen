@@ -73,6 +73,20 @@ LEFTHOOK_VERSION="1.10.2"  # After verifying this is the actual latest version
 
 The rule is: I (Claude) must ALWAYS search for the current version before writing ANY version number in code. The user shouldn't have to correct version numbers - I should get them right the first time by searching.
 
+### Cargo.toml Dependency Management
+
+**CRITICAL**: NEVER manually add dependencies to Cargo.toml with version numbers. ALWAYS use `cargo add`:
+
+```bash
+# ❌ WRONG: Manually editing Cargo.toml
+petgraph = "0.6"  # This version is likely outdated!
+
+# ✅ CORRECT: Using cargo add
+cargo add petgraph  # Automatically fetches and adds the latest version
+```
+
+This ensures we always get the latest compatible version and properly updates Cargo.lock.
+
 ## Development Approach
 
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
