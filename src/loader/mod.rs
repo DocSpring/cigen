@@ -60,7 +60,9 @@ impl ConfigLoader {
         // 5. TODO: Apply Tera template resolution to everything
 
         // 6. Validate all data references with span information
+        tracing::debug!("Validating all data references...");
         self.validate_all_references_with_spans(&config, &jobs, &commands, &span_tracker)?;
+        tracing::info!("✓ All data references validated successfully");
 
         Ok(LoadedConfig {
             config,
