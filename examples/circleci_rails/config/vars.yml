@@ -1,0 +1,4 @@
+vars:
+  postgres_version: 16.1
+  redis_version: 7.4.0
+  minio_version: RELEASE.2025-06-26T18-44-10Z
