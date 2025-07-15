@@ -55,8 +55,10 @@ enum Commands {
         #[arg(value_enum)]
         object_type: commands::InspectType,
 
-        #[arg(help = "Path to the object (e.g., 'test/bootsnap' for a job)")]
-        path: String,
+        #[arg(
+            help = "Path to the object (e.g., 'test/bootsnap' for a job). Not required for 'config'."
+        )]
+        path: Option<String>,
     },
 }
 
@@ -80,7 +82,7 @@ fn main() -> Result<()> {
             commands::list_command(&cli.config, resource_type)?;
         }
         Some(Commands::Inspect { object_type, path }) => {
-            commands::inspect_command(&cli.config, object_type, &path)?;
+            commands::inspect_command(&cli.config, object_type, path)?;
         }
         None => {
             // Default to generate command

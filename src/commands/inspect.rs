@@ -8,27 +8,38 @@ pub enum InspectType {
     Command,
 }
 
-pub fn inspect_command(config_path: &str, object_type: InspectType, path: &str) -> Result<()> {
+pub fn inspect_command(
+    config_path: &str,
+    object_type: InspectType,
+    path: Option<String>,
+) -> Result<()> {
     // Load everything
     let loader = ConfigLoader::new(config_path)?;
     let loaded = loader.load_all()?;
 
     match object_type {
         InspectType::Config => {
-            println!("{:#?}", loaded.config);
+            let json = serde_json::to_string_pretty(&loaded.config)?;
+            println!("{json}");
         }
         InspectType::Job => {
-            if let Some(job) = loaded.jobs.get(path) {
-                job.pretty_print();
+            let job_path =
+                path.ok_or_else(|| anyhow::anyhow!("Path required for job inspection"))?;
+            if let Some(job) = loaded.jobs.get(&job_path) {
+                let json = serde_json::to_string_pretty(&job)?;
+                println!("{json}");
             } else {
-                anyhow::bail!("Job not found: {}", path);
+                anyhow::bail!("Job not found: {}", job_path);
             }
         }
         InspectType::Command => {
-            if let Some(command) = loaded.commands.get(path) {
-                println!("{command:#?}");
+            let cmd_name =
+                path.ok_or_else(|| anyhow::anyhow!("Path required for command inspection"))?;
+            if let Some(command) = loaded.commands.get(&cmd_name) {
+                let json = serde_json::to_string_pretty(&command)?;
+                println!("{json}");
             } else {
-                anyhow::bail!("Command not found: {}", path);
+                anyhow::bail!("Command not found: {}", cmd_name);
             }
         }
     }
