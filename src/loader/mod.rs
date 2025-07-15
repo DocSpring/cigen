@@ -1,5 +1,6 @@
 //! Core loader that validates, loads, merges, and resolves all configuration
 
+mod cache_dependencies;
 mod merger;
 pub mod span_tracker;
 
@@ -7,6 +8,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::Path;
 
+use self::cache_dependencies::infer_cache_dependencies;
 use self::merger::ConfigMerger;
 use self::span_tracker::SpanTracker;
 use crate::models::{Command, Config, Job};
@@ -52,14 +54,19 @@ impl ConfigLoader {
 
         // 3. Load all jobs with inheritance applied (with span tracking)
         let mut span_tracker = SpanTracker::new();
-        let jobs = self.load_all_jobs_with_spans(base_path, &config, &mut span_tracker)?;
+        let mut jobs = self.load_all_jobs_with_spans(base_path, &config, &mut span_tracker)?;
 
-        // 4. Load all commands
+        // 4. Infer job dependencies from cache usage
+        tracing::debug!("Inferring job dependencies from cache usage...");
+        infer_cache_dependencies(&mut jobs)?;
+        tracing::info!("✓ Job dependencies inferred from cache usage");
+
+        // 5. Load all commands
         let commands = self.load_all_commands(base_path)?;
 
-        // 5. TODO: Apply Tera template resolution to everything
+        // 6. TODO: Apply Tera template resolution to everything
 
-        // 6. Validate all data references with span information
+        // 7. Validate all data references with span information
         tracing::debug!("Validating all data references...");
         let reference_validator = ReferenceValidator::new();
         reference_validator.validate_all_references(&config, &jobs, &span_tracker)?;

@@ -89,29 +89,29 @@ fn display_as_tree(
 
         let workflow_jobs = &workflows[workflow];
 
-        // Find leaf nodes (jobs with no dependents) in this workflow
-        let mut leaves = Vec::new();
+        // Find root nodes (jobs with no dependencies) in this workflow
+        let mut roots = Vec::new();
         for job_name in workflow_jobs {
-            if graph.get_dependents(job_name).is_empty() {
-                leaves.push(job_name.clone());
+            if graph.get_dependencies(job_name).is_empty() {
+                roots.push(job_name.clone());
             }
         }
 
-        // If no leaves, take all jobs (handles cycles or all interdependent)
-        if leaves.is_empty() {
-            leaves = workflow_jobs.clone();
+        // If no roots, take all jobs (handles cycles or all interdependent)
+        if roots.is_empty() {
+            roots = workflow_jobs.clone();
         }
 
-        leaves.sort();
+        roots.sort();
 
-        // Display each leaf and its dependencies
+        // Display each root and its dependents
         let mut displayed = std::collections::HashSet::new();
-        for (i, leaf) in leaves.iter().enumerate() {
-            if !displayed.contains(leaf) {
+        for (i, root) in roots.iter().enumerate() {
+            if !displayed.contains(root) {
                 if i > 0 {
                     println!(); // Line between job trees
                 }
-                display_inverted_tree(leaf, graph, &mut displayed, 0, false, workflow_jobs);
+                display_tree(root, graph, &mut displayed, 0, false, workflow_jobs);
             }
         }
 
@@ -119,7 +119,7 @@ fn display_as_tree(
     }
 }
 
-fn display_inverted_tree(
+fn display_tree(
     job_name: &str,
     graph: &DependencyGraph,
     displayed: &mut std::collections::HashSet<String>,
@@ -166,16 +166,16 @@ fn display_inverted_tree(
 
     displayed.insert(job_name.to_string());
 
-    // Get dependencies of this job (inverted view)
-    let mut dependencies = graph.get_dependencies(job_name);
+    // Get jobs that depend on this one
+    let mut dependents = graph.get_dependents(job_name);
 
-    // Only show dependencies within the same workflow
-    dependencies.retain(|dep| workflow_jobs.contains(dep));
-    dependencies.sort();
+    // Only show dependents within the same workflow
+    dependents.retain(|dep| workflow_jobs.contains(dep));
+    dependents.sort();
 
-    for (i, dep) in dependencies.iter().enumerate() {
-        let is_last_dep = i == dependencies.len() - 1;
-        display_inverted_tree(dep, graph, displayed, depth + 1, is_last_dep, workflow_jobs);
+    for (i, dep) in dependents.iter().enumerate() {
+        let is_last_dep = i == dependents.len() - 1;
+        display_tree(dep, graph, displayed, depth + 1, is_last_dep, workflow_jobs);
     }
 }
 

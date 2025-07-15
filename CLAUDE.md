@@ -87,6 +87,17 @@ cargo add petgraph  # Automatically fetches and adds the latest version
 
 This ensures we always get the latest compatible version and properly updates Cargo.lock.
 
+## Code Organization
+
+**CRITICAL**: Keep files small and modular. As soon as a file approaches 200-300 lines, break it up into modules and smaller files. DO NOT wait for the user to remind you. Proactively refactor large files into:
+
+- Separate modules for distinct functionality
+- Helper functions in their own files
+- Traits and implementations in separate files
+- Tests in separate test modules
+
+This keeps the codebase maintainable and easier to understand.
+
 ## Development Approach
 
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
