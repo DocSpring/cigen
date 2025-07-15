@@ -1,6 +1,6 @@
 mod command;
 mod config;
-mod data;
+pub mod data;
 mod error_reporter;
 mod job;
 mod schemas;

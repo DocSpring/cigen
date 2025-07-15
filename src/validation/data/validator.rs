@@ -36,7 +36,6 @@ impl DataValidator {
     }
 
     /// Parse job with span tracking and perform data-level validations
-    #[allow(dead_code)]
     pub fn validate_job_data(&self, config: &Config) -> Result<Job> {
         // Parse YAML with spans
         let spanned_yaml: Spanned<YamlValue> = from_str(&self.file_content)

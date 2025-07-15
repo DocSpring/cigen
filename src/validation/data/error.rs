@@ -1,8 +1,8 @@
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-#[derive(Error, Debug, Diagnostic)]
-#[error("Data validation error")]
+#[derive(Error, Debug, Diagnostic, Clone)]
+#[error("{message}")]
 pub struct DataValidationError {
     #[source_code]
     pub src: NamedSource<String>,
