@@ -36,9 +36,7 @@ impl TemplateError {
         let (span, reason, help) = Self::extract_error_info(&error, &source);
 
         // Create a named source for better error display
-        // Add a space before the path for iTerm2 cmd+click support
-        let padded_path = format!(" {}", source_path.display());
-        let src = NamedSource::new(padded_path, source.clone());
+        let src = NamedSource::new(source_path.display().to_string(), source.clone());
 
         Self {
             src,

@@ -63,10 +63,8 @@ impl SpannedValidator {
             .cloned()
             .unwrap_or(SpanInfo { start: 0, end: 0 });
 
-        // Add a space before the path to make it clickable in iTerm2
-        let padded_path = format!(" {}", self.file_path);
         ValidationError {
-            source_code: NamedSource::new(padded_path, self.source.clone()),
+            source_code: NamedSource::new(self.file_path.clone(), self.source.clone()),
             span: SourceSpan::new(span_info.start.into(), span_info.end - span_info.start),
             message,
         }
