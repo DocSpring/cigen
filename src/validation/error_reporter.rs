@@ -64,7 +64,10 @@ impl SpannedValidator {
             .unwrap_or(SpanInfo { start: 0, end: 0 });
 
         ValidationError {
-            source_code: NamedSource::new(self.file_path.clone(), self.source.clone()),
+            source_code: crate::error_utils::create_named_source(
+                Path::new(&self.file_path),
+                self.source.clone(),
+            ),
             span: SourceSpan::new(span_info.start.into(), span_info.end - span_info.start),
             message,
         }

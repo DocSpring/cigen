@@ -3,6 +3,7 @@
 mod cache_dependencies;
 mod command_loader;
 mod config_loader;
+pub mod context;
 pub mod file_scanner;
 mod job_loader;
 mod merger;

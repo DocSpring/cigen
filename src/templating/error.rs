@@ -36,7 +36,7 @@ impl TemplateError {
         let (span, reason, help) = Self::extract_error_info(&error, &source);
 
         // Create a named source for better error display
-        let src = NamedSource::new(source_path.display().to_string(), source.clone());
+        let src = crate::error_utils::create_named_source(source_path, source.clone());
 
         Self {
             src,

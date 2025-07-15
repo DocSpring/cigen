@@ -14,7 +14,7 @@ pub struct DataValidationError {
 impl DataValidationError {
     pub fn new(file_path: &str, content: String, span: SourceSpan, message: String) -> Self {
         Self {
-            src: NamedSource::new(file_path, content),
+            src: crate::error_utils::create_named_source(std::path::Path::new(file_path), content),
             bad_bit: span,
             message,
         }

@@ -112,14 +112,18 @@ fn main() -> Result<()> {
         }
         _ => {
             // For all other commands, change to config directory
+            let original_dir = std::env::current_dir()?;
             let config_path = std::path::Path::new(&cli.config);
             let config_dir = if config_path.is_absolute() {
                 config_path.to_path_buf()
             } else {
-                std::env::current_dir()?.join(config_path)
+                original_dir.join(config_path)
             };
 
             if config_dir.exists() {
+                // Initialize context before changing directory
+                cigen::loader::context::init_context(original_dir, config_dir.clone());
+
                 std::env::set_current_dir(&config_dir)?;
                 tracing::debug!("Changed working directory to: {}", config_dir.display());
             } else {
