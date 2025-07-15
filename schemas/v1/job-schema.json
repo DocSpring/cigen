@@ -1,6 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
-  "$id": "https://cigen.io/schemas/v1/job-schema.json",
+  "$id": "https://cigen.dev/schemas/v1/job-schema.json",
   "title": "CIGen Job Schema",
   "description": "Schema for job definition files in workflows",
   "type": "object",

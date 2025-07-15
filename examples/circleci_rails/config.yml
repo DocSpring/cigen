@@ -1,5 +1,3 @@
-$schema: ../../schemas/v1/config-schema.json
-
 # CI provider to target
 provider: circleci
 output_path: ./build

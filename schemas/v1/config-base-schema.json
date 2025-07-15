@@ -1,6 +1,5 @@
 {
-  "$schema": "https://json-schema.org/draft-07/schema#",
-  "$id": "https://cigen.io/schemas/v1/config-base-schema.json",
+  "$id": "https://cigen.dev/schemas/v1/config-base-schema.json",
   "title": "CIGen Configuration Base Schema",
   "description": "Base schema for cigen configuration fragments - allows any subset of properties",
   "type": "object",
