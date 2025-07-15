@@ -1,8 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use std::path::Path;
 
-use cigen::validation::Validator;
+use cigen::loader::ConfigLoader;
 
 #[derive(Parser)]
 #[command(
@@ -43,6 +42,22 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+
+    /// Inspect internal object model
+    Inspect {
+        #[arg(value_enum)]
+        object_type: InspectType,
+
+        #[arg(help = "Path to the object (e.g., 'test/bootsnap' for a job)")]
+        path: String,
+    },
+}
+
+#[derive(Debug, Clone, clap::ValueEnum)]
+enum InspectType {
+    Config,
+    Job,
+    Command,
 }
 
 fn main() -> Result<()> {
@@ -60,6 +75,9 @@ fn main() -> Result<()> {
         }
         Some(Commands::Generate { output }) => {
             generate_command(&cli.config, output)?;
+        }
+        Some(Commands::Inspect { object_type, path }) => {
+            inspect_command(&cli.config, object_type, &path)?;
         }
         None => {
             // Default to generate command
@@ -104,32 +122,40 @@ fn generate_command(config_path: &str, output: Option<String>) -> Result<()> {
     anyhow::bail!("Generate command not yet implemented");
 }
 
-fn validate_command(config_path: &str) -> Result<()> {
-    let path = Path::new(config_path);
+fn inspect_command(config_path: &str, object_type: InspectType, path: &str) -> Result<()> {
+    // Load everything
+    let loader = ConfigLoader::new(config_path)?;
+    let loaded = loader.load_all()?;
 
-    // Create validator
-    let validator = Validator::new()?;
-
-    // Determine if path is a directory or file
-    if path.is_dir() {
-        // Validate all configs in directory
-        println!("Validating configuration directory: {config_path}");
-        validator.validate_all(path)?;
-    } else if path.is_file()
-        && path
-            .extension()
-            .map(|e| e == "yml" || e == "yaml")
-            .unwrap_or(false)
-    {
-        // Validate single file
-        println!("Validating configuration file: {config_path}");
-        validator.validate_config(path)?;
-    } else {
-        anyhow::bail!(
-            "Invalid config path: {} (must be a directory or YAML file)",
-            config_path
-        );
+    match object_type {
+        InspectType::Config => {
+            println!("{:#?}", loaded.config);
+        }
+        InspectType::Job => {
+            if let Some(job) = loaded.jobs.get(path) {
+                println!("{job:#?}");
+            } else {
+                anyhow::bail!("Job not found: {}", path);
+            }
+        }
+        InspectType::Command => {
+            if let Some(command) = loaded.commands.get(path) {
+                println!("{command:#?}");
+            } else {
+                anyhow::bail!("Command not found: {}", path);
+            }
+        }
     }
+
+    Ok(())
+}
+
+fn validate_command(config_path: &str) -> Result<()> {
+    println!("Validating configuration directory: {config_path}");
+
+    // The loader runs all validation as part of loading
+    let loader = ConfigLoader::new(config_path)?;
+    let _loaded = loader.load_all()?;
 
     println!("\n✅ All validations passed!");
     Ok(())

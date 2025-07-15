@@ -3,7 +3,6 @@ mod config;
 mod data;
 mod error_reporter;
 mod job;
-mod merger;
 mod schemas;
 mod validator;
 

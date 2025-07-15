@@ -5,14 +5,11 @@ use tracing::{debug, info};
 use super::command::CommandValidator;
 use super::config::ConfigValidator;
 use super::job::JobValidator;
-use super::merger::ConfigMerger;
-use crate::models::Config;
 
 pub struct Validator {
     command_validator: CommandValidator,
     config_validator: ConfigValidator,
     job_validator: JobValidator,
-    merger: ConfigMerger,
 }
 
 impl Validator {
@@ -21,7 +18,6 @@ impl Validator {
             command_validator: CommandValidator::new(),
             config_validator: ConfigValidator::new(),
             job_validator: JobValidator::new(),
-            merger: ConfigMerger::new(),
         })
     }
 
@@ -34,12 +30,27 @@ impl Validator {
     }
 
     pub fn validate_all(&self, base_path: &Path) -> Result<()> {
+        // First check if the base path exists
+        if !base_path.exists() {
+            anyhow::bail!(
+                "Configuration directory does not exist: {}",
+                base_path.display()
+            );
+        }
+
+        if !base_path.is_dir() {
+            anyhow::bail!(
+                "Configuration path must be a directory, not a file: {}",
+                base_path.display()
+            );
+        }
+
         // Main config.yml is required
         let config_path = base_path.join("config.yml");
         if !config_path.exists() {
             anyhow::bail!(
-                "Missing required config.yml in {:?}. Even with split configs, a root config.yml is required.",
-                base_path
+                "Missing required config.yml in {}. Even with split configs, a root config.yml is required.",
+                base_path.display()
             );
         }
 
@@ -47,12 +58,8 @@ impl Validator {
         debug!("Validating main config...");
         self.config_validator.validate_config(&config_path)?;
 
-        // Load main config for merging
-        let main_config = self.config_validator.load_yaml(&config_path)?;
-
         // Then validate split configs in config/ directory
         let config_dir = base_path.join("config");
-        let mut split_configs = Vec::new();
 
         if config_dir.exists() && config_dir.is_dir() {
             debug!("Validating split configs...");
@@ -67,35 +74,12 @@ impl Validator {
 
                             // Validate against base schema (allows partial configs)
                             self.config_validator.validate_config_fragment(&path)?;
-
-                            // Load for merging
-                            let fragment = self.config_validator.load_yaml(&path)?;
-                            split_configs.push((path.clone(), fragment));
                         }
                     }
                 }
             }
-        }
-
-        // Merge all configs together and get final config for data validation
-        let _final_config = if !split_configs.is_empty() {
             info!("✓ All split configs validated: {config_dir:?}");
-
-            debug!("Merging configurations...");
-            let merged = self.merger.merge_configs(main_config, split_configs)?;
-
-            // Validate the merged config against the full schema
-            debug!("Validating merged configuration...");
-            self.config_validator.validate_merged(&merged)?;
-
-            // Parse merged config for data validation
-            let merged_yaml = serde_yaml::to_string(&merged)?;
-            Config::from_yaml(&merged_yaml)?
-        } else {
-            // Use main config for data validation
-            let main_yaml = serde_yaml::to_string(&main_config)?;
-            Config::from_yaml(&main_yaml)?
-        };
+        }
 
         // Validate job files in workflows/
         let workflows_dir = base_path.join("workflows");

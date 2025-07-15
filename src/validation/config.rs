@@ -82,6 +82,7 @@ impl ConfigValidator {
         }
     }
 
+    #[allow(dead_code)]
     pub fn validate_merged(&self, config: &Value) -> Result<()> {
         // Validate against the full schema
         let schema = get_config_schema().context("Failed to parse config schema")?;
@@ -100,12 +101,5 @@ impl ConfigValidator {
                 anyhow::bail!("Merged configuration validation failed:\n  - {error}");
             }
         }
-    }
-
-    pub fn load_yaml(&self, path: &Path) -> Result<Value> {
-        let content = std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read file: {path:?}"))?;
-        serde_yaml::from_str(&content)
-            .with_context(|| format!("Failed to parse YAML from: {path:?}"))
     }
 }
