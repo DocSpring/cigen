@@ -1,6 +1,24 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 
+/// Represents job dependencies that can be either a single string or array of strings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JobRequires {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+impl JobRequires {
+    /// Convert to a normalized vector of job names
+    pub fn to_vec(&self) -> Vec<String> {
+        match self {
+            JobRequires::Single(s) => vec![s.clone()],
+            JobRequires::Multiple(v) => v.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Job {
     pub image: String,
@@ -16,6 +34,9 @@ pub struct Job {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallelism: Option<u32>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requires: Option<JobRequires>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default, deserialize_with = "deserialize_cache_definitions")]
@@ -177,6 +198,14 @@ impl Job {
         }
 
         refs
+    }
+
+    /// Get explicit job dependencies
+    pub fn required_jobs(&self) -> Vec<String> {
+        self.requires
+            .as_ref()
+            .map(|r| r.to_vec())
+            .unwrap_or_default()
     }
 }
 

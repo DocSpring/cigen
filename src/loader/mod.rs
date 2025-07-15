@@ -1,7 +1,7 @@
 //! Core loader that validates, loads, merges, and resolves all configuration
 
 mod merger;
-mod span_tracker;
+pub mod span_tracker;
 
 use anyhow::Result;
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::path::Path;
 use self::merger::ConfigMerger;
 use self::span_tracker::SpanTracker;
 use crate::models::{Command, Config, Job};
-use crate::validation::Validator;
+use crate::validation::{Validator, data::ReferenceValidator};
 
 /// The fully loaded and resolved configuration system
 pub struct LoadedConfig {
@@ -61,7 +61,8 @@ impl ConfigLoader {
 
         // 6. Validate all data references with span information
         tracing::debug!("Validating all data references...");
-        self.validate_all_references_with_spans(&config, &jobs, &commands, &span_tracker)?;
+        let reference_validator = ReferenceValidator::new();
+        reference_validator.validate_all_references(&config, &jobs, &span_tracker)?;
         tracing::info!("✓ All data references validated successfully");
 
         Ok(LoadedConfig {
@@ -244,159 +245,5 @@ impl ConfigLoader {
         }
 
         Ok(commands)
-    }
-
-    fn validate_all_references_with_spans(
-        &self,
-        config: &Config,
-        jobs: &HashMap<String, Job>,
-        _commands: &HashMap<String, Command>,
-        span_tracker: &SpanTracker,
-    ) -> Result<()> {
-        use std::collections::HashSet;
-
-        // First, collect ALL available resources across the entire configuration
-
-        // 1. Services from config
-        let available_services: HashSet<&str> = config
-            .services
-            .as_ref()
-            .map(|s| s.keys().map(|k| k.as_str()).collect())
-            .unwrap_or_default();
-
-        // 2. Source file groups from config
-        let available_source_groups: HashSet<&str> = config
-            .source_file_groups
-            .as_ref()
-            .map(|s| s.keys().map(|k| k.as_str()).collect())
-            .unwrap_or_default();
-
-        // 3. ALL cache definitions from ALL jobs
-        let mut all_defined_caches: HashSet<String> = HashSet::new();
-        for job in jobs.values() {
-            if let Some(cache_defs) = &job.cache {
-                for cache_name in cache_defs.keys() {
-                    all_defined_caches.insert(cache_name.clone());
-                }
-            }
-        }
-
-        // Now validate each job's references against the global collections
-        for (job_key, job) in jobs {
-            if let Some(source_info) = span_tracker.get_job_source(job_key) {
-                // Re-parse with spans for error reporting
-                let spanned_yaml: yaml_spanned::Spanned<yaml_spanned::Value> =
-                    yaml_spanned::from_str(&source_info.content)
-                        .map_err(|e| anyhow::anyhow!("Failed to parse YAML with spans: {}", e))?;
-
-                let span_finder =
-                    crate::validation::data::span_finder::SpanFinder::new(&spanned_yaml);
-
-                // Validate service references
-                if let Some(services) = &job.services {
-                    for service in services {
-                        if !available_services.contains(service.as_str()) {
-                            if let Some(span) =
-                                span_finder.find_array_item_span(&["services"], service)
-                            {
-                                let err = crate::validation::data::error::DataValidationError::new(
-                                    &source_info.file_path.to_string_lossy(),
-                                    source_info.content.clone(),
-                                    span,
-                                    format!(
-                                        "Unknown service '{}'. Available services: {}",
-                                        service,
-                                        if available_services.is_empty() {
-                                            "none defined".to_string()
-                                        } else {
-                                            available_services
-                                                .iter()
-                                                .map(|s| format!("'{s}'"))
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        }
-                                    ),
-                                );
-                                eprintln!();
-                                eprintln!("{:?}", miette::Report::new(err));
-                                return Err(anyhow::anyhow!("Data validation failed"));
-                            }
-                        }
-                    }
-                }
-
-                // Validate source file group reference
-                if let Some(source_files) = &job.source_files {
-                    if !available_source_groups.contains(source_files.as_str()) {
-                        if let Some(span) = span_finder.find_field_span(&["source_files"]) {
-                            let err = crate::validation::data::error::DataValidationError::new(
-                                &source_info.file_path.to_string_lossy(),
-                                source_info.content.clone(),
-                                span,
-                                format!(
-                                    "Unknown source file group '{}'. Available groups: {}",
-                                    source_files,
-                                    if available_source_groups.is_empty() {
-                                        "none defined".to_string()
-                                    } else {
-                                        available_source_groups
-                                            .iter()
-                                            .map(|s| format!("'{s}'"))
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    }
-                                ),
-                            );
-                            eprintln!();
-                            eprintln!("{:?}", miette::Report::new(err));
-                            return Err(anyhow::anyhow!("Data validation failed"));
-                        }
-                    }
-                }
-
-                // Validate cache restore references
-                if let Some(restore_caches) = &job.restore_cache {
-                    for cache_ref in restore_caches {
-                        let cache_name = match cache_ref {
-                            crate::models::job::CacheRestore::Simple(name) => name,
-                            crate::models::job::CacheRestore::Complex { name, .. } => name,
-                        };
-
-                        if !all_defined_caches.contains(cache_name) {
-                            if let Some(span) = span_finder.find_cache_reference_span(cache_name) {
-                                let err = crate::validation::data::error::DataValidationError::new(
-                                    &source_info.file_path.to_string_lossy(),
-                                    source_info.content.clone(),
-                                    span,
-                                    format!(
-                                        "Unknown cache '{}'. Defined caches: {}",
-                                        cache_name,
-                                        if all_defined_caches.is_empty() {
-                                            "none defined".to_string()
-                                        } else {
-                                            let mut cache_list: Vec<_> = all_defined_caches
-                                                .iter()
-                                                .map(|s| s.as_str())
-                                                .collect();
-                                            cache_list.sort();
-                                            cache_list
-                                                .iter()
-                                                .map(|s| format!("'{s}'"))
-                                                .collect::<Vec<_>>()
-                                                .join(", ")
-                                        }
-                                    ),
-                                );
-                                eprintln!();
-                                eprintln!("{:?}", miette::Report::new(err));
-                                return Err(anyhow::anyhow!("Data validation failed"));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 }

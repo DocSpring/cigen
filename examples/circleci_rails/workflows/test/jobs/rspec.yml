@@ -3,6 +3,9 @@ architectures: ["arm64", "amd64"]
 resource_class: large
 source_files: rspec
 parallelism: 2
+requires:
+  - install_gems
+  - install_npm
 
 restore_cache:
   - gems

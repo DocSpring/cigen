@@ -36,6 +36,23 @@
       "description": "Number of parallel instances of this job",
       "minimum": 1
     },
+    "requires": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Single job dependency"
+        },
+        {
+          "type": "array",
+          "description": "List of job dependencies",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ],
+      "description": "Jobs that must complete before this job runs"
+    },
     "cache": {
       "type": "object",
       "description": "Named caches for this job",
