@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
-use serde_json::Value;
-use serde_yaml;
+use miette::Report;
 use std::path::Path;
 use tracing::debug;
 
+use super::error_reporter::SpannedValidator;
 use super::schemas::{SchemaRetriever, get_job_schema};
 
 pub struct JobValidator;
@@ -14,11 +14,9 @@ impl JobValidator {
     }
 
     pub fn validate_job(&self, job_path: &Path) -> Result<()> {
-        let content = std::fs::read_to_string(job_path)
-            .with_context(|| format!("Failed to read job file: {job_path:?}"))?;
-
-        let yaml_value: Value = serde_yaml::from_str(&content)
-            .with_context(|| format!("Failed to parse YAML from: {job_path:?}"))?;
+        // Parse YAML with span tracking
+        let spanned_validator = SpannedValidator::new(job_path)
+            .map_err(|e| anyhow::anyhow!("Failed to parse YAML from {job_path:?}: {e}"))?;
 
         // Parse schema
         let schema = get_job_schema().context("Failed to parse job schema")?;
@@ -29,15 +27,24 @@ impl JobValidator {
             .build(&schema)
             .context("Failed to compile job schema")?;
 
-        // Validate
-        match validator.validate(&yaml_value) {
-            Ok(()) => {
-                debug!("    ✓ Job validation passed: {job_path:?}");
-                Ok(())
+        // Validate with beautiful error reporting
+        let errors: Vec<_> = validator
+            .iter_errors(spanned_validator.get_json_value())
+            .collect();
+
+        if errors.is_empty() {
+            debug!("    ✓ Job validation passed: {job_path:?}");
+            Ok(())
+        } else {
+            // Create beautiful error reports
+            eprintln!(); // Add newline before first error
+            for error in &errors {
+                let validation_error = spanned_validator
+                    .create_error(&error.instance_path.to_string(), error.to_string());
+                eprintln!("{:?}", Report::new(validation_error));
             }
-            Err(error) => {
-                anyhow::bail!("Validation failed for {job_path:?}:\n  - {error}");
-            }
+
+            anyhow::bail!("Validation failed for {job_path:?} (see detailed errors above)");
         }
     }
 }

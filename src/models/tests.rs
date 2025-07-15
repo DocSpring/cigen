@@ -33,5 +33,5 @@ fn test_load_example_command() {
     let command = ConfigLoader::load_command(&content).unwrap();
 
     assert_eq!(command.description, "Setup Test Database");
-    assert!(!command.steps.is_empty());
+    assert_eq!(command.steps.len(), 1);
 }

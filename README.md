@@ -6,14 +6,15 @@ This tool can be used to build both static config and [dynamic config for Circle
 
 ## Features
 
+- Written in Rust
 - First-class support for caching with configurable backends
   - Automatically adds OS, version, and architecture to cache keys
 - First-class support for running jobs on multiple architectures and self-hosted runners
 - Automatic git checkout with extra caching support for self-hosted runners
 - Intelligent job skipping based on file changes
 - Automatic job dependencies with cache restoration
-- Written in Rust for performance
 - Powerful templating engine ([Tera](https://github.com/Keats/tera))
+- Beautiful and descriptive error messages ([miette](https://docs.rs/miette/latest/miette/))
 
 ## Why did we build this?
 
