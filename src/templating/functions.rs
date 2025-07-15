@@ -33,10 +33,16 @@ mod tests {
     use std::collections::HashMap;
     use std::fs;
     use std::io::Write;
+    use std::sync::Mutex;
     use tempfile::tempdir;
+
+    // Shared mutex to serialize directory changes across all tests
+    static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_read_function_success() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let temp_dir = tempdir().unwrap();
         let temp_file = temp_dir.path().join("test.txt");
 
@@ -70,6 +76,8 @@ mod tests {
 
     #[test]
     fn test_read_function_missing_file() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let temp_dir = tempdir().unwrap();
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(&temp_dir).unwrap();
@@ -119,6 +127,8 @@ mod tests {
 
     #[test]
     fn test_read_function_in_template() {
+        let _guard = TEST_MUTEX.lock().unwrap();
+
         let temp_dir = tempdir().unwrap();
         let temp_file = temp_dir.path().join("script.sh");
 
