@@ -26,7 +26,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize a new cigen project
+    /// Initialize a new cigen config directory
     Init {
         /// Project template to use
         #[arg(short, long)]
@@ -66,9 +66,9 @@ enum Commands {
         /// Workflow name to display (shows all workflows if not specified)
         workflow: Option<String>,
 
-        /// Output format
-        #[arg(short, long, value_enum, default_value = "tree")]
-        format: commands::GraphFormat,
+        /// Save graph to PNG file
+        #[arg(short, long)]
+        output: Option<String>,
     },
 }
 
@@ -94,8 +94,8 @@ fn main() -> Result<()> {
         Some(Commands::Inspect { object_type, path }) => {
             commands::inspect_command(&cli.config, object_type, path)?;
         }
-        Some(Commands::Graph { workflow, format }) => {
-            commands::graph_command(&cli.config, workflow, format)?;
+        Some(Commands::Graph { workflow, output }) => {
+            commands::graph_command(&cli.config, workflow, output)?;
         }
         None => {
             // Default to generate command
