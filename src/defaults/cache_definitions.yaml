@@ -1,0 +1,155 @@
+# Default cache definitions for common package managers and build tools
+# This file is compiled into the cigen binary and provides sensible defaults
+# that work out of the box for most projects.
+
+cache_definitions:
+  # Ruby/Bundler cache
+  gems:
+    versions:
+      - ruby
+      - bundler
+    checksum_sources:
+      - Gemfile
+      - Gemfile.lock
+    paths:
+      - vendor/bundle
+      - .bundle
+
+  # Node.js package managers
+  node_modules:
+    versions:
+      - node
+      - detect:
+          - npm
+          - yarn
+          - bun
+          - pnpm
+    checksum_sources:
+      - package.json
+      - detect:
+          - package-lock.json
+          - yarn.lock
+          - bun.lockb
+          - pnpm-lock.yaml
+    paths:
+      - node_modules
+
+  # Python/pip cache
+  pip:
+    versions:
+      - python
+      - pip
+    checksum_sources:
+      - detect:
+          - requirements.txt
+          - Pipfile
+      - detect_optional:
+          - requirements.lock
+          - Pipfile.lock
+    paths:
+      - detect:
+          - .venv
+          - venv
+      - ~/.cache/pip
+
+  # Go modules
+  go_modules:
+    versions:
+      - go
+    checksum_sources:
+      - go.sum
+    paths:
+      - ~/go/pkg/mod
+      - .cache/go-build
+
+  # Rust/Cargo
+  cargo:
+    versions:
+      - rust
+    checksum_sources:
+      - Cargo.lock
+    paths:
+      - target
+      - ~/.cargo/registry
+      - ~/.cargo/git
+
+  # Java/Maven
+  maven:
+    versions:
+      - java
+    checksum_sources:
+      - pom.xml
+    paths:
+      - ~/.m2/repository
+
+  # Java/Gradle
+  gradle:
+    versions:
+      - java
+    checksum_sources:
+      - build.gradle
+      - build.gradle.kts
+      - gradle.properties
+    paths:
+      - ~/.gradle/caches
+      - .gradle
+
+# Version source definitions - how to detect each runtime version
+version_sources:
+  ruby:
+    - file: .ruby-version
+    - file: .tool-versions
+      pattern: "ruby (.+)"
+    - command: "grep -A1 'RUBY VERSION' Gemfile.lock | tail -n1"
+    - command: "ruby --version"
+
+  bundler:
+    - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1 | tr -d ' '"
+    - command: "bundler --version"
+
+  node:
+    - file: .node-version
+    - file: .nvmrc
+    - file: .tool-versions
+      pattern: "node (.+)"
+    - command: "node --version"
+
+  npm:
+    - command: "npm --version"
+
+  yarn:
+    - command: "yarn --version"
+
+  bun:
+    - command: "bun --version"
+
+  pnpm:
+    - command: "pnpm --version"
+
+  python:
+    - file: .python-version
+    - file: .tool-versions
+      pattern: "python (.+)"
+    - file: runtime.txt # Heroku-style
+    - command: "python --version"
+
+  pip:
+    - command: "pip --version"
+
+  go:
+    - file: .go-version
+    - file: go.mod
+      pattern: "^go (.+)"
+    - command: "go version"
+
+  rust:
+    - file: rust-toolchain
+    - file: rust-toolchain.toml
+      pattern: 'channel = "(.+)"'
+    - command: "rustc --version"
+
+  java:
+    - file: .java-version
+    - file: .tool-versions
+      pattern: "java (.+)"
+    - command: "java -version"

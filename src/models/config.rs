@@ -15,7 +15,13 @@ pub struct Config {
     pub anchors: Option<HashMap<String, serde_json::Value>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub caches: Option<CacheConfig>,
+    pub caches: Option<CacheBackendConfig>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_definitions: Option<HashMap<String, CacheDefinition>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_sources: Option<HashMap<String, Vec<VersionSource>>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub architectures: Option<Vec<String>>,
@@ -93,7 +99,7 @@ pub enum ServiceEnvironment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CacheConfig {
+pub struct CacheBackendConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifacts: Option<CacheBackend>,
 
@@ -135,11 +141,11 @@ impl Config {
     /// Get cache backend names defined in this config
     pub fn cache_backend_names(&self) -> Vec<&str> {
         let mut names = Vec::new();
-        if let Some(cache_config) = &self.caches {
-            if cache_config.artifacts.is_some() {
+        if let Some(cache_backend_config) = &self.caches {
+            if cache_backend_config.artifacts.is_some() {
                 names.push("artifacts");
             }
-            if cache_config.job_status.is_some() {
+            if cache_backend_config.job_status.is_some() {
                 names.push("job_status");
             }
         }
@@ -153,4 +159,55 @@ impl Config {
             .map(|groups| groups.keys().collect())
             .unwrap_or_default()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CacheDefinition {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub versions: Option<Vec<PathOrDetect>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checksum_sources: Option<Vec<PathOrDetect>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<PathOrDetect>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config: Option<HashMap<String, serde_json::Value>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PathOrDetect {
+    Path(String),
+    Detect { detect: Vec<String> },
+    DetectOptional { detect_optional: Vec<String> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum VersionSource {
+    File {
+        file: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pattern: Option<String>,
+    },
+    Command {
+        command: String,
+        #[serde(default = "default_parse_version")]
+        parse_version: bool,
+    },
+}
+
+fn default_parse_version() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultCacheConfig {
+    pub cache_definitions: HashMap<String, CacheDefinition>,
+    pub version_sources: HashMap<String, Vec<VersionSource>>,
 }

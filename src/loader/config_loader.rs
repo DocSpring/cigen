@@ -116,10 +116,12 @@ impl<'a> ConfigLoader<'a> {
             let merged = merger.merge_configs(main_config, split_configs)?;
             let merged_yaml = serde_yaml::to_string(&merged)?;
             let config = Config::from_yaml(&merged_yaml)?;
+            let config = crate::defaults::merge_with_defaults(config);
             Ok((config, merged))
         } else {
             let yaml = serde_yaml::to_string(&main_config)?;
             let config = Config::from_yaml(&yaml)?;
+            let config = crate::defaults::merge_with_defaults(config);
             Ok((config, main_config))
         }
     }

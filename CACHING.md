@@ -46,11 +46,13 @@ version_sources:
     - file: .ruby-version
     - file: .tool-versions
       pattern: 'ruby (.+)'
-    - command: "grep -A1 'RUBY VERSION' Gemfile.lock | tail -n1 | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
-    - command: "ruby --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: "grep -A1 'RUBY VERSION' Gemfile.lock | tail -n1"
+      parse_version: false
+    - command: 'ruby --version'
   bundler:
     - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1 | tr -d ' '"
-    - command: "bundler --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+      parse_version: false
+    - command: 'bundler --version'
 ```
 
 Example cache key:
@@ -87,15 +89,15 @@ version_sources:
     - file: .nvmrc
     - file: .tool-versions
       pattern: 'node (.+)'
-    - command: "node --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'node --version'
   npm:
-    - command: "npm --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'npm --version'
   yarn:
-    - command: "yarn --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'yarn --version'
   bun:
-    - command: "bun --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'bun --version'
   pnpm:
-    - command: "pnpm --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'pnpm --version'
 ```
 
 Example cache key: `linux-ubuntu22.04-amd64-node_modules-node20.11.0-npm10.2.4-def456abc123`
@@ -126,15 +128,15 @@ version_sources:
     - file: .python-version
     - file: .tool-versions
       pattern: 'python (.+)'
-    - file: runtime.txt  # Heroku-style
-    - command: "python --version 2>&1 | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - file: runtime.txt # Heroku-style
+    - command: 'python --version'
   pip:
-    - command: "pip --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'pip --version'
   go:
     - file: .go-version
     - file: go.mod
       pattern: '^go (.+)'
-    - command: "go version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+    - command: 'go version'
 ```
 
 Example cache key: `linux-ubuntu22.04-amd64-pip-python3.12.1-pip24.0-789abcdef012`
@@ -335,8 +337,16 @@ Version sources are checked in order. The first one found is used:
    ```
 
 3. **command** - Run a command to get version
+
    ```yaml
-   - command: "ruby --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'"
+   - command: 'ruby --version' # Automatically parses version number
+   ```
+
+   By default, commands automatically extract version numbers (e.g., `1.2.3`). For special cases:
+
+   ```yaml
+   - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1 | tr -d ' '"
+     parse_version: false # Use the raw output
    ```
 
 ### Multiple Versions

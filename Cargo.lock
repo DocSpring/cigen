@@ -229,6 +229,7 @@ dependencies = [
  "jsonschema",
  "miette",
  "minijinja",
+ "once_cell",
  "petgraph",
  "predicates",
  "regex",
