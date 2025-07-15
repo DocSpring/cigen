@@ -116,7 +116,7 @@ impl<'a> JobLoader<'a> {
     fn process_file_content(&mut self, path: &Path, content: &str) -> Result<String> {
         let is_template = crate::templating::TemplateEngine::is_template_file(path);
         self.template_engine
-            .render_file(content, is_template)
-            .map_err(|e| anyhow::anyhow!(e))
+            .render_file_with_path(content, path, is_template)
+            .map_err(|e| anyhow::anyhow!("{:?}", e))
     }
 }

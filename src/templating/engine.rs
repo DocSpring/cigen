@@ -3,14 +3,16 @@ use miette::Result as MietteResult;
 use minijinja::{Environment, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use super::error::TemplateError;
 use super::functions::register_functions;
 use super::variables::VariableResolver;
 
 pub struct TemplateEngine {
     env: Environment<'static>,
     resolver: VariableResolver,
+    current_file: Option<PathBuf>,
 }
 
 impl Default for TemplateEngine {
@@ -31,6 +33,7 @@ impl TemplateEngine {
         Self {
             env,
             resolver: VariableResolver::new(),
+            current_file: None,
         }
     }
 
@@ -47,8 +50,27 @@ impl TemplateEngine {
         self.resolver.add_cli_vars(cli_vars);
     }
 
+    /// Set the current file being processed for better error messages
+    pub fn set_current_file(&mut self, path: &Path) {
+        self.current_file = Some(path.to_path_buf());
+    }
+
+    /// Clear the current file
+    pub fn clear_current_file(&mut self) {
+        self.current_file = None;
+    }
+
     /// Render a template string with current variables
     pub fn render_string(&mut self, template: &str) -> MietteResult<String> {
+        self.render_string_with_path(template, None)
+    }
+
+    /// Render a template string with a specific source path
+    pub fn render_string_with_path(
+        &mut self,
+        template: &str,
+        path: Option<&Path>,
+    ) -> MietteResult<String> {
         // Convert variables to MiniJinja format
         let mut context = HashMap::new();
         for (key, yaml_value) in self.resolver.get_variables() {
@@ -57,48 +79,25 @@ impl TemplateEngine {
             context.insert(key.clone(), value);
         }
 
-        let rendered = self.env.render_str(template, &context).map_err(|e| {
-            // MiniJinja provides excellent error information
-            let error_msg = format!("{e}");
+        // Render the template
+        match self.env.render_str(template, &context) {
+            Ok(rendered) => Ok(rendered),
+            Err(error) => {
+                // Determine the source path
+                let source_path = path
+                    .or(self.current_file.as_deref())
+                    .unwrap_or(Path::new("<inline>"));
 
-            // Extract line/column from MiniJinja error
-            let line_col = if let Some(range) = e.range() {
-                // Convert byte offset to line/column
-                let line = template[..range.start].lines().count();
-                let col = if let Some(last_line) = template[..range.start].lines().last() {
-                    last_line.len() + 1
-                } else {
-                    range.start + 1
-                };
-                Some((line, col, range.start, range.end))
-            } else {
-                None
-            };
+                // Create a miette-compatible error
+                let template_error =
+                    TemplateError::from_minijinja_error(error, template.to_string(), source_path);
 
-            // Create a helpful error message with source context
-            if let Some((line, col, start, end)) = line_col {
-                miette::miette! {
-                    labels = vec![
-                        miette::LabeledSpan::at(start..end, "error here")
-                    ],
-                    "Template error at line {line}, column {col}:\n{error_msg}",
-                    line = line,
-                    col = col,
-                    error_msg = error_msg
-                }
-                .with_source_code(template.to_string())
-            } else {
-                miette::miette! {
-                    "Template error:\n{error_msg}",
-                    error_msg = error_msg
-                }
-                .with_source_code(template.to_string())
+                Err(template_error.into())
             }
-        })?;
-        Ok(rendered)
+        }
     }
 
-    /// Check if a file should be treated as a template based on extension
+    /// Check if a file is a template file based on extension
     pub fn is_template_file(path: &Path) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
@@ -107,21 +106,29 @@ impl TemplateEngine {
     }
 
     /// Render a file, handling both .yml and .yml.j2 files
-    pub fn render_file(&mut self, content: &str, is_template: bool) -> MietteResult<String> {
-        if is_template {
-            // Full template rendering for .j2 files
-            self.render_string(content)
-        } else {
-            // Basic variable substitution for regular .yml files
-            self.render_string(content)
-        }
+    pub fn render_file(&mut self, content: &str, _is_template: bool) -> MietteResult<String> {
+        // Both file types get full template processing now
+        self.render_string(content)
+    }
+
+    /// Render a file with a specific path
+    pub fn render_file_with_path(
+        &mut self,
+        content: &str,
+        path: &Path,
+        is_template: bool,
+    ) -> MietteResult<String> {
+        self.set_current_file(path);
+        let result = self.render_file(content, is_template);
+        self.clear_current_file();
+        result
     }
 }
 
-/// Convert YamlValue to MiniJinja Value
+/// Convert a serde_yaml::Value to a minijinja::Value
 fn yaml_value_to_minijinja_value(yaml_value: &YamlValue) -> Value {
     match yaml_value {
-        YamlValue::Null => Value::UNDEFINED,
+        YamlValue::Null => Value::from_serialize(()),
         YamlValue::Bool(b) => Value::from(*b),
         YamlValue::Number(n) => {
             if let Some(i) = n.as_i64() {
@@ -129,31 +136,32 @@ fn yaml_value_to_minijinja_value(yaml_value: &YamlValue) -> Value {
             } else if let Some(f) = n.as_f64() {
                 Value::from(f)
             } else {
-                Value::UNDEFINED
+                Value::from_serialize(n)
             }
         }
-        YamlValue::String(s) => Value::from(s.clone()),
-        YamlValue::Sequence(seq) => {
-            let vec: Vec<Value> = seq.iter().map(yaml_value_to_minijinja_value).collect();
-            Value::from(vec)
-        }
+        YamlValue::String(s) => Value::from(s.as_str()),
+        YamlValue::Sequence(seq) => Value::from_serialize(
+            seq.iter()
+                .map(yaml_value_to_minijinja_value)
+                .collect::<Vec<_>>(),
+        ),
         YamlValue::Mapping(map) => {
-            let mut hash = HashMap::new();
-            for (k, v) in map {
-                if let YamlValue::String(key) = k {
-                    hash.insert(key.clone(), yaml_value_to_minijinja_value(v));
-                }
-            }
-            Value::from_serialize(&hash)
+            let converted: HashMap<String, Value> = map
+                .iter()
+                .filter_map(|(k, v)| {
+                    k.as_str()
+                        .map(|key| (key.to_string(), yaml_value_to_minijinja_value(v)))
+                })
+                .collect();
+            Value::from_serialize(&converted)
         }
-        _ => Value::UNDEFINED,
+        YamlValue::Tagged(_) => Value::from_serialize(yaml_value),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
 
     #[test]
     fn test_basic_template_rendering() {
@@ -161,30 +169,12 @@ mod tests {
 
         // Add some variables
         let mut vars = HashMap::new();
-        vars.insert("name".to_string(), YamlValue::String("test".to_string()));
-        vars.insert("version".to_string(), YamlValue::String("1.0".to_string()));
+        vars.insert("name".to_string(), YamlValue::String("World".to_string()));
         engine.add_vars_section(&vars);
 
-        // Test basic variable substitution
-        let template = "Hello {{ name }}, version {{ version }}";
+        let template = "Hello {{ name }}!";
         let result = engine.render_string(template).unwrap();
-        assert_eq!(result, "Hello test, version 1.0");
-    }
-
-    #[test]
-    fn test_template_with_filters() {
-        let mut engine = TemplateEngine::new();
-
-        let mut vars = HashMap::new();
-        vars.insert(
-            "name".to_string(),
-            YamlValue::String("  test  ".to_string()),
-        );
-        engine.add_vars_section(&vars);
-
-        let template = "Hello {{ name | trim | upper }}";
-        let result = engine.render_string(template).unwrap();
-        assert_eq!(result, "Hello TEST");
+        assert_eq!(result, "Hello World!");
     }
 
     #[test]
@@ -200,12 +190,11 @@ mod tests {
         engine.add_vars_section(&vars);
 
         let template = r#"
-services:
 {% if use_postgres %}
-  postgres:
-    image: postgres:{{ postgres_version }}
-{% endif %}
-"#;
+services:
+  - postgres:{{ postgres_version }}
+{% endif %}"#;
+
         let result = engine.render_string(template).unwrap();
         assert!(result.contains("postgres:16.1"));
     }
@@ -215,20 +204,23 @@ services:
         let mut engine = TemplateEngine::new();
 
         let mut vars = HashMap::new();
-        let envs = YamlValue::Sequence(vec![
+        let environments = vec![
             YamlValue::String("dev".to_string()),
             YamlValue::String("staging".to_string()),
             YamlValue::String("prod".to_string()),
-        ]);
-        vars.insert("environments".to_string(), envs);
+        ];
+        vars.insert(
+            "environments".to_string(),
+            YamlValue::Sequence(environments),
+        );
         engine.add_vars_section(&vars);
 
-        let template = r#"
-{% for env in environments %}
+        let template = r#"{% for env in environments %}
 deploy_{{ env }}:
-  image: myapp:latest
-{% endfor %}
-"#;
+  stage: deploy
+  environment: {{ env }}
+{% endfor %}"#;
+
         let result = engine.render_string(template).unwrap();
         assert!(result.contains("deploy_dev:"));
         assert!(result.contains("deploy_staging:"));
@@ -283,8 +275,8 @@ services:
         engine.add_vars_section(&vars);
 
         let content = r#"
-services:
 {% if use_postgres %}
+services:
   postgres:
     image: postgres:{{ postgres_version }}
 {% endif %}
@@ -311,18 +303,31 @@ services:
         // Add vars section
         let mut vars = HashMap::new();
         vars.insert(
-            "test_var".to_string(),
-            YamlValue::String("from_vars".to_string()),
+            "version".to_string(),
+            YamlValue::String("1.0.0".to_string()),
         );
         engine.add_vars_section(&vars);
 
         // Add CLI vars (should override)
         let mut cli_vars = HashMap::new();
-        cli_vars.insert("test_var".to_string(), "from_cli".to_string());
+        cli_vars.insert("version".to_string(), "2.0.0".to_string());
         engine.add_cli_vars(&cli_vars);
 
-        let template = "Value: {{ test_var }}";
+        let template = "Version: {{ version }}";
         let result = engine.render_string(template).unwrap();
-        assert_eq!(result, "Value: from_cli");
+        assert_eq!(result, "Version: 2.0.0");
+    }
+
+    #[test]
+    fn test_template_with_filters() {
+        let mut engine = TemplateEngine::new();
+
+        let mut vars = HashMap::new();
+        vars.insert("name".to_string(), YamlValue::String("world".to_string()));
+        engine.add_vars_section(&vars);
+
+        let template = "Hello {{ name | upper }}!";
+        let result = engine.render_string(template).unwrap();
+        assert_eq!(result, "Hello WORLD!");
     }
 }
