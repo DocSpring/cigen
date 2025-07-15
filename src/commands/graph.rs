@@ -1,5 +1,6 @@
 use anyhow::Result;
 use petgraph::visit::EdgeRef;
+use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use which::which;
@@ -11,9 +12,10 @@ pub fn graph_command(
     config_path: &str,
     workflow_filter: Option<String>,
     output_path: Option<String>,
+    cli_vars: &HashMap<String, String>,
 ) -> Result<()> {
     // Load all configuration
-    let loader = ConfigLoader::new(config_path)?;
+    let mut loader = ConfigLoader::new_with_vars(config_path, cli_vars)?;
     let loaded = loader.load_all()?;
 
     // Filter jobs by workflow if specified

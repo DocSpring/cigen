@@ -29,6 +29,22 @@ impl Validator {
         self.job_validator.validate_job(job_path)
     }
 
+    /// Validate rendered YAML content directly (for post-template validation)
+    pub fn validate_config_content(&self, yaml_content: &str, source_path: &Path) -> Result<()> {
+        self.config_validator
+            .validate_config_content(yaml_content, source_path)
+    }
+
+    pub fn validate_job_content(&self, yaml_content: &str, source_path: &Path) -> Result<()> {
+        self.job_validator
+            .validate_job_content(yaml_content, source_path)
+    }
+
+    pub fn validate_command_content(&self, yaml_content: &str, source_path: &Path) -> Result<()> {
+        self.command_validator
+            .validate_command_content(yaml_content, source_path)
+    }
+
     pub fn validate_all(&self, base_path: &Path) -> Result<()> {
         // First check if the base path exists
         if !base_path.exists() {
@@ -75,6 +91,7 @@ impl Validator {
                             // Validate against base schema (allows partial configs)
                             self.config_validator.validate_config_fragment(&path)?;
                         }
+                        // Skip .tera files in initial validation - they may not be valid YAML before resolution
                     }
                 }
             }
@@ -131,6 +148,7 @@ impl Validator {
                                     self.job_validator.validate_job(&path)?;
                                     job_count += 1;
                                 }
+                                // Skip .tera files in initial validation - they may not be valid YAML before resolution
                             }
                         }
                     }
@@ -156,6 +174,7 @@ impl Validator {
                         self.command_validator.validate_command(&path)?;
                         command_count += 1;
                     }
+                    // Skip .tera files in initial validation - they may not be valid YAML before resolution
                 }
             }
         }

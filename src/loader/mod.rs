@@ -12,6 +12,7 @@ use self::cache_dependencies::infer_cache_dependencies;
 use self::merger::ConfigMerger;
 use self::span_tracker::SpanTracker;
 use crate::models::{Command, Config, Job};
+use crate::templating::TemplateEngine;
 use crate::validation::{Validator, data::ReferenceValidator};
 
 /// The fully loaded and resolved configuration system
@@ -32,6 +33,7 @@ pub struct LoadedConfig {
 pub struct ConfigLoader {
     base_path: String,
     validator: Validator,
+    template_engine: TemplateEngine,
 }
 
 impl ConfigLoader {
@@ -39,18 +41,39 @@ impl ConfigLoader {
         Ok(Self {
             base_path: base_path.to_string(),
             validator: Validator::new()?,
+            template_engine: TemplateEngine::new(),
+        })
+    }
+
+    pub fn new_with_vars(base_path: &str, cli_vars: &HashMap<String, String>) -> Result<Self> {
+        let mut template_engine = TemplateEngine::new();
+        template_engine.add_env_vars()?;
+        template_engine.add_cli_vars(cli_vars);
+
+        Ok(Self {
+            base_path: base_path.to_string(),
+            validator: Validator::new()?,
+            template_engine,
         })
     }
 
     /// Load and validate all configuration, returning the fully resolved object model
-    pub fn load_all(&self) -> Result<LoadedConfig> {
-        let base_path = Path::new(&self.base_path);
+    pub fn load_all(&mut self) -> Result<LoadedConfig> {
+        let base_path_str = self.base_path.clone();
+        let base_path = Path::new(&base_path_str);
 
-        // 1. First run all validation (this includes schema validation)
+        // 1. First validation pass: validate .yml files before template resolution
+        // This gives nice miette error messages for IDE compatibility
+        // Skip .yml.tera files since they may not be valid YAML before resolution
         self.validator.validate_all(base_path)?;
 
-        // 2. Load and merge main config
+        // 2. Load and merge main config (with templating)
         let (config, config_value) = self.load_merged_config(base_path)?;
+
+        // 3. Add vars from config to template engine
+        if let Some(vars) = &config.vars {
+            self.template_engine.add_vars_section(vars);
+        }
 
         // 3. Load all jobs with inheritance applied (with span tracking)
         let mut span_tracker = SpanTracker::new();
@@ -64,7 +87,11 @@ impl ConfigLoader {
         // 5. Load all commands
         let commands = self.load_all_commands(base_path)?;
 
-        // 6. TODO: Apply Tera template resolution to everything
+        // 6. Second validation pass: validate rendered YAML for both .yml and .yml.tera files
+        // This ensures the final processed YAML is valid, regardless of file type
+        tracing::debug!("Running post-template validation pass...");
+        self.validate_rendered_files(base_path)?;
+        tracing::info!("✓ Post-template validation passed");
 
         // 7. Validate all data references with span information
         tracing::debug!("Validating all data references...");
@@ -80,11 +107,12 @@ impl ConfigLoader {
         })
     }
 
-    fn load_merged_config(&self, base_path: &Path) -> Result<(Config, serde_json::Value)> {
+    fn load_merged_config(&mut self, base_path: &Path) -> Result<(Config, serde_json::Value)> {
         // Load main config
         let config_path = base_path.join("config.yml");
         let content = std::fs::read_to_string(&config_path)?;
-        let main_config: serde_json::Value = serde_yaml::from_str(&content)?;
+        let processed_content = self.process_file_content(&config_path, &content)?;
+        let main_config: serde_json::Value = serde_yaml::from_str(&processed_content)?;
 
         // Load split configs from config/ directory
         let config_dir = base_path.join("config");
@@ -97,10 +125,12 @@ impl ConfigLoader {
 
                 if path.is_file() {
                     if let Some(ext) = path.extension() {
-                        if ext == "yml" || ext == "yaml" {
+                        if ext == "yml" || ext == "yaml" || ext == "tera" {
                             let fragment_content = std::fs::read_to_string(&path)?;
+                            let processed_fragment =
+                                self.process_file_content(&path, &fragment_content)?;
                             let fragment: serde_json::Value =
-                                serde_yaml::from_str(&fragment_content)?;
+                                serde_yaml::from_str(&processed_fragment)?;
                             split_configs.push((path, fragment));
                         }
                     }
@@ -116,7 +146,7 @@ impl ConfigLoader {
             let config = Config::from_yaml(&merged_yaml)?;
             (config, merged)
         } else {
-            let config = Config::from_yaml(&content)?;
+            let config = Config::from_yaml(&processed_content)?;
             (config, main_config)
         };
 
@@ -124,7 +154,7 @@ impl ConfigLoader {
     }
 
     fn load_all_jobs_with_spans(
-        &self,
+        &mut self,
         base_path: &Path,
         _config: &Config,
         span_tracker: &mut SpanTracker,
@@ -181,7 +211,7 @@ impl ConfigLoader {
     }
 
     fn load_jobs_from_directory_with_spans(
-        &self,
+        &mut self,
         jobs_dir: &Path,
         jobs: &mut HashMap<String, Job>,
         workflow_name: &str,
@@ -193,9 +223,10 @@ impl ConfigLoader {
 
             if path.is_file() {
                 if let Some(ext) = path.extension() {
-                    if ext == "yml" || ext == "yaml" {
+                    if ext == "yml" || ext == "yaml" || ext == "tera" {
                         let content = std::fs::read_to_string(&path)?;
-                        let job: Job = serde_yaml::from_str(&content).map_err(|e| {
+                        let processed_content = self.process_file_content(&path, &content)?;
+                        let job: Job = serde_yaml::from_str(&processed_content).map_err(|e| {
                             anyhow::anyhow!("Failed to parse job file {}: {}", path.display(), e)
                         })?;
 
@@ -223,7 +254,7 @@ impl ConfigLoader {
         Ok(())
     }
 
-    fn load_all_commands(&self, base_path: &Path) -> Result<HashMap<String, Command>> {
+    fn load_all_commands(&mut self, base_path: &Path) -> Result<HashMap<String, Command>> {
         let mut commands = HashMap::new();
         let commands_dir = base_path.join("commands");
 
@@ -234,9 +265,10 @@ impl ConfigLoader {
 
                 if path.is_file() {
                     if let Some(ext) = path.extension() {
-                        if ext == "yml" || ext == "yaml" {
+                        if ext == "yml" || ext == "yaml" || ext == "tera" {
                             let content = std::fs::read_to_string(&path)?;
-                            let command: Command = serde_yaml::from_str(&content)?;
+                            let processed_content = self.process_file_content(&path, &content)?;
+                            let command: Command = serde_yaml::from_str(&processed_content)?;
 
                             let key = path
                                 .file_stem()
@@ -252,5 +284,94 @@ impl ConfigLoader {
         }
 
         Ok(commands)
+    }
+
+    /// Process file content with templating if needed
+    fn process_file_content(&mut self, path: &Path, content: &str) -> Result<String> {
+        let is_template = TemplateEngine::is_template_file(path);
+        self.template_engine.render_file(content, is_template)
+    }
+
+    /// Second validation pass: validate rendered YAML for both .yml and .yml.tera files
+    fn validate_rendered_files(&mut self, base_path: &Path) -> Result<()> {
+        // Validate main config
+        let config_path = base_path.join("config.yml");
+        if config_path.exists() {
+            let content = std::fs::read_to_string(&config_path)?;
+            let rendered = self.process_file_content(&config_path, &content)?;
+            self.validator
+                .validate_config_content(&rendered, &config_path)?;
+        }
+
+        // Validate split configs
+        let config_dir = base_path.join("config");
+        if config_dir.exists() && config_dir.is_dir() {
+            for entry in std::fs::read_dir(&config_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(ext) = path.extension() {
+                        if ext == "yml" || ext == "yaml" || ext == "tera" {
+                            let content = std::fs::read_to_string(&path)?;
+                            let rendered = self.process_file_content(&path, &content)?;
+                            self.validator.validate_config_content(&rendered, &path)?;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Validate job files
+        let workflows_dir = base_path.join("workflows");
+        if workflows_dir.exists() && workflows_dir.is_dir() {
+            self.validate_jobs_rendered(&workflows_dir)?;
+        }
+
+        // Validate command files
+        let commands_dir = base_path.join("commands");
+        if commands_dir.exists() && commands_dir.is_dir() {
+            for entry in std::fs::read_dir(&commands_dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(ext) = path.extension() {
+                        if ext == "yml" || ext == "yaml" || ext == "tera" {
+                            let content = std::fs::read_to_string(&path)?;
+                            let rendered = self.process_file_content(&path, &content)?;
+                            self.validator.validate_command_content(&rendered, &path)?;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate rendered job files recursively
+    fn validate_jobs_rendered(&mut self, dir: &Path) -> Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                self.validate_jobs_rendered(&path)?;
+            } else if path.is_file() {
+                if let Some(parent) = path.parent() {
+                    if let Some(parent_name) = parent.file_name() {
+                        if parent_name == "jobs" {
+                            if let Some(ext) = path.extension() {
+                                if ext == "yml" || ext == "yaml" || ext == "tera" {
+                                    let content = std::fs::read_to_string(&path)?;
+                                    let rendered = self.process_file_content(&path, &content)?;
+                                    self.validator.validate_job_content(&rendered, &path)?;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 }

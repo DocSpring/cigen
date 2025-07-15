@@ -31,6 +31,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_file_groups: Option<HashMap<String, Vec<String>>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vars: Option<HashMap<String, serde_yaml::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

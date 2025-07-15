@@ -49,4 +49,30 @@ impl JobValidator {
         debug!("    ✓ Job validation passed: {job_path:?}");
         Ok(())
     }
+
+    /// Validate rendered YAML content directly (for post-template validation)
+    /// This skips miette error reporting since line numbers won't match original files
+    pub fn validate_job_content(&self, yaml_content: &str, source_path: &Path) -> Result<()> {
+        let yaml_value: serde_json::Value = serde_yaml::from_str(yaml_content)
+            .with_context(|| format!("Failed to parse rendered YAML from: {source_path:?}"))?;
+
+        let schema = get_job_schema().context("Failed to parse job schema")?;
+        let validator = jsonschema::options()
+            .with_retriever(SchemaRetriever)
+            .build(&schema)
+            .context("Failed to compile job schema")?;
+
+        match validator.validate(&yaml_value) {
+            Ok(()) => {
+                debug!("✓ Post-template job validation passed: {source_path:?}");
+                Ok(())
+            }
+            Err(error) => {
+                anyhow::bail!(
+                    "Post-template schema validation failed for {source_path:?}: {}",
+                    error
+                );
+            }
+        }
+    }
 }

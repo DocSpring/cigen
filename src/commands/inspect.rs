@@ -1,5 +1,6 @@
 use anyhow::Result;
 use cigen::loader::ConfigLoader;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, clap::ValueEnum)]
 pub enum InspectType {
@@ -12,9 +13,10 @@ pub fn inspect_command(
     config_path: &str,
     object_type: InspectType,
     path: Option<String>,
+    cli_vars: &HashMap<String, String>,
 ) -> Result<()> {
     // Load everything
-    let loader = ConfigLoader::new(config_path)?;
+    let mut loader = ConfigLoader::new_with_vars(config_path, cli_vars)?;
     let loaded = loader.load_all()?;
 
     match object_type {

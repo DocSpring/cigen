@@ -1,7 +1,15 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::collections::HashMap;
 
 mod commands;
+
+fn parse_var(s: &str) -> Result<(String, String), String> {
+    match s.split_once('=') {
+        Some((key, value)) => Ok((key.to_string(), value.to_string())),
+        None => Err("Variables must be in format key=value".to_string()),
+    }
+}
 
 #[derive(Parser)]
 #[command(
@@ -18,6 +26,10 @@ struct Cli {
     /// Path to the cigen configuration directory
     #[arg(short, long, default_value = ".cigen", global = true)]
     config: String,
+
+    /// Set template variables (can be used multiple times)
+    #[arg(long = "var", global = true, value_parser = parse_var)]
+    vars: Vec<(String, String)>,
 
     /// Enable verbose output (use -vv for debug output)
     #[arg(short, long, global = true, action = clap::ArgAction::Count)]
@@ -78,28 +90,31 @@ fn main() -> Result<()> {
     // Initialize logging based on verbose flag
     init_logging(cli.verbose);
 
+    // Convert CLI vars to HashMap
+    let cli_vars: HashMap<String, String> = cli.vars.into_iter().collect();
+
     match cli.command {
         Some(Commands::Init { template }) => {
             commands::init_command(&cli.config, template)?;
         }
         Some(Commands::Validate) => {
-            commands::validate_command(&cli.config)?;
+            commands::validate_command(&cli.config, &cli_vars)?;
         }
         Some(Commands::Generate { output }) => {
-            commands::generate_command(&cli.config, output)?;
+            commands::generate_command(&cli.config, output, &cli_vars)?;
         }
         Some(Commands::List { resource_type }) => {
-            commands::list_command(&cli.config, resource_type)?;
+            commands::list_command(&cli.config, resource_type, &cli_vars)?;
         }
         Some(Commands::Inspect { object_type, path }) => {
-            commands::inspect_command(&cli.config, object_type, path)?;
+            commands::inspect_command(&cli.config, object_type, path, &cli_vars)?;
         }
         Some(Commands::Graph { workflow, output }) => {
-            commands::graph_command(&cli.config, workflow, output)?;
+            commands::graph_command(&cli.config, workflow, output, &cli_vars)?;
         }
         None => {
             // Default to generate command
-            commands::generate_command(&cli.config, None)?;
+            commands::generate_command(&cli.config, None, &cli_vars)?;
         }
     }
 

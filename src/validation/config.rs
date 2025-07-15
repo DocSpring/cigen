@@ -56,6 +56,32 @@ impl ConfigValidator {
         Ok(())
     }
 
+    /// Validate rendered YAML content directly (for post-template validation)
+    /// This skips miette error reporting since line numbers won't match original files
+    pub fn validate_config_content(&self, yaml_content: &str, source_path: &Path) -> Result<()> {
+        let yaml_value: Value = serde_yaml::from_str(yaml_content)
+            .with_context(|| format!("Failed to parse rendered YAML from: {source_path:?}"))?;
+
+        let schema = get_config_schema().context("Failed to parse config schema")?;
+        let validator = jsonschema::draft7::options()
+            .with_retriever(SchemaRetriever)
+            .build(&schema)
+            .context("Failed to compile config schema")?;
+
+        match validator.validate(&yaml_value) {
+            Ok(()) => {
+                debug!("✓ Post-template config validation passed: {source_path:?}");
+                Ok(())
+            }
+            Err(error) => {
+                anyhow::bail!(
+                    "Post-template schema validation failed for {source_path:?}: {}",
+                    error
+                );
+            }
+        }
+    }
+
     pub fn validate_config_fragment(&self, fragment_path: &Path) -> Result<()> {
         let content = std::fs::read_to_string(fragment_path)
             .with_context(|| format!("Failed to read config fragment: {fragment_path:?}"))?;

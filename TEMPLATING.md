@@ -125,5 +125,6 @@ All standard Tera filters are available:
 ## Error Handling
 
 - **Template errors** show the exact line and column where the error occurred
+- **Undefined variables** will cause Tera to crash with an error - all variables used in templates must be defined
 - **Variable errors** indicate which variables are missing or invalid
 - **YAML errors** (for `.yml` files) show both the template source and rendered output location

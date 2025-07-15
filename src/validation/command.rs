@@ -40,4 +40,30 @@ impl CommandValidator {
             }
         }
     }
+
+    /// Validate rendered YAML content directly (for post-template validation)
+    /// This skips miette error reporting since line numbers won't match original files
+    pub fn validate_command_content(&self, yaml_content: &str, source_path: &Path) -> Result<()> {
+        let yaml_value: Value = serde_yaml::from_str(yaml_content)
+            .with_context(|| format!("Failed to parse rendered YAML from: {source_path:?}"))?;
+
+        let schema = get_command_schema().context("Failed to parse command schema")?;
+        let validator = jsonschema::options()
+            .with_retriever(SchemaRetriever)
+            .build(&schema)
+            .context("Failed to compile command schema")?;
+
+        match validator.validate(&yaml_value) {
+            Ok(()) => {
+                debug!("✓ Post-template command validation passed: {source_path:?}");
+                Ok(())
+            }
+            Err(error) => {
+                anyhow::bail!(
+                    "Post-template schema validation failed for {source_path:?}: {}",
+                    error
+                );
+            }
+        }
+    }
 }

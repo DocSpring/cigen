@@ -1,6 +1,6 @@
 use anyhow::Result;
 use cigen::loader::ConfigLoader;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone, clap::ValueEnum)]
 pub enum ListType {
@@ -11,9 +11,13 @@ pub enum ListType {
     Caches,
 }
 
-pub fn list_command(config_path: &str, resource_type: Option<ListType>) -> Result<()> {
+pub fn list_command(
+    config_path: &str,
+    resource_type: Option<ListType>,
+    cli_vars: &HashMap<String, String>,
+) -> Result<()> {
     // Load everything
-    let loader = ConfigLoader::new(config_path)?;
+    let mut loader = ConfigLoader::new_with_vars(config_path, cli_vars)?;
     let loaded = loader.load_all()?;
 
     match resource_type {
