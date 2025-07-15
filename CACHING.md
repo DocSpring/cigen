@@ -18,6 +18,7 @@ Where:
 - **cache_name** - The name you give to the cache (e.g., `gems`, `node_modules`)
 - **versions** - Runtime versions detected from version files (e.g., `ruby3.3.0`)
   - The cache is invalidated and rebuilt from scratch if any versions change.
+  - This component is omitted entirely if no versions are specified in the cache definition
 - **checksum** - Combined hash of dependency files (e.g. package lock files)
   - If no exact match is found, the most recent version of the cache will be restored with the same name and versions.
 
@@ -28,9 +29,9 @@ Cigen includes built-in definitions for common cache types:
 ### Ruby Gems
 
 ```yaml
-caches:
+cache_definitions:
   gems:
-    version_sources:
+    versions:
       - ruby
       - bundler
     checksum_sources:
@@ -52,14 +53,18 @@ version_sources:
     - command: "bundler --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
 ```
 
-Example cache key: `linux-ubuntu22.04-amd64-gems-ruby3.4.5-bundler2.6.3-abc123def456`
+Example cache key:
+
+```
+linux-ubuntu22.04-amd64-gems-ruby3.4.5-bundler2.6.3-abc123def456
+```
 
 ### Node Modules
 
 ```yaml
-caches:
+cache_definitions:
   node_modules:
-    version_sources:
+    versions:
       - node
       - detect:
           - npm
@@ -98,9 +103,9 @@ Example cache key: `linux-ubuntu22.04-amd64-node_modules-node20.11.0-npm10.2.4-d
 ### Python
 
 ```yaml
-caches:
+cache_definitions:
   pip:
-    version_sources:
+    versions:
       - python
       - pip
     checksum_sources:
@@ -125,54 +130,87 @@ version_sources:
     - command: "python --version 2>&1 | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
   pip:
     - command: "pip --version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
+  go:
+    - file: .go-version
+    - file: go.mod
+      pattern: '^go (.+)'
+    - command: "go version | grep -o '[0-9]*\.[0-9]*\.[0-9]*' | head -1"
 ```
 
 Example cache key: `linux-ubuntu22.04-amd64-pip-python3.12.1-pip24.0-789abcdef012`
 
 ## Using Caches in Jobs
 
-### Using Default Paths
+### Using Built-in Cache Definitions
 
-In your job files, you can use the built-in cache types with their default paths:
+The simplest way is to use the built-in cache definitions directly:
 
 ```yaml
 # workflows/test/jobs/install_gems.yml
-cache:
-  - gems # Uses default paths: vendor/bundle, .bundle
+cache: gems # Uses all defaults from the gems cache definition
 ```
+
+This uses the complete `gems` cache definition including:
+
+- Versions (ruby, bundler)
+- Checksum sources (Gemfile, Gemfile.lock)
+- Default paths (vendor/bundle, .bundle)
+
+### Using Multiple Caches
 
 ```yaml
 # workflows/test/jobs/install_deps.yml
 cache:
-  - node_modules # Uses default path: node_modules
-  - pip # Uses default paths: .venv, venv, ~/.cache/pip
+  - node_modules # Uses node_modules definition
+  - pip # Uses pip definition
 ```
 
-### Overriding Default Paths
+### Overriding Specific Parts
 
-If you need different paths, you can override them:
+You can override just the parts you need - the configuration gets merged with the cache definition:
 
 ```yaml
 # workflows/test/jobs/install_gems.yml
 cache:
   gems:
-    - vendor/ruby # Custom path instead of vendor/bundle
-    - .bundle
+    paths: # Override just the paths
+      - vendor/rubygems
+      - .bundle
+    # versions and checksum_sources remain unchanged from the definition
 ```
 
-### Adding Additional Paths
+### Creating Custom Caches
 
-You can also extend the defaults with additional paths:
+You can also define a completely custom cache inline:
+
+```yaml
+# workflows/test/jobs/build_assets.yml
+cache:
+  assets:
+    versions:
+      - node
+    checksum_sources:
+      - package.json
+      - webpack.config.js
+    paths:
+      - .webpack-cache
+      - public/assets
+```
+
+### Reusing Cache Definitions
+
+Use the `type` field to base a custom cache on an existing definition:
 
 ```yaml
 cache:
-  node_modules:
-    - node_modules # Default
-    - .next/cache # Additional cache for Next.js
-    - .turbo # Turborepo cache
+  ml_models:
+    type: python_ml # Reuse versions and checksum_sources from python_ml
+    paths: # But use different paths
+      - models/trained
+      - data/processed
 ```
 
-This automatically generates a key like:
+All of these generate cache keys following the same pattern:
 
 ```
 linux-ubuntu22.04-amd64-gems-ruby3.3.0-bundler2.5.6-abc123def456
@@ -186,18 +224,18 @@ You can override or extend the built-in cache definitions in your `config.yml`:
 
 ```yaml
 # .cigen/config.yml
-caches:
+cache_definitions:
   # Completely override the gems cache
   gems:
-    version_sources:
-      - file: .ruby-version
-      - command: "ruby --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'"
+    versions:
+      - ruby
+      - bundler
     checksum_sources:
       - Gemfile
       - Gemfile.lock
-      - gems.locked  # Custom lockfile
+      - gems.locked # Custom lockfile
     paths:
-      - vendor/ruby   # Override default paths
+      - vendor/ruby # Override default paths
       - .bundle
 ```
 
@@ -207,11 +245,11 @@ Define new cache types for your specific needs:
 
 ```yaml
 # .cigen/config.yml
-caches:
+cache_definitions:
   python_ml:
-    version_sources:
-      - file: .python-version
-      - file: runtime.txt # Heroku-style
+    versions:
+      - python
+      - pip
     checksum_sources:
       - requirements.txt
       - requirements-ml.txt
@@ -222,34 +260,59 @@ caches:
       - ~/.cache/torch
 
   go_modules:
-    version_sources:
-      - file: .go-version
-      - file: go.mod
-        pattern: '^go (.+)'
+    versions:
+      - go
     checksum_sources:
       - go.sum
     paths:
       - ~/go/pkg/mod
       - .cache/go-build
+
+  # Caches without versions - only checksum-based
+  assets:
+    checksum_sources:
+      - package.json
+      - webpack.config.js
+      - src/**/*.js
+      - src/**/*.css
+    paths:
+      - dist/assets
+      - .webpack-cache
+
+  ml_data:
+    checksum_sources:
+      - data/raw/**/*.csv
+      - scripts/process_data.py
+    paths:
+      - data/processed
+      - data/features
 ```
+
+Example cache keys for version-less caches:
+
+- `linux-ubuntu22.04-amd64-assets-abc123def456`
+- `linux-ubuntu22.04-amd64-ml_data-789abcdef012`
 
 ### Using Custom Caches
 
 ```yaml
 # In a job file
 cache:
-  # Use your custom cache type with default paths
+  # Use your custom cache type with all its defaults
   - python_ml
 
-  # Or override the paths
+  # Or override specific parts
   python_ml:
-    - .venv
-    - models/pretrained  # Different from default
+    paths:
+      - .venv
+      - models/pretrained  # Different from default paths
 
   # Create an ad-hoc cache using an existing definition
   ml_data:
-    - data/processed
-    type: python_ml  # Reuse python_ml's version/checksum config
+    type: python_ml  # Inherit versions and checksum_sources
+    paths:
+      - data/processed
+      - data/raw
 ```
 
 ## Version Detection
@@ -282,6 +345,42 @@ If multiple languages are detected, they're concatenated:
 
 ```
 linux-ubuntu22.04-amd64-myapp-ruby3.3.0-node20.1-abc123def
+```
+
+## Cache Paths and Directory Detection
+
+### How `detect` Works with Paths
+
+When defining cache paths, you can use `detect` and `detect_optional` to handle directories that may or may not exist:
+
+```yaml
+paths:
+  - detect:
+      - .venv
+      - venv
+  - ~/.cache/pip
+```
+
+**Important:** Unlike most CI providers that silently continue if a cache path doesn't exist, Cigen adds pre-cache validation:
+
+1. **Regular paths** (e.g., `~/.cache/pip`) - Must exist or the job will fail
+2. **`detect` paths** - At least one of the listed paths must exist
+3. **`detect_optional` paths** - None need to exist; validation is skipped
+
+This validation happens before cache upload, ensuring your CI configuration is explicit about which paths are required vs optional. This prevents silent failures where expected cache directories are missing.
+
+Example with all three types:
+
+```yaml
+paths:
+  - node_modules # Required - job fails if missing
+  - detect: # At least one must exist
+      - .venv
+      - venv
+      - virtualenv
+  - detect_optional: # All are optional
+      - .cache/pre-commit
+      - ~/.cache/myapp
 ```
 
 ## Checksum Sources
@@ -322,7 +421,7 @@ Different cache storage backends can be configured:
 
 ```yaml
 # config.yml
-caches:
+cache_definitions:
   artifacts:
     backend: circleci # or s3, minio
     config:
