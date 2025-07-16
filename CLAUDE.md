@@ -156,6 +156,17 @@ This keeps the codebase maintainable and easier to understand.
 
 Small, verifiable chunks prevent errors and ensure steady progress.
 
+## Before Marking Tasks Complete
+
+**CRITICAL**: Before marking ANY task as complete in your todo list, you MUST:
+
+1. Run `cargo test` to ensure all tests pass
+2. Run `cargo clippy --all-targets --all-features -- -D warnings` to check for linting issues
+3. Fix any failing tests or clippy warnings
+4. Only mark the task as complete after tests pass and clippy is clean
+
+This ensures code quality and prevents accumulating technical debt.
+
 ## Use Our Own Tool
 
 The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/cigen.yml` file.

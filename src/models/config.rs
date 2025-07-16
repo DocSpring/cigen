@@ -49,6 +49,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dynamic: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +131,30 @@ pub struct Cache {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub save_always: Option<bool>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            provider: "circleci".to_string(),
+            output_path: None,
+            output_filename: None,
+            version: None,
+            anchors: None,
+            caches: None,
+            cache_definitions: None,
+            version_sources: None,
+            architectures: None,
+            resource_classes: None,
+            docker: None,
+            services: None,
+            source_file_groups: None,
+            vars: None,
+            graph: None,
+            dynamic: None,
+            setup: None,
+        }
+    }
 }
 
 impl Config {

@@ -1,5 +1,3 @@
-# This is a static workflow that generates the dynamic config.
-dynamic: false
-
-output_path: ./build
+# This is a setup workflow that generates the dynamic config.
+setup: true
 output_filename: config.yml

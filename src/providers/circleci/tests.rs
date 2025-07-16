@@ -7,24 +7,7 @@ use std::collections::HashMap;
 
 #[test]
 fn test_simple_job_conversion() {
-    let config = Config {
-        provider: "circleci".to_string(),
-        output_path: None,
-        output_filename: None,
-        version: None,
-        anchors: None,
-        caches: None,
-        cache_definitions: None,
-        version_sources: None,
-        architectures: None,
-        resource_classes: None,
-        docker: None,
-        services: None,
-        source_file_groups: None,
-        vars: None,
-        graph: None,
-        dynamic: None,
-    };
+    let config = Config::default();
 
     let mut jobs = HashMap::new();
     jobs.insert(
@@ -98,22 +81,8 @@ fn test_job_with_services() {
     );
 
     let config = Config {
-        provider: "circleci".to_string(),
         services: Some(services),
-        output_path: None,
-        output_filename: None,
-        version: None,
-        anchors: None,
-        caches: None,
-        cache_definitions: None,
-        version_sources: None,
-        architectures: None,
-        resource_classes: None,
-        docker: None,
-        source_file_groups: None,
-        vars: None,
-        graph: None,
-        dynamic: None,
+        ..Config::default()
     };
 
     let mut jobs = HashMap::new();
@@ -154,24 +123,7 @@ fn test_job_with_services() {
 
 #[test]
 fn test_job_dependencies() {
-    let config = Config {
-        provider: "circleci".to_string(),
-        output_path: None,
-        output_filename: None,
-        version: None,
-        anchors: None,
-        caches: None,
-        cache_definitions: None,
-        version_sources: None,
-        architectures: None,
-        resource_classes: None,
-        docker: None,
-        services: None,
-        source_file_groups: None,
-        vars: None,
-        graph: None,
-        dynamic: None,
-    };
+    let config = Config::default();
 
     let mut jobs = HashMap::new();
     jobs.insert(

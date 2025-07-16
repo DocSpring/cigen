@@ -109,8 +109,8 @@ impl CircleCIGenerator {
             circleci_config.executors = Some(self.build_executors(services)?);
         }
 
-        // Handle dynamic workflows
-        if config.dynamic.unwrap_or(false) {
+        // Handle setup workflows (either explicitly set or dynamic workflows)
+        if config.setup.unwrap_or(false) || config.dynamic.unwrap_or(false) {
             circleci_config.setup = Some(true);
         }
 

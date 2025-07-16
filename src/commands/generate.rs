@@ -71,32 +71,34 @@ pub fn generate_command(
         let workflow_config = if workflow_config_path.exists() {
             // Load workflow-specific config
             let workflow_config_str = std::fs::read_to_string(&workflow_config_path)?;
-            let workflow_config_value: serde_yaml::Value =
-                serde_yaml::from_str(&workflow_config_str)?;
 
-            // Merge with main config (workflow config takes precedence)
-            let mut merged_config = loaded_config.config.clone();
+            // Parse as a partial Config to get only the override fields
+            let workflow_overrides: serde_yaml::Value = serde_yaml::from_str(&workflow_config_str)?;
 
-            // Override specific fields if present in workflow config
-            if let Some(obj) = workflow_config_value.as_mapping() {
-                if let Some(output_path) = obj.get("output_path") {
-                    if let Some(path_str) = output_path.as_str() {
-                        merged_config.output_path = Some(path_str.to_string());
+            // Start with the main config
+            let merged_config = loaded_config.config.clone();
+
+            // Apply overrides from workflow config
+            if let Some(obj) = workflow_overrides.as_mapping() {
+                // Use serde_json to convert and merge - this handles all fields automatically
+                let mut base_value = serde_json::to_value(&merged_config)?;
+                let override_value = serde_json::to_value(obj)?;
+
+                if let (Some(base_obj), Some(override_obj)) =
+                    (base_value.as_object_mut(), override_value.as_object())
+                {
+                    for (key, value) in override_obj {
+                        if !value.is_null() {
+                            base_obj.insert(key.clone(), value.clone());
+                        }
                     }
                 }
-                if let Some(output_filename) = obj.get("output_filename") {
-                    if let Some(filename_str) = output_filename.as_str() {
-                        merged_config.output_filename = Some(filename_str.to_string());
-                    }
-                }
-                if let Some(dynamic) = obj.get("dynamic") {
-                    if let Some(dynamic_bool) = dynamic.as_bool() {
-                        merged_config.dynamic = Some(dynamic_bool);
-                    }
-                }
+
+                // Convert back to Config
+                serde_json::from_value(base_value)?
+            } else {
+                merged_config
             }
-
-            merged_config
         } else {
             loaded_config.config.clone()
         };

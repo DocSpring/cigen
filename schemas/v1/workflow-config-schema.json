@@ -18,6 +18,11 @@
       "type": "string",
       "description": "Filename for the generated CI config (useful when splitting workflows)",
       "pattern": "^[^/\\\\]+\\.yml$"
+    },
+    "setup": {
+      "type": "boolean",
+      "description": "Whether this is a setup workflow that provides CIRCLE_CONTINUATION_KEY",
+      "default": false
     }
   },
   "additionalProperties": false

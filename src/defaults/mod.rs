@@ -54,24 +54,7 @@ mod tests {
 
     #[test]
     fn test_merge_empty_config() {
-        let user_config = Config {
-            provider: "circleci".to_string(),
-            output_path: None,
-            output_filename: None,
-            version: None,
-            anchors: None,
-            caches: None,
-            cache_definitions: None,
-            version_sources: None,
-            architectures: None,
-            resource_classes: None,
-            docker: None,
-            services: None,
-            source_file_groups: None,
-            vars: None,
-            graph: None,
-            dynamic: None,
-        };
+        let user_config = Config::default();
 
         let merged = merge_with_defaults(user_config);
 
@@ -105,22 +88,8 @@ mod tests {
         );
 
         let user_config = Config {
-            provider: "circleci".to_string(),
-            output_path: None,
-            output_filename: None,
-            version: None,
-            anchors: None,
-            caches: None,
             cache_definitions: Some(user_cache_defs),
-            version_sources: None,
-            architectures: None,
-            resource_classes: None,
-            docker: None,
-            services: None,
-            source_file_groups: None,
-            vars: None,
-            graph: None,
-            dynamic: None,
+            ..Config::default()
         };
 
         let merged = merge_with_defaults(user_config);
