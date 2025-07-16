@@ -3,16 +3,22 @@
   "title": "CIGen Workflow Configuration Schema",
   "description": "Schema for workflow-level configuration files",
   "type": "object",
-  "allOf": [
-    {
-      "$ref": "https://cigen.dev/schemas/v1/definitions.json#/definitions/configProperties"
-    }
-  ],
   "properties": {
     "dynamic": {
       "type": "boolean",
       "description": "Whether this workflow uses dynamic job skipping based on file changes",
       "default": false
+    },
+    "output_path": {
+      "type": "string",
+      "description": "Path where generated CI config will be written",
+      "default": "./build"
+    },
+    "output_filename": {
+      "type": "string",
+      "description": "Filename for the generated CI config (useful when splitting workflows)",
+      "pattern": "^[^/\\\\]+\\.yml$"
     }
-  }
+  },
+  "additionalProperties": false
 }

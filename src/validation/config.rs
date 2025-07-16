@@ -11,11 +11,37 @@ use super::schemas::{
     SchemaRetriever, get_config_base_schema, get_config_schema, get_workflow_config_schema,
 };
 
+// Use JSON Schema draft-07 for validation (stable and well-tested)
+// TODO: Upgrade to draft 2020-12 once we update our schemas
+use jsonschema::draft7 as schema_draft;
+
 pub struct ConfigValidator;
 
 impl ConfigValidator {
     pub fn new() -> Self {
         Self
+    }
+
+    /// Extract a more specific instance path for certain validation errors
+    fn refine_instance_path(error: &jsonschema::ValidationError) -> String {
+        let error_msg = error.to_string();
+
+        // For "additional properties" errors, extract the property name and append to path
+        if error_msg.contains("Additional properties are not allowed") {
+            // Extract property names from error message like "('asdf' was unexpected)"
+            if let Some(start) = error_msg.find("('") {
+                if let Some(end) = error_msg[start + 2..].find("'") {
+                    let prop_name = &error_msg[start + 2..start + 2 + end];
+                    return if error.instance_path.to_string().is_empty() {
+                        format!("/{prop_name}")
+                    } else {
+                        format!("{}/{prop_name}", error.instance_path)
+                    };
+                }
+            }
+        }
+
+        error.instance_path.to_string()
     }
 
     pub fn validate_config(&self, config_path: &Path) -> Result<()> {
@@ -24,7 +50,7 @@ impl ConfigValidator {
             .map_err(|e| anyhow::anyhow!("Failed to parse YAML from {config_path:?}: {e}"))?;
 
         let schema = get_config_schema().context("Failed to parse config schema")?;
-        let validator = jsonschema::draft7::options()
+        let validator = schema_draft::options()
             .with_retriever(SchemaRetriever)
             .build(&schema)
             .context("Failed to compile config schema")?;
@@ -36,8 +62,9 @@ impl ConfigValidator {
         if !errors.is_empty() {
             eprintln!(); // Add newline before first error
             for error in &errors {
-                let validation_error = spanned_validator
-                    .create_error(&error.instance_path.to_string(), error.to_string());
+                let instance_path = Self::refine_instance_path(error);
+                let validation_error =
+                    spanned_validator.create_error(&instance_path, error.to_string());
                 eprintln!("{:?}", Report::new(validation_error));
             }
             anyhow::bail!(
@@ -65,7 +92,7 @@ impl ConfigValidator {
             .with_context(|| format!("Failed to parse rendered YAML from: {source_path:?}"))?;
 
         let schema = get_config_schema().context("Failed to parse config schema")?;
-        let validator = jsonschema::draft7::options()
+        let validator = schema_draft::options()
             .with_retriever(SchemaRetriever)
             .build(&schema)
             .context("Failed to compile config schema")?;
@@ -94,7 +121,7 @@ impl ConfigValidator {
         // Use base schema for fragments (allows any subset of properties)
         let schema = get_config_base_schema().context("Failed to parse config base schema")?;
 
-        let validator = jsonschema::draft7::options()
+        let validator = schema_draft::options()
             .with_retriever(SchemaRetriever)
             .build(&schema)
             .context("Failed to compile config base schema")?;
@@ -122,7 +149,7 @@ impl ConfigValidator {
 
         // Use base schema for fragments (allows any subset of properties)
         let schema = get_config_base_schema().context("Failed to parse config base schema")?;
-        let validator = jsonschema::draft7::options()
+        let validator = schema_draft::options()
             .with_retriever(SchemaRetriever)
             .build(&schema)
             .context("Failed to compile config base schema")?;
@@ -148,7 +175,7 @@ impl ConfigValidator {
 
         let schema =
             get_workflow_config_schema().context("Failed to parse workflow config schema")?;
-        let validator = jsonschema::draft7::options()
+        let validator = schema_draft::options()
             .with_retriever(SchemaRetriever)
             .build(&schema)
             .context("Failed to compile workflow config schema")?;
@@ -160,8 +187,9 @@ impl ConfigValidator {
         if !errors.is_empty() {
             eprintln!(); // Add newline before first error
             for error in &errors {
-                let validation_error = spanned_validator
-                    .create_error(&error.instance_path.to_string(), error.to_string());
+                let instance_path = Self::refine_instance_path(error);
+                let validation_error =
+                    spanned_validator.create_error(&instance_path, error.to_string());
                 eprintln!("{:?}", Report::new(validation_error));
             }
             anyhow::bail!(
@@ -179,7 +207,7 @@ impl ConfigValidator {
         // Validate against the full schema
         let schema = get_config_schema().context("Failed to parse config schema")?;
 
-        let validator = jsonschema::draft7::options()
+        let validator = schema_draft::options()
             .with_retriever(SchemaRetriever)
             .build(&schema)
             .context("Failed to compile config schema")?;

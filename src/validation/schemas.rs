@@ -38,6 +38,12 @@ impl Retrieve for SchemaRetriever {
             "https://cigen.dev/schemas/v1/definitions.json" => {
                 Ok(serde_json::from_str(DEFINITIONS_SCHEMA)?)
             }
+            // Handle the relative reference with fragment
+            "./definitions.json#/definitions/configProperties" => {
+                Ok(serde_json::from_str(DEFINITIONS_SCHEMA)?)
+            }
+            // Handle json-schema URI scheme
+            "json-schema:///definitions.json" => Ok(serde_json::from_str(DEFINITIONS_SCHEMA)?),
             "https://json-schema.org/draft-07/schema"
             | "https://json-schema.org/draft-07/schema#"
             | "http://json-schema.org/draft-07/schema"

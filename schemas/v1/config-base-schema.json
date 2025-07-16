@@ -3,6 +3,6 @@
   "title": "CIGen Configuration Base Schema",
   "description": "Base schema for cigen configuration fragments - allows any subset of properties",
   "type": "object",
-  "$ref": "https://cigen.dev/schemas/v1/definitions.json#/definitions/configProperties",
+  "$ref": "./definitions.json#/definitions/configProperties",
   "additionalProperties": false
 }
