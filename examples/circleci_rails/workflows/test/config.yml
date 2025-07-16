@@ -1,1 +1,3 @@
+$schema: ../../../schemas/v1/workflow-config-schema.json
+
 dynamic: true

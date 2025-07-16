@@ -2,19 +2,17 @@
   "$id": "https://cigen.dev/schemas/v1/workflow-config-schema.json",
   "title": "CIGen Workflow Configuration Schema",
   "description": "Schema for workflow-level configuration files",
+  "type": "object",
   "allOf": [
     {
-      "$ref": "./config-base-schema.json"
-    },
-    {
-      "type": "object",
-      "properties": {
-        "dynamic": {
-          "type": "boolean",
-          "description": "Whether this workflow uses dynamic job skipping based on file changes",
-          "default": false
-        }
-      }
+      "$ref": "https://cigen.dev/schemas/v1/definitions.json#/definitions/configProperties"
     }
-  ]
+  ],
+  "properties": {
+    "dynamic": {
+      "type": "boolean",
+      "description": "Whether this workflow uses dynamic job skipping based on file changes",
+      "default": false
+    }
+  }
 }

@@ -109,9 +109,20 @@ impl Validator {
             info!("✓ All split configs validated: {config_dir:?}");
         }
 
-        // Validate job files in workflows/
+        // Validate workflows and job files in workflows/
         let workflows_dir = base_path.join("workflows");
         if workflows_dir.exists() && workflows_dir.is_dir() {
+            // First validate workflow configs
+            debug!("Validating workflow configs...");
+            let workflow_count = self.validate_workflow_configs(&workflows_dir)?;
+            if workflow_count > 0 {
+                info!(
+                    "✓ All {} workflow configs validated successfully",
+                    workflow_count
+                );
+            }
+
+            // Then validate job files
             debug!("Validating job files...");
             let job_count = self.validate_jobs_in_directory(&workflows_dir)?;
             if job_count > 0 {
@@ -167,6 +178,33 @@ impl Validator {
         }
 
         Ok(job_count)
+    }
+
+    fn validate_workflow_configs(&self, workflows_dir: &Path) -> Result<usize> {
+        use std::fs;
+        let mut workflow_count = 0;
+
+        for entry in fs::read_dir(workflows_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                // Check for config.yml in each workflow directory
+                let config_path = path.join("config.yml");
+                if config_path.exists() {
+                    debug!(
+                        "  Validating workflow config {:?}...",
+                        config_path.file_name().unwrap()
+                    );
+                    // Validate against workflow config schema (which extends base schema)
+                    self.config_validator
+                        .validate_workflow_config(&config_path)?;
+                    workflow_count += 1;
+                }
+            }
+        }
+
+        Ok(workflow_count)
     }
 
     fn validate_commands_in_directory(&self, dir: &Path) -> Result<usize> {

@@ -1,4 +1,4 @@
-$schema: ../../../schemas/v1/config-schema.json
+$schema: ../../../schemas/v1/workflow-config-schema.json
 
 # This is a static workflow that generates the dynamic config.
 dynamic: false

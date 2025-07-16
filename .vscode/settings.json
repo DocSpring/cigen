@@ -16,13 +16,13 @@
       ".cigen/config.yml",
       "examples/*/config.yml"
     ],
-    "./schemas/v1/config-base-schema.json": [
-      ".cigen/config/*.yml",
-      "examples/*/config/*.yml"
-    ],
     "./schemas/v1/workflow-config-schema.json": [
       ".cigen/workflows/*/config.yml",
       "examples/*/workflows/*/config.yml"
+    ],
+    "./schemas/v1/config-base-schema.json": [
+      ".cigen/config/*.yml",
+      "examples/*/config/*.yml"
     ],
     "./schemas/v1/job-schema.json": [
       ".cigen/*/workflows/*/jobs/*.yml",

@@ -7,7 +7,9 @@ use tracing::{debug, info};
 
 use super::data::DataValidator;
 use super::error_reporter::SpannedValidator;
-use super::schemas::{SchemaRetriever, get_config_base_schema, get_config_schema};
+use super::schemas::{
+    SchemaRetriever, get_config_base_schema, get_config_schema, get_workflow_config_schema,
+};
 
 pub struct ConfigValidator;
 
@@ -137,6 +139,39 @@ impl ConfigValidator {
                 );
             }
         }
+    }
+
+    pub fn validate_workflow_config(&self, config_path: &Path) -> Result<()> {
+        // 1. Schema validation with beautiful miette error reporting
+        let spanned_validator = SpannedValidator::new(config_path)
+            .map_err(|e| anyhow::anyhow!("Failed to parse YAML from {config_path:?}: {e}"))?;
+
+        let schema =
+            get_workflow_config_schema().context("Failed to parse workflow config schema")?;
+        let validator = jsonschema::draft7::options()
+            .with_retriever(SchemaRetriever)
+            .build(&schema)
+            .context("Failed to compile workflow config schema")?;
+
+        let errors: Vec<_> = validator
+            .iter_errors(spanned_validator.get_json_value())
+            .collect();
+
+        if !errors.is_empty() {
+            eprintln!(); // Add newline before first error
+            for error in &errors {
+                let validation_error = spanned_validator
+                    .create_error(&error.instance_path.to_string(), error.to_string());
+                eprintln!("{:?}", Report::new(validation_error));
+            }
+            anyhow::bail!(
+                "Schema validation failed for {config_path:?} (see detailed errors above)"
+            );
+        }
+
+        // Workflow configs don't need data-level validation (no references to validate)
+        debug!("    ✓ Workflow config validation passed: {config_path:?}");
+        Ok(())
     }
 
     #[allow(dead_code)]

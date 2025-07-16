@@ -50,6 +50,12 @@ cargo fmt
 
 # Lint code (use the same flags as the git hook)
 cargo clippy --all-targets --all-features -- -D warnings
+
+# Test validation on the example
+cargo run -- --config examples/circleci_rails/ validate
+
+# Test generation on the example
+cargo run -- --config examples/circleci_rails/ generate
 ```
 
 ## Rust Code Style
