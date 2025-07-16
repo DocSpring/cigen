@@ -117,7 +117,7 @@ docker:
 
 ```yaml
 # Using built-in cache definitions
-cache: gems  # Automatically uses Ruby/Bundler cache configuration
+cache: gems  # Automatically injects save/restore cache steps
 
 # Or multiple caches
 cache:
@@ -137,6 +137,7 @@ cache:
 - Intelligent version detection (Ruby, Node.js, Python, etc.)
 - Automatic cache key generation based on lock files
 - Platform-specific paths with fallback detection
+- Automatic injection of cache restore/save steps in the job
 
 **CircleCI:**
 
@@ -151,6 +152,60 @@ cache:
 ```
 
 **Why:** CircleCI's cache steps are verbose and repetitive. CIGen provides intelligent defaults while supporting customization. Cache keys automatically include OS, architecture, runtime versions, and file checksums.
+
+### 4a. Manual Cache Steps
+
+**CIGen also supports manual cache steps with cross-platform syntax:**
+
+```yaml
+steps:
+  - restore_cache:
+      name: Restore custom cache
+      key: my-custom-{{ checksum "config.json" }}
+
+  - name: Build something
+    run: npm run build
+
+  - save_cache:
+      name: Save custom cache
+      key: my-custom-{{ checksum "config.json" }}
+      paths:
+        - dist/
+        - .cache/
+```
+
+**Key differences from native providers:**
+
+1. **Same syntax everywhere** - Works identically for CircleCI, GitHub Actions, etc.
+2. **Swappable backends** - Based on your cache configuration, these steps might use:
+   - Native CI provider cache (default)
+   - S3/MinIO buckets
+   - Redis cache
+   - Custom cache plugins
+3. **Automatic backend selection** - CIGen chooses the appropriate backend based on:
+   - Runner type (cloud vs self-hosted)
+   - Cache backend configuration
+   - Environment variables
+
+**Example with backend configuration:**
+
+```yaml
+# In config.yml
+cache_backends:
+  default: native
+  self_hosted: s3
+
+  s3:
+    bucket: my-cache-bucket
+    region: us-east-1
+
+# Manual cache steps automatically use the configured backend
+steps:
+  - restore_cache:
+      key: my-build-{{ checksum "package-lock.json" }}
+```
+
+When compiled for CircleCI with self-hosted runners, this might generate custom commands that use S3 instead of CircleCI's native cache.
 
 ### 5. Workflow Discovery and Configuration
 

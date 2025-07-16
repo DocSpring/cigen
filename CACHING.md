@@ -143,6 +143,10 @@ Example cache key: `linux-ubuntu22.04-amd64-pip-python3.12.1-pip24.0-789abcdef01
 
 ## Using Caches in Jobs
 
+### Automatic Cache Injection
+
+When you use the `cache:` configuration in a job, CIGen automatically injects cache restore and save steps.
+
 ### Using Built-in Cache Definitions
 
 The simplest way is to use the built-in cache definitions directly:
@@ -150,11 +154,20 @@ The simplest way is to use the built-in cache definitions directly:
 ```yaml
 # workflows/test/jobs/install_gems.yml
 cache: gems # Uses all defaults from the gems cache definition
+
+steps:
+  - name: Install dependencies
+    run: bundle install
 ```
 
-This uses the complete `gems` cache definition including:
+This automatically injects:
 
-- Versions (ruby, bundler)
+1. A `restore_cache` step before your steps
+2. A `save_cache` step after your steps
+
+The generated output includes:
+
+- Versions (ruby, bundler) in the cache key
 - Checksum sources (Gemfile, Gemfile.lock)
 - Default paths (vendor/bundle, .bundle)
 
@@ -425,18 +438,88 @@ Generates keys like:
 - `linux-ubuntu22.04-amd64-gems-ruby3.2-abc123def`
 - `linux-ubuntu22.04-arm64-gems-ruby3.3-abc123def`
 
+## Manual Cache Steps
+
+In addition to automatic cache injection, you can write cache steps manually:
+
+```yaml
+steps:
+  - restore_cache:
+      name: Restore webpack cache
+      key: webpack-{{ checksum "webpack.config.js" }}
+
+  - name: Build assets
+    run: npm run build
+
+  - save_cache:
+      name: Save webpack cache
+      key: webpack-{{ checksum "webpack.config.js" }}
+      paths:
+        - .webpack-cache
+```
+
+These manual cache steps:
+
+- Use the same syntax across all CI providers
+- Automatically use the configured cache backend
+- Are transformed during compilation to use the appropriate backend commands
+
 ## Cache Backends
 
-Different cache storage backends can be configured:
+CIGen supports multiple cache storage backends that can be configured globally or per-cache:
 
 ```yaml
 # config.yml
+cache_backends:
+  default: native # Use CI provider's native cache
+
+  # Configure backends for different scenarios
+  native:
+    # No configuration needed - uses provider's built-in cache
+
+  s3:
+    bucket: my-cache-bucket
+    region: us-east-1
+    prefix: cigen-cache/
+
+  redis:
+    url: redis://cache.example.com:6379
+    ttl: 604800 # 7 days
+
+  minio:
+    endpoint: minio.internal:9000
+    bucket: ci-cache
+    access_key: ${MINIO_ACCESS_KEY}
+    secret_key: ${MINIO_SECRET_KEY}
+
+# Per-cache backend override
 cache_definitions:
-  artifacts:
-    backend: circleci # or s3, minio
-    config:
-      # backend-specific configuration
+  ml_models:
+    backend: s3 # Large models go to S3
+    versions:
+      - python
+    paths:
+      - models/
+
+# Per-runner backend selection
+runners:
+  self_hosted:
+    cache_backend: minio # Self-hosted runners use MinIO
+  cloud:
+    cache_backend: native # Cloud runners use native cache
 ```
+
+When CIGen processes cache steps (both automatic and manual), it:
+
+1. Determines which backend to use based on configuration and runner type
+2. Transforms the cache steps into appropriate commands for that backend
+3. May replace them with custom commands or scripts
+
+For example, a `restore_cache` step might become:
+
+- CircleCI: Native `restore_cache` step (if using native backend)
+- S3: Custom command using AWS CLI to download from S3
+- Redis: Custom command to check Redis and download if found
 
 ## Best Practices
 

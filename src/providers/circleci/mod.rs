@@ -1,6 +1,9 @@
 mod config;
 mod generator;
 
+#[cfg(test)]
+mod tests;
+
 use crate::models::{Config, Job};
 use crate::providers::Provider;
 use miette::Result;
@@ -16,6 +19,12 @@ impl CircleCIProvider {
         Self {
             generator: generator::CircleCIGenerator::new(),
         }
+    }
+}
+
+impl Default for CircleCIProvider {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

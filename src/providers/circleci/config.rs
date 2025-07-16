@@ -185,12 +185,8 @@ pub enum CircleCIStep {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CircleCIRunStep {
-    Simple {
-        run: String,
-    },
-    Detailed {
-        run: CircleCIRunDetails,
-    },
+    Simple { run: String },
+    Detailed { run: CircleCIRunDetails },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
