@@ -50,6 +50,9 @@ enum Commands {
 
     /// Generate CI configuration (default command)
     Generate {
+        /// Workflow name to generate (generates all if not specified)
+        workflow: Option<String>,
+
         /// Output directory for generated files
         #[arg(short, long)]
         output: Option<String>,
@@ -149,8 +152,8 @@ fn main() -> Result<()> {
                 Some(Commands::Validate) => {
                     commands::validate_command(&cli_vars)?;
                 }
-                Some(Commands::Generate { output }) => {
-                    commands::generate_command(output, &cli_vars)?;
+                Some(Commands::Generate { workflow, output }) => {
+                    commands::generate_command(workflow, output, &cli_vars)?;
                 }
                 Some(Commands::List { resource_type }) => {
                     commands::list_command(resource_type, &cli_vars)?;
@@ -176,7 +179,7 @@ fn main() -> Result<()> {
                 }
                 None => {
                     // Default to generate command
-                    commands::generate_command(None, &cli_vars)?;
+                    commands::generate_command(None, None, &cli_vars)?;
                 }
                 _ => unreachable!(),
             }

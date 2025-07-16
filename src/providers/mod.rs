@@ -10,6 +10,9 @@ pub trait Provider: Send + Sync {
     /// Name of the provider (e.g., "circleci", "github-actions")
     fn name(&self) -> &'static str;
 
+    /// Default output path for this provider
+    fn default_output_path(&self) -> &'static str;
+
     /// Generate CI configuration for a single workflow
     fn generate_workflow(
         &self,

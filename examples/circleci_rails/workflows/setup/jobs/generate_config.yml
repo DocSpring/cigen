@@ -5,7 +5,7 @@ resource_class: medium
 steps:
   - name: Generate Dynamic Config With CIGen
     run: |
-      cigen generate \ 
+      cigen generate \
         --config .cigen/config.yml \
         --workflow test \
         --output .circleci/dynamic_config.yml
