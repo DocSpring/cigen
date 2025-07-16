@@ -6,6 +6,7 @@ This tool can be used to build both static config and [dynamic config for Circle
 
 ## Features
 
+- Supports CircleCI and GitHub Actions (soon)
 - Written in Rust for performance and reliability
 - Caching and intelligent job skipping as a core feature with configurable cache backends
 - Built-in defaults for many languages and package managers (completely configurable)

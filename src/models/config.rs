@@ -9,6 +9,9 @@ pub struct Config {
     pub output_path: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_filename: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<u32>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -43,6 +46,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub graph: Option<GraphConfig>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dynamic: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

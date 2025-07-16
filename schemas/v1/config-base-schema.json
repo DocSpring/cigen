@@ -37,6 +37,11 @@
       "description": "Path where generated CI config will be written",
       "default": "./build"
     },
+    "output_filename": {
+      "type": "string",
+      "description": "Filename for the generated CI config (useful when splitting workflows)",
+      "pattern": "^[^/\\\\]+\\.yml$"
+    },
     "caches": {
       "type": "object",
       "description": "Cache backend configuration",

@@ -1,0 +1,7 @@
+$schema: ../../../schemas/v1/config-schema.json
+
+# This is a static workflow that generates the dynamic config.
+dynamic: false
+
+output_path: ./build
+output_filename: config.yml

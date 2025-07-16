@@ -20,13 +20,17 @@
       ".cigen/config/*.yml",
       "examples/*/config/*.yml"
     ],
+    "./schemas/v1/workflow-config-schema.json": [
+      ".cigen/workflows/*/config.yml",
+      "examples/*/workflows/*/config.yml"
+    ],
     "./schemas/v1/job-schema.json": [
-      ".cigen/**/workflows/**/*.yml",
-      "examples/**/workflows/**/*.yml"
+      ".cigen/*/workflows/*/jobs/*.yml",
+      "examples/*/workflows/*/jobs/*.yml"
     ],
     "./schemas/v1/command-schema.json": [
-      ".cigen/**/commands/*.yml",
-      "examples/**/commands/*.yml"
+      ".cigen/*/commands/*.yml",
+      "examples/*/commands/*.yml"
     ]
   }
 }

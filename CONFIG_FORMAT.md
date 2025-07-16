@@ -6,7 +6,7 @@ CIGen uses its own configuration format that compiles to CircleCI, GitHub Action
 
 Our format follows these principles:
 
-- **Intuitive over provider-specific**: Use concepts that make sense to developers, not CI providers
+- **Intuitive over provider-specific**: Use concepts that make sense to developers
 - **DRY (Don't Repeat Yourself)**: Reduce duplication through better abstractions
 - **Least surprise**: Support multiple syntaxes where it makes sense (inspired by Ruby/Rails)
 - **Provider-agnostic**: Avoid leaking provider-specific concepts into the configuration
@@ -113,23 +113,30 @@ docker:
 
 ### 4. Cache Definitions
 
-**CIGen (multiple supported formats):**
+**CIGen:**
 
 ```yaml
+# Using built-in cache definitions
+cache: gems  # Automatically uses Ruby/Bundler cache configuration
+
+# Or multiple caches
 cache:
-  # Simple string
-  vendor: vendor/bundle
+  - node_modules
+  - pip
 
-  # Array shorthand
+# Or with path overrides
+cache:
   gems:
-    - vendor/bundle
-    - .bundle
-
-  # Full control
-  assets:
-    restore: false
-    paths: public/assets
+    paths:
+      - vendor/ruby  # Override default paths
+      - .bundle
 ```
+
+**Built-in cache definitions include:**
+
+- Intelligent version detection (Ruby, Node.js, Python, etc.)
+- Automatic cache key generation based on lock files
+- Platform-specific paths with fallback detection
 
 **CircleCI:**
 
@@ -143,15 +150,16 @@ cache:
       - vendor/bundle
 ```
 
-**Why:** CircleCI's cache steps are verbose and repetitive. Our config format treats caching as a first-class feature and supports multiple intuitive syntaxes.
+**Why:** CircleCI's cache steps are verbose and repetitive. CIGen provides intelligent defaults while supporting customization. Cache keys automatically include OS, architecture, runtime versions, and file checksums.
 
-### 5. Workflow Discovery
+### 5. Workflow Discovery and Configuration
 
 **CIGen:**
 
 ```
 workflows/
 ├── test/
+│   ├── config.yml      # Optional: workflow-specific config
 │   └── jobs/
 │       ├── rspec.yml
 │       └── lint.yml
@@ -177,6 +185,45 @@ workflows:
 
 **Why:** Directory structure provides natural organization and discovery. No need to maintain a separate workflow definition - if the directory exists, the workflow exists.
 
+#### Workflow Output Configuration
+
+CIGen supports flexible output file generation:
+
+**Single file output (default):**
+
+```yaml
+# In root config.yml
+output_path: .circleci # Optional, defaults to .circleci for the CircleCI provider
+output_filename: config.yml # Optional, defaults to config.yml
+```
+
+This generates all workflows in a single `.circleci/config.yml` file.
+
+**Split file output:**
+
+```yaml
+# In workflows/setup/config.yml
+output_filename: config.yml  # CircleCI requires an initial .circleci/config.yml file
+dynamic: false  # Static workflow
+
+# In workflows/test/config.yml
+output_filename: dynamic_config.yml
+dynamic: true   # Dynamic workflow with job skipping
+```
+
+This generates separate files:
+
+- `.circleci/config.yml` - Static setup workflow that CircleCI runs first
+- `.circleci/dynamic_config.yml` - Dynamic workflow with job skipping
+
+**Dynamic workflows:** Setting `dynamic: true` enables intelligent job skipping based on file changes:
+
+- Jobs are marked as successful for specific file checksums
+- Subsequent runs skip unchanged jobs and reuse cached artifacts
+- Configurable cache backend configuration (native CI cache, Redis, S3, etc.)
+
+The default is `dynamic: false`.
+
 ### 6. File Organization
 
 **CIGen:**
@@ -193,7 +240,49 @@ workflows:
 
 **Why:** Clear separation of concerns with optional splitting for complex configurations (similar to Terraform).
 
-### 7. Template Support
+### 7. Reusable Commands
+
+**CIGen:**
+
+```yaml
+# In commands/install_ruby.yml
+steps:
+  - name: Install Ruby dependencies
+    run: |
+      bundle config set frozen 'true'
+      bundle install --jobs 4 --retry 3
+
+# In job file
+steps:
+  - install_ruby
+  - name: Run tests
+    run: bundle exec rspec
+```
+
+**CircleCI:**
+
+```yaml
+commands:
+  install_ruby:
+    steps:
+      - run:
+          name: Install Ruby dependencies
+          command: |
+            bundle config set frozen 'true'
+            bundle install --jobs 4 --retry 3
+
+jobs:
+  test:
+    steps:
+      - install_ruby
+      - run:
+          name: Run tests
+          command: bundle exec rspec
+```
+
+**Why:** Commands are defined as separate files, making them easier to find, share, and maintain. The simpler syntax reduces boilerplate.
+
+### 8. Template Support
 
 **CIGen:**
 
@@ -207,7 +296,43 @@ steps:
 
 **Why:** First-class template support using Jinja2-style syntax (MiniJinja template engine) reduces duplication and enables dynamic configuration.
 
-### 8. Schema Validation
+### 9. Architecture Support
+
+**CIGen:**
+
+```yaml
+# In config.yml
+architectures: ["amd64", "arm64"]
+
+resource_classes:
+  amd64:
+    small: small
+    medium: medium
+    large: large
+  arm64:
+    small: arm.small
+    medium: arm.medium
+    large: arm.large
+
+# In job file
+architectures: ["amd64", "arm64"]  # Run on both
+resource_class: medium  # Automatically maps to correct provider class
+```
+
+**CircleCI:**
+
+```yaml
+# Must manually specify for each job
+jobs:
+  test-amd64:
+    resource_class: medium
+  test-arm64:
+    resource_class: arm.medium
+```
+
+**Why:** CIGen abstracts away provider-specific resource class naming and makes multi-architecture builds simple.
+
+### 10. Schema Validation
 
 **CIGen:**
 
@@ -222,8 +347,12 @@ provider: circleci
 
 When migrating from CircleCI or GitHub Actions:
 
-1. Service containers become first-class definitions
-2. Complex cache logic becomes simple cache declarations
-3. Workflow definitions become directory structures
-4. Repetitive auth configurations become centralized
-5. Verbose step definitions become concise name/run pairs
+1. **Service containers** become first-class definitions
+2. **Cache steps** are replaced with built-in cache definitions:
+   - `restore_cache`/`save_cache` → `cache: gems`
+   - Manual cache key construction → Automatic version detection
+3. **Workflow definitions** become directory structures
+4. **Docker auth** configurations become centralized
+5. **Step definitions** use cleaner name/run syntax
+6. **Commands** move to separate files for better organization
+7. **Multi-architecture** support through simple configuration

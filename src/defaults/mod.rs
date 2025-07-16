@@ -57,6 +57,7 @@ mod tests {
         let user_config = Config {
             provider: "circleci".to_string(),
             output_path: None,
+            output_filename: None,
             version: None,
             anchors: None,
             caches: None,
@@ -69,6 +70,7 @@ mod tests {
             source_file_groups: None,
             vars: None,
             graph: None,
+            dynamic: None,
         };
 
         let merged = merge_with_defaults(user_config);
@@ -105,6 +107,7 @@ mod tests {
         let user_config = Config {
             provider: "circleci".to_string(),
             output_path: None,
+            output_filename: None,
             version: None,
             anchors: None,
             caches: None,
@@ -117,6 +120,7 @@ mod tests {
             source_file_groups: None,
             vars: None,
             graph: None,
+            dynamic: None,
         };
 
         let merged = merge_with_defaults(user_config);
