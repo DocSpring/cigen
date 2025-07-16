@@ -62,9 +62,17 @@ impl ConfigValidator {
         if !errors.is_empty() {
             eprintln!(); // Add newline before first error
             for error in &errors {
+                let error_msg = error.to_string();
                 let instance_path = Self::refine_instance_path(error);
+
+                // Use key span for property-related errors
                 let validation_error =
-                    spanned_validator.create_error(&instance_path, error.to_string());
+                    if error_msg.contains("Additional properties are not allowed") {
+                        spanned_validator.create_error_for_key(&instance_path, error_msg)
+                    } else {
+                        spanned_validator.create_error(&instance_path, error_msg)
+                    };
+
                 eprintln!("{:?}", Report::new(validation_error));
             }
             anyhow::bail!(
@@ -187,9 +195,17 @@ impl ConfigValidator {
         if !errors.is_empty() {
             eprintln!(); // Add newline before first error
             for error in &errors {
+                let error_msg = error.to_string();
                 let instance_path = Self::refine_instance_path(error);
+
+                // Use key span for property-related errors
                 let validation_error =
-                    spanned_validator.create_error(&instance_path, error.to_string());
+                    if error_msg.contains("Additional properties are not allowed") {
+                        spanned_validator.create_error_for_key(&instance_path, error_msg)
+                    } else {
+                        spanned_validator.create_error(&instance_path, error_msg)
+                    };
+
                 eprintln!("{:?}", Report::new(validation_error));
             }
             anyhow::bail!(

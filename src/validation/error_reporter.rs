@@ -23,6 +23,7 @@ pub struct ValidationError {
 
 pub struct SpannedValidator {
     spans: HashMap<String, SpanInfo>,
+    key_spans: HashMap<String, SpanInfo>, // Track key spans separately
     json_value: serde_json::Value,
     source: String,
     file_path: String,
@@ -38,10 +39,13 @@ impl SpannedValidator {
 
         // Strip spans and build lookup map
         let mut spans = HashMap::new();
-        let json_value = Self::strip_spans_and_index(&spanned_yaml, String::new(), &mut spans);
+        let mut key_spans = HashMap::new();
+        let json_value =
+            Self::strip_spans_and_index(&spanned_yaml, String::new(), &mut spans, &mut key_spans);
 
         Ok(Self {
             spans,
+            key_spans,
             json_value,
             source,
             file_path: file_path_str,
@@ -73,10 +77,33 @@ impl SpannedValidator {
         }
     }
 
+    pub fn create_error_for_key(&self, instance_path: &str, message: String) -> ValidationError {
+        let pointer_str = instance_path;
+
+        // For key errors, look up key span first, then fall back to value span
+        let span_info = self
+            .key_spans
+            .get(pointer_str)
+            .or_else(|| self.spans.get(pointer_str))
+            .or_else(|| self.spans.get(""))
+            .cloned()
+            .unwrap_or(SpanInfo { start: 0, end: 0 });
+
+        ValidationError {
+            source_code: crate::error_utils::create_named_source(
+                Path::new(&self.file_path),
+                self.source.clone(),
+            ),
+            span: SourceSpan::new(span_info.start.into(), span_info.end - span_info.start),
+            message,
+        }
+    }
+
     fn strip_spans_and_index(
         spanned: &Spanned<YamlValue>,
         path: String,
         spans: &mut HashMap<String, SpanInfo>,
+        key_spans: &mut HashMap<String, SpanInfo>,
     ) -> serde_json::Value {
         // Record span for this path
         let span = spanned.span();
@@ -115,7 +142,7 @@ impl SpannedValidator {
                         } else {
                             format!("{path}/{i}")
                         };
-                        Self::strip_spans_and_index(item, item_path, spans)
+                        Self::strip_spans_and_index(item, item_path, spans, key_spans)
                     })
                     .collect();
                 serde_json::Value::Array(arr)
@@ -129,14 +156,30 @@ impl SpannedValidator {
                         } else {
                             format!("{path}/{key}")
                         };
-                        let value = Self::strip_spans_and_index(value_spanned, value_path, spans);
+
+                        // Record the key span for this path
+                        let key_span = key_spanned.span();
+                        key_spans.insert(
+                            value_path.clone(),
+                            SpanInfo {
+                                start: key_span.start.unwrap_or_default().byte_index,
+                                end: key_span.end.unwrap_or_default().byte_index,
+                            },
+                        );
+
+                        let value = Self::strip_spans_and_index(
+                            value_spanned,
+                            value_path,
+                            spans,
+                            key_spans,
+                        );
                         obj.insert(key.clone(), value);
                     }
                 }
                 serde_json::Value::Object(obj)
             }
             YamlValue::Tagged(tagged_value) => {
-                Self::strip_spans_and_index(&tagged_value.value, path, spans)
+                Self::strip_spans_and_index(&tagged_value.value, path, spans, key_spans)
             }
         }
     }
