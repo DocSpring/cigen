@@ -24,11 +24,9 @@ fn test_simple_job_conversion() {
             services: None,
             steps: Some(vec![
                 Step::Command("echo 'Hello World'".to_string()),
-                Step::Complex {
+                Step::Run {
                     name: Some("Run tests".to_string()),
-                    run: Some("bundle exec rspec".to_string()),
-                    store_test_results: None,
-                    store_artifacts: None,
+                    run: "bundle exec rspec".to_string(),
                 },
             ]),
         },
@@ -41,6 +39,9 @@ fn test_simple_job_conversion() {
     let output_path = temp_dir.path();
 
     let result = provider.generate_workflow(&config, "test_workflow", &jobs, output_path);
+    if let Err(e) = &result {
+        eprintln!("Error: {e}");
+    }
     assert!(result.is_ok());
 
     // Read and parse the generated YAML file
@@ -58,8 +59,8 @@ fn test_simple_job_conversion() {
     assert!(job.docker.is_some());
     assert_eq!(job.resource_class, Some("medium".to_string()));
 
-    // Should have checkout + 2 steps
-    assert_eq!(job.steps.len(), 3);
+    // Should have 2 steps (no automatic checkout)
+    assert_eq!(job.steps.len(), 2);
 }
 
 #[test]

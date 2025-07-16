@@ -167,6 +167,30 @@ Small, verifiable chunks prevent errors and ensure steady progress.
 
 This ensures code quality and prevents accumulating technical debt.
 
+## Error Handling
+
+**CRITICAL**: NEVER silently fail or provide dummy/placeholder behavior:
+
+1. **NO DEFAULT VALUES**: Never return placeholder text like "No command specified" or empty defaults when data is missing
+2. **FAIL FAST**: Use `bail!()` or `panic!()` with descriptive error messages when encountering invalid states
+3. **EXPLICIT ERRORS**: Always provide clear, actionable error messages that explain what went wrong
+4. **VALIDATE EARLY**: Check preconditions and validate data as early as possible
+5. **PRESERVE UNKNOWN DATA**: When encountering unknown configurations or step types, preserve them as-is rather than dropping them or converting to defaults
+
+Bad example:
+
+```rust
+// NEVER DO THIS
+command: "echo 'No command specified'".to_string(),
+```
+
+Good example:
+
+```rust
+// DO THIS INSTEAD
+miette::bail!("Invalid step configuration: missing required 'command' field")
+```
+
 ## Use Our Own Tool
 
 The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/cigen.yml` file.

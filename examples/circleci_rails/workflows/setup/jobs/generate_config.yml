@@ -11,7 +11,7 @@ steps:
         --output .circleci/dynamic_config.yml
 
   - continue_circleci_pipeline:
-    config_path: .circleci/dynamic_config.yml
+      config_path: .circleci/dynamic_config.yml
 
   # - run:
   #     name: Continue Pipeline

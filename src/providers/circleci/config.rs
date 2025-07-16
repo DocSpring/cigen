@@ -139,47 +139,66 @@ pub struct CircleCIJob {
     pub steps: Vec<CircleCIStep>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum CircleCIStep {
-    Run(CircleCIRunStep),
-    Checkout {
-        checkout: Option<HashMap<String, serde_yaml::Value>>,
-    },
-    SetupRemoteDocker {
-        setup_remote_docker: Option<CircleCISetupRemoteDocker>,
-    },
-    SaveCache {
-        save_cache: CircleCISaveCache,
-    },
-    RestoreCache {
-        restore_cache: CircleCIRestoreCache,
-    },
-    StoreArtifacts {
-        store_artifacts: CircleCIStoreArtifacts,
-    },
-    StoreTestResults {
-        store_test_results: CircleCIStoreTestResults,
-    },
-    PersistToWorkspace {
-        persist_to_workspace: CircleCIPersistToWorkspace,
-    },
-    AttachWorkspace {
-        attach_workspace: CircleCIAttachWorkspace,
-    },
-    AddSSHKeys {
-        add_ssh_keys: Option<CircleCIAddSSHKeys>,
-    },
-    When {
-        when: CircleCIWhenStep,
-    },
-    Unless {
-        unless: CircleCIUnlessStep,
-    },
-    Command {
-        #[serde(flatten)]
-        command: HashMap<String, serde_yaml::Value>,
-    },
+#[derive(Debug, Clone)]
+pub struct CircleCIStep {
+    // The raw YAML value of the step
+    pub raw: serde_yaml::Value,
+
+    // Our detected step type (not serialized)
+    pub step_type: Option<String>,
+}
+
+impl Serialize for CircleCIStep {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Just serialize the raw value directly
+        self.raw.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for CircleCIStep {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // Deserialize as raw value and then detect step type
+        let raw = serde_yaml::Value::deserialize(deserializer)?;
+        Ok(CircleCIStep::new(raw))
+    }
+}
+
+impl CircleCIStep {
+    pub fn new(raw: serde_yaml::Value) -> Self {
+        let step_type = Self::detect_step_type(&raw);
+        Self { raw, step_type }
+    }
+
+    fn detect_step_type(value: &serde_yaml::Value) -> Option<String> {
+        match value {
+            serde_yaml::Value::String(_) => Some("run".to_string()),
+            serde_yaml::Value::Mapping(map) => {
+                if map.len() == 1 {
+                    if let Some((key, _)) = map.iter().next() {
+                        if let Some(key_str) = key.as_str() {
+                            return Some(key_str.to_string());
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    pub fn is_builtin_step(&self) -> bool {
+        if let Some(step_type) = &self.step_type {
+            crate::providers::circleci::schema::is_builtin_step(step_type)
+        } else {
+            false
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

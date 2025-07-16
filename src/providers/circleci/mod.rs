@@ -1,5 +1,6 @@
 mod config;
 mod generator;
+mod schema;
 
 #[cfg(test)]
 mod tests;

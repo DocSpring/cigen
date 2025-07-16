@@ -2,9 +2,8 @@ use crate::models::config::ServiceEnvironment;
 use crate::models::job::Step;
 use crate::models::{Config, Job};
 use crate::providers::circleci::config::{
-    CircleCIConfig, CircleCIDockerAuth, CircleCIDockerImage, CircleCIJob, CircleCIRunDetails,
-    CircleCIRunStep, CircleCIStep, CircleCIWorkflow, CircleCIWorkflowJob,
-    CircleCIWorkflowJobDetails,
+    CircleCIConfig, CircleCIDockerAuth, CircleCIDockerImage, CircleCIJob, CircleCIStep,
+    CircleCIWorkflow, CircleCIWorkflowJob, CircleCIWorkflowJobDetails,
 };
 use miette::{IntoDiagnostic, Result};
 use std::collections::HashMap;
@@ -185,11 +184,6 @@ impl CircleCIGenerator {
 
         // Convert steps
         if let Some(steps) = &job.steps {
-            // Add checkout step first
-            circleci_job
-                .steps
-                .push(CircleCIStep::Checkout { checkout: None });
-
             // TODO: Cache restore steps will be handled by the caching module
 
             // Convert regular steps
@@ -291,58 +285,45 @@ impl CircleCIGenerator {
 
     fn convert_step(&self, step: &Step) -> Result<CircleCIStep> {
         match step {
-            Step::Command(cmd) => Ok(CircleCIStep::Run(CircleCIRunStep::Simple {
-                run: cmd.clone(),
-            })),
-            Step::Complex {
-                name,
-                run,
-                store_test_results,
-                store_artifacts,
-            } => {
-                if let Some(run_cmd) = run {
-                    Ok(CircleCIStep::Run(CircleCIRunStep::Detailed {
-                        run: CircleCIRunDetails {
-                            name: name.clone(),
-                            command: run_cmd.to_string(),
-                            shell: None,
-                            environment: None,
-                            background: None,
-                            working_directory: None,
-                            no_output_timeout: None,
-                            when: None,
-                        },
-                    }))
-                } else if let Some(test_results) = store_test_results {
-                    Ok(CircleCIStep::StoreTestResults {
-                        store_test_results:
-                            crate::providers::circleci::config::CircleCIStoreTestResults {
-                                path: test_results.path.clone(),
-                            },
-                    })
-                } else if let Some(artifacts) = store_artifacts {
-                    Ok(CircleCIStep::StoreArtifacts {
-                        store_artifacts:
-                            crate::providers::circleci::config::CircleCIStoreArtifacts {
-                                path: artifacts.path.clone(),
-                                destination: None,
-                            },
-                    })
-                } else {
-                    // Default to a named run step
-                    Ok(CircleCIStep::Run(CircleCIRunStep::Detailed {
-                        run: CircleCIRunDetails {
-                            name: name.clone(),
-                            command: "echo 'No command specified'".to_string(),
-                            shell: None,
-                            environment: None,
-                            background: None,
-                            working_directory: None,
-                            no_output_timeout: None,
-                            when: None,
-                        },
-                    }))
+            Step::Command(cmd) => {
+                // Convert simple string command to YAML value
+                let yaml_value = serde_yaml::Value::String(cmd.clone());
+                Ok(CircleCIStep::new(yaml_value))
+            }
+            Step::Run { name, run } => {
+                // Convert run step to YAML mapping
+                let mut run_map = serde_yaml::Mapping::new();
+                run_map.insert(serde_yaml::Value::String("run".to_string()), {
+                    let mut details = serde_yaml::Mapping::new();
+                    details.insert(
+                        serde_yaml::Value::String("command".to_string()),
+                        serde_yaml::Value::String(run.clone()),
+                    );
+                    if let Some(name) = name {
+                        details.insert(
+                            serde_yaml::Value::String("name".to_string()),
+                            serde_yaml::Value::String(name.clone()),
+                        );
+                    }
+                    serde_yaml::Value::Mapping(details)
+                });
+                let yaml_value = serde_yaml::Value::Mapping(run_map);
+                Ok(CircleCIStep::new(yaml_value))
+            }
+            Step::Other(value) => {
+                // Create a CircleCIStep with our own detection logic
+                let step = CircleCIStep::new(value.clone());
+
+                // Log warning for unknown step types
+                if let Some(step_type) = &step.step_type {
+                    if !step.is_builtin_step() {
+                        eprintln!(
+                            "Warning: Unknown step type '{step_type}' - passing through as-is"
+                        );
+                    }
                 }
+
+                Ok(step)
             }
         }
     }
