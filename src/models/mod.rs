@@ -6,8 +6,8 @@ pub mod job;
 pub use command::Command;
 pub use config::{
     Cache, CacheBackend, CacheBackendConfig, CacheDefinition, Config, DefaultCacheConfig,
-    DockerAuth, DockerConfig, DockerImageConfig, OutputConfig, PathOrDetect, Service,
-    VersionSource,
+    DockerAuth, DockerConfig, DockerImageConfig, OutputConfig, ParameterConfig, PathOrDetect,
+    Service, VersionSource,
 };
 pub use job::Job;
 

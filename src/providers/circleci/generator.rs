@@ -69,6 +69,16 @@ impl CircleCIGenerator {
 
         let mut circleci_config = CircleCIConfig::default();
 
+        // Handle setup workflows (either explicitly set or dynamic workflows)
+        if config.setup.unwrap_or(false) || config.dynamic.unwrap_or(false) {
+            circleci_config.setup = Some(true);
+        }
+
+        // Add pipeline parameters if specified
+        if let Some(parameters) = &config.parameters {
+            circleci_config.parameters = Some(self.convert_parameters(parameters)?);
+        }
+
         // Process all workflows
         for (workflow_name, jobs) in workflows {
             let workflow_config = self.build_workflow(workflow_name, jobs)?;
@@ -192,6 +202,11 @@ impl CircleCIGenerator {
         // Handle setup workflows (either explicitly set or dynamic workflows)
         if config.setup.unwrap_or(false) || config.dynamic.unwrap_or(false) {
             circleci_config.setup = Some(true);
+        }
+
+        // Add pipeline parameters if specified
+        if let Some(parameters) = &config.parameters {
+            circleci_config.parameters = Some(self.convert_parameters(parameters)?);
         }
 
         // Scan for template command usage and add them to commands section
@@ -589,6 +604,35 @@ impl CircleCIGenerator {
         }
 
         used_commands
+    }
+
+    fn convert_parameters(
+        &self,
+        parameters: &HashMap<String, crate::models::config::ParameterConfig>,
+    ) -> Result<HashMap<String, crate::providers::circleci::config::CircleCIParameter>> {
+        let mut circleci_params = HashMap::new();
+
+        for (name, param) in parameters {
+            let circleci_param = match param.param_type.as_str() {
+                "boolean" => crate::providers::circleci::config::CircleCIParameter::Boolean {
+                    param_type: param.param_type.clone(),
+                    default: param.default.as_ref().and_then(|v| v.as_bool()),
+                    description: param.description.clone(),
+                },
+                _ => crate::providers::circleci::config::CircleCIParameter::String {
+                    param_type: param.param_type.clone(),
+                    default: param
+                        .default
+                        .as_ref()
+                        .and_then(|v| v.as_str().map(String::from)),
+                    description: param.description.clone(),
+                },
+            };
+
+            circleci_params.insert(name.clone(), circleci_param);
+        }
+
+        Ok(circleci_params)
     }
 
     fn convert_user_command(&self, user_cmd: &crate::models::Command) -> Result<CircleCICommand> {

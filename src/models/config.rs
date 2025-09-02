@@ -54,6 +54,9 @@ pub struct Config {
     pub setup: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<HashMap<String, ParameterConfig>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<Vec<OutputConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -64,6 +67,19 @@ pub struct Config {
 pub struct OutputConfig {
     pub template: String,
     pub output: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParameterConfig {
+    /// Parameter type (boolean, string, integer, etc.)
+    #[serde(rename = "type")]
+    pub param_type: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -178,6 +194,7 @@ impl Default for Config {
             graph: None,
             dynamic: None,
             setup: None,
+            parameters: None,
             outputs: None,
             docker_images: None,
         }

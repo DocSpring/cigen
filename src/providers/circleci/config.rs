@@ -10,6 +10,9 @@ pub struct CircleCIConfig {
     pub setup: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<HashMap<String, CircleCIParameter>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub orbs: Option<HashMap<String, String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -409,6 +412,7 @@ impl Default for CircleCIConfig {
         Self {
             version: 2.1,
             setup: None,
+            parameters: None,
             orbs: None,
             executors: None,
             commands: None,

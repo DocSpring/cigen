@@ -521,3 +521,129 @@ fn test_architecture_environment_variables() {
     let docker_images = circleci_job.docker.unwrap();
     assert_eq!(docker_images[0].image, "cimg/ruby:3.3.5-arm64");
 }
+
+#[test]
+fn test_dynamic_config_with_parameters() {
+    use crate::models::ParameterConfig;
+    use serde_json::Value as JsonValue;
+
+    // Create config with dynamic setup and parameters
+    let mut parameters = HashMap::new();
+    parameters.insert(
+        "run_tests".to_string(),
+        ParameterConfig {
+            param_type: "boolean".to_string(),
+            default: Some(JsonValue::Bool(true)),
+            description: Some("Whether to run tests".to_string()),
+        },
+    );
+    parameters.insert(
+        "environment".to_string(),
+        ParameterConfig {
+            param_type: "string".to_string(),
+            default: Some(JsonValue::String("production".to_string())),
+            description: Some("Target environment".to_string()),
+        },
+    );
+
+    let config = Config {
+        setup: Some(true),
+        parameters: Some(parameters),
+        ..Default::default()
+    };
+
+    let mut jobs = HashMap::new();
+    jobs.insert(
+        "build".to_string(),
+        Job {
+            image: "cimg/ruby:3.3.5".to_string(),
+            architectures: None,
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            requires: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            steps: None,
+        },
+    );
+
+    let generator = generator::CircleCIGenerator::new();
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "setup", &jobs, &commands);
+    assert!(result.is_ok());
+
+    let circleci_config = result.unwrap();
+
+    // Check that setup is enabled
+    assert_eq!(circleci_config.setup, Some(true));
+
+    // Check parameters are converted correctly
+    let params = circleci_config.parameters.unwrap();
+    assert!(params.contains_key("run_tests"));
+    assert!(params.contains_key("environment"));
+
+    // Check boolean parameter
+    if let config::CircleCIParameter::Boolean {
+        param_type,
+        default,
+        description,
+    } = &params["run_tests"]
+    {
+        assert_eq!(param_type, "boolean");
+        assert_eq!(default, &Some(true));
+        assert_eq!(description, &Some("Whether to run tests".to_string()));
+    } else {
+        panic!("Expected boolean parameter");
+    }
+
+    // Check string parameter
+    if let config::CircleCIParameter::String {
+        param_type,
+        default,
+        description,
+    } = &params["environment"]
+    {
+        assert_eq!(param_type, "string");
+        assert_eq!(default, &Some("production".to_string()));
+        assert_eq!(description, &Some("Target environment".to_string()));
+    } else {
+        panic!("Expected string parameter");
+    }
+}
+
+#[test]
+fn test_dynamic_flag_enables_setup() {
+    let config = Config {
+        dynamic: Some(true),
+        ..Default::default()
+    };
+
+    let mut jobs = HashMap::new();
+    jobs.insert(
+        "build".to_string(),
+        Job {
+            image: "cimg/ruby:3.3.5".to_string(),
+            architectures: None,
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            requires: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            steps: None,
+        },
+    );
+
+    let generator = generator::CircleCIGenerator::new();
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "setup", &jobs, &commands);
+    assert!(result.is_ok());
+
+    let circleci_config = result.unwrap();
+
+    // Check that setup is enabled when dynamic is true
+    assert_eq!(circleci_config.setup, Some(true));
+}
