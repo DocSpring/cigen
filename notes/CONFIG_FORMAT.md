@@ -10,6 +10,7 @@ Our format follows these principles:
 - **DRY (Don't Repeat Yourself)**: Reduce duplication through better abstractions
 - **Least surprise**: Support multiple syntaxes where it makes sense (inspired by Ruby/Rails)
 - **Provider-agnostic**: Avoid leaking provider-specific concepts into the configuration
+- **Convention over Configuration**: Smart defaults based on common patterns
 
 ## Key Differences
 
@@ -398,6 +399,56 @@ provider: circleci
 
 **Why:** Built-in schema validation ensures configurations are correct before generation, providing immediate feedback in editors like VS Code and Cursor.
 
+## Multi-Output Support
+
+CIGen can generate multiple output files from a single configuration, useful for CircleCI's dynamic configuration pattern:
+
+### Configuration
+
+```yaml
+# .cigen/cigen.yml
+provider: circleci
+outputs:
+  - template: setup_workflow.yml.j2
+    output: .circleci/config.yml
+    description: 'Setup workflow with dynamic configuration'
+  - template: main_workflow.yml.j2
+    output: .circleci/test_and_deploy_config.yml
+    description: 'Main test and deployment workflow'
+  - template: scheduled_updates.yml.j2
+    output: .circleci/package_updates_config.yml
+    description: 'Scheduled package update checks'
+```
+
+### CLI Usage
+
+```bash
+# Generate all outputs
+cigen generate
+
+# Generate specific output
+cigen generate --output .circleci/config.yml
+
+# List available outputs
+cigen list-outputs
+```
+
+### Template Organization
+
+Templates are stored in `.cigen/templates/` and can include partials:
+
+```
+.cigen/
+├── cigen.yml
+├── templates/
+│   ├── setup_workflow.yml.j2
+│   ├── main_workflow.yml.j2
+│   ├── scheduled_updates.yml.j2
+│   └── partials/
+│       ├── _commands.yml.j2
+│       └── _docker_images.yml.j2
+```
+
 ## Migration
 
 When migrating from CircleCI or GitHub Actions:
@@ -411,3 +462,4 @@ When migrating from CircleCI or GitHub Actions:
 5. **Step definitions** use cleaner name/run syntax
 6. **Commands** move to separate files for better organization
 7. **Multi-architecture** support through simple configuration
+8. **Multiple config files** are generated from templates with shared partials
