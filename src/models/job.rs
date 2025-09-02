@@ -142,24 +142,8 @@ pub enum CacheRestore {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum Step {
-    // Simple string command (gets converted to run step)
-    Command(String),
-
-    // Named run step with optional fields
-    Run {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        run: String,
-    },
-
-    // Any other step type - preserved as-is
-    // This handles checkout, save_cache, restore_cache, persist_to_workspace,
-    // attach_workspace, add_ssh_keys, setup_remote_docker, when, unless,
-    // continue_circleci_pipeline, orb commands, etc.
-    Other(serde_yaml::Value),
-}
+#[serde(transparent)]
+pub struct Step(pub serde_yaml::Value);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreTestResults {

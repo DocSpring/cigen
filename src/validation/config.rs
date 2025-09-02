@@ -29,15 +29,15 @@ impl ConfigValidator {
         // For "additional properties" errors, extract the property name and append to path
         if error_msg.contains("Additional properties are not allowed") {
             // Extract property names from error message like "('asdf' was unexpected)"
-            if let Some(start) = error_msg.find("('") {
-                if let Some(end) = error_msg[start + 2..].find("'") {
-                    let prop_name = &error_msg[start + 2..start + 2 + end];
-                    return if error.instance_path.to_string().is_empty() {
-                        format!("/{prop_name}")
-                    } else {
-                        format!("{}/{prop_name}", error.instance_path)
-                    };
-                }
+            if let Some(start) = error_msg.find("('")
+                && let Some(end) = error_msg[start + 2..].find("'")
+            {
+                let prop_name = &error_msg[start + 2..start + 2 + end];
+                return if error.instance_path.to_string().is_empty() {
+                    format!("/{prop_name}")
+                } else {
+                    format!("{}/{prop_name}", error.instance_path)
+                };
             }
         }
 

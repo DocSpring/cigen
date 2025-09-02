@@ -32,36 +32,33 @@ impl<'a> CacheValidator<'a> {
                     CacheRestore::Complex { name, .. } => name,
                 };
 
-                if !self.all_defined_caches.contains(cache_name) {
-                    if let Some(span) = span_finder.find_cache_reference_span(cache_name) {
-                        let err = DataValidationError::new(
-                            file_path,
-                            content.to_string(),
-                            span,
-                            format!(
-                                "Unknown cache '{}'. Defined caches: {}",
-                                cache_name,
-                                if self.all_defined_caches.is_empty() {
-                                    "none defined".to_string()
-                                } else {
-                                    let mut cache_list: Vec<_> = self
-                                        .all_defined_caches
-                                        .iter()
-                                        .map(|s| s.as_str())
-                                        .collect();
-                                    cache_list.sort();
-                                    cache_list
-                                        .iter()
-                                        .map(|s| format!("'{s}'"))
-                                        .collect::<Vec<_>>()
-                                        .join(", ")
-                                }
-                            ),
-                        );
-                        eprintln!();
-                        eprintln!("{:?}", miette::Report::new(err));
-                        return Err(anyhow::anyhow!("Data validation failed"));
-                    }
+                if !self.all_defined_caches.contains(cache_name)
+                    && let Some(span) = span_finder.find_cache_reference_span(cache_name)
+                {
+                    let err = DataValidationError::new(
+                        file_path,
+                        content.to_string(),
+                        span,
+                        format!(
+                            "Unknown cache '{}'. Defined caches: {}",
+                            cache_name,
+                            if self.all_defined_caches.is_empty() {
+                                "none defined".to_string()
+                            } else {
+                                let mut cache_list: Vec<_> =
+                                    self.all_defined_caches.iter().map(|s| s.as_str()).collect();
+                                cache_list.sort();
+                                cache_list
+                                    .iter()
+                                    .map(|s| format!("'{s}'"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            }
+                        ),
+                    );
+                    eprintln!();
+                    eprintln!("{:?}", miette::Report::new(err));
+                    return Err(anyhow::anyhow!("Data validation failed"));
                 }
             }
         }

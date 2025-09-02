@@ -20,7 +20,7 @@ use self::job_loader::JobLoader;
 use self::span_tracker::SpanTracker;
 use crate::models::{Command, Config, Job};
 use crate::templating::TemplateEngine;
-use crate::validation::{Validator, data::ReferenceValidator};
+use crate::validation::{Validator, data::ReferenceValidator, steps::StepValidator};
 
 /// The fully loaded and resolved configuration system
 pub struct LoadedConfig {
@@ -96,6 +96,32 @@ impl ConfigLoader {
         let reference_validator = ReferenceValidator::new();
         reference_validator.validate_all_references(&config, &jobs, &span_tracker)?;
         tracing::info!("✓ All data references validated successfully");
+
+        // 8. Validate step references
+        tracing::debug!("Validating step references...");
+        let step_validator = StepValidator::new();
+
+        // Group jobs by workflow for validation
+        let mut workflows: HashMap<String, HashMap<String, Job>> = HashMap::new();
+        for (job_path, job) in &jobs {
+            // Extract workflow name from job path (e.g., "test/jobs/rspec" -> "test")
+            if let Some(workflow_name) = job_path.split('/').next() {
+                workflows
+                    .entry(workflow_name.to_string())
+                    .or_default()
+                    .insert(job_path.clone(), job.clone());
+            }
+        }
+
+        // Validate steps for each workflow with the appropriate provider
+        let provider = &config.provider;
+        for (workflow_name, workflow_jobs) in &workflows {
+            tracing::debug!("  Validating steps in workflow '{}'", workflow_name);
+            step_validator
+                .validate_step_references(workflow_jobs, &commands, provider)
+                .map_err(|e| anyhow::anyhow!("{}", e))?;
+        }
+        tracing::info!("✓ All step references validated successfully");
 
         Ok(LoadedConfig {
             config,

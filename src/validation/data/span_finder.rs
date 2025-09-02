@@ -88,41 +88,37 @@ impl<'a> SpanFinder<'a> {
     #[allow(dead_code)]
     pub fn find_cache_reference_span(&self, cache_name: &str) -> Option<SourceSpan> {
         // Look in restore_cache array
-        if let Some(restore_cache) = self.find_field_value(&["restore_cache"]) {
-            if let YamlValue::Sequence(seq) = restore_cache.as_ref() {
-                for item in seq {
-                    match item.as_ref() {
-                        // Simple string reference
-                        YamlValue::String(s) if s == cache_name => {
-                            let span = item.span();
+        if let Some(restore_cache) = self.find_field_value(&["restore_cache"])
+            && let YamlValue::Sequence(seq) = restore_cache.as_ref()
+        {
+            for item in seq {
+                match item.as_ref() {
+                    // Simple string reference
+                    YamlValue::String(s) if s == cache_name => {
+                        let span = item.span();
+                        return Some(SourceSpan::new(
+                            span.start.unwrap_or_default().byte_index.into(),
+                            span.end.unwrap_or_default().byte_index
+                                - span.start.unwrap_or_default().byte_index,
+                        ));
+                    }
+                    // Complex object reference
+                    YamlValue::Mapping(map) => {
+                        if let Some((_, name_value)) = map.iter().find(|(k, _)| match k.as_ref() {
+                            YamlValue::String(s) => s == "name",
+                            _ => false,
+                        }) && let YamlValue::String(s) = name_value.as_ref()
+                            && s == cache_name
+                        {
+                            let span = name_value.span();
                             return Some(SourceSpan::new(
                                 span.start.unwrap_or_default().byte_index.into(),
                                 span.end.unwrap_or_default().byte_index
                                     - span.start.unwrap_or_default().byte_index,
                             ));
                         }
-                        // Complex object reference
-                        YamlValue::Mapping(map) => {
-                            if let Some((_, name_value)) =
-                                map.iter().find(|(k, _)| match k.as_ref() {
-                                    YamlValue::String(s) => s == "name",
-                                    _ => false,
-                                })
-                            {
-                                if let YamlValue::String(s) = name_value.as_ref() {
-                                    if s == cache_name {
-                                        let span = name_value.span();
-                                        return Some(SourceSpan::new(
-                                            span.start.unwrap_or_default().byte_index.into(),
-                                            span.end.unwrap_or_default().byte_index
-                                                - span.start.unwrap_or_default().byte_index,
-                                        ));
-                                    }
-                                }
-                            }
-                        }
-                        _ => continue,
                     }
+                    _ => continue,
                 }
             }
         }

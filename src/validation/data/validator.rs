@@ -60,38 +60,38 @@ impl DataValidator {
 
         // Validate docker auth references
         if let Some(docker) = &config.docker {
-            if let (Some(default_auth), Some(auth_map)) = (&docker.default_auth, &docker.auth) {
-                if !auth_map.contains_key(default_auth) {
-                    // Find span for default_auth field
-                    if let Some(span) = span_finder.find_field_span(&["docker", "default_auth"]) {
-                        return Err(DataValidationError::new(
-                            &self.file_path,
-                            self.file_content.clone(),
-                            span,
-                            format!(
-                                "Unknown docker auth '{}'. Available auth configurations: {}",
-                                default_auth,
-                                auth_map
-                                    .keys()
-                                    .map(|k| format!("'{k}'"))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            ),
-                        )
-                        .into());
-                    }
+            if let (Some(default_auth), Some(auth_map)) = (&docker.default_auth, &docker.auth)
+                && !auth_map.contains_key(default_auth)
+            {
+                // Find span for default_auth field
+                if let Some(span) = span_finder.find_field_span(&["docker", "default_auth"]) {
+                    return Err(DataValidationError::new(
+                        &self.file_path,
+                        self.file_content.clone(),
+                        span,
+                        format!(
+                            "Unknown docker auth '{}'. Available auth configurations: {}",
+                            default_auth,
+                            auth_map
+                                .keys()
+                                .map(|k| format!("'{k}'"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                    )
+                    .into());
                 }
             }
 
             // Validate service auth references
             if let (Some(services), Some(auth_map)) = (&config.services, &docker.auth) {
                 for (service_name, service) in services {
-                    if let Some(auth_ref) = &service.auth {
-                        if !auth_map.contains_key(auth_ref) {
-                            if let Some(span) =
-                                span_finder.find_field_span(&["services", service_name, "auth"])
-                            {
-                                return Err(DataValidationError::new(
+                    if let Some(auth_ref) = &service.auth
+                        && !auth_map.contains_key(auth_ref)
+                        && let Some(span) =
+                            span_finder.find_field_span(&["services", service_name, "auth"])
+                    {
+                        return Err(DataValidationError::new(
                                     &self.file_path,
                                     self.file_content.clone(),
                                     span,
@@ -102,8 +102,6 @@ impl DataValidator {
                                         auth_map.keys().map(|k| format!("'{k}'")).collect::<Vec<_>>().join(", ")
                                     ),
                                 ).into());
-                            }
-                        }
                     }
                 }
             }
@@ -126,83 +124,82 @@ impl DataValidator {
 
         // Validate service references
         for service_ref in job.service_references() {
-            if !available_services.contains(&service_ref) {
-                if let Some(span) = span_finder.find_array_item_span(&["services"], service_ref) {
-                    return Err(DataValidationError::new(
-                        &self.file_path,
-                        self.file_content.clone(),
-                        span,
-                        format!(
-                            "Unknown service '{}'. Available services: {}",
-                            service_ref,
-                            if available_services.is_empty() {
-                                "none defined".to_string()
-                            } else {
-                                available_services
-                                    .iter()
-                                    .map(|s| format!("'{s}'"))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            }
-                        ),
-                    )
-                    .into());
-                }
+            if !available_services.contains(&service_ref)
+                && let Some(span) = span_finder.find_array_item_span(&["services"], service_ref)
+            {
+                return Err(DataValidationError::new(
+                    &self.file_path,
+                    self.file_content.clone(),
+                    span,
+                    format!(
+                        "Unknown service '{}'. Available services: {}",
+                        service_ref,
+                        if available_services.is_empty() {
+                            "none defined".to_string()
+                        } else {
+                            available_services
+                                .iter()
+                                .map(|s| format!("'{s}'"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        }
+                    ),
+                )
+                .into());
             }
         }
 
         // Validate cache references
         for cache_ref in job.cache_references() {
-            if !available_cache_backends.contains(&cache_ref) {
-                if let Some(span) = span_finder.find_cache_reference_span(cache_ref) {
-                    return Err(DataValidationError::new(
-                        &self.file_path,
-                        self.file_content.clone(),
-                        span,
-                        format!(
-                            "Unknown cache '{}'. Available cache backends: {}",
-                            cache_ref,
-                            if available_cache_backends.is_empty() {
-                                "none defined".to_string()
-                            } else {
-                                available_cache_backends
-                                    .iter()
-                                    .map(|s| format!("'{s}'"))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            }
-                        ),
-                    )
-                    .into());
-                }
+            if !available_cache_backends.contains(&cache_ref)
+                && let Some(span) = span_finder.find_cache_reference_span(cache_ref)
+            {
+                return Err(DataValidationError::new(
+                    &self.file_path,
+                    self.file_content.clone(),
+                    span,
+                    format!(
+                        "Unknown cache '{}'. Available cache backends: {}",
+                        cache_ref,
+                        if available_cache_backends.is_empty() {
+                            "none defined".to_string()
+                        } else {
+                            available_cache_backends
+                                .iter()
+                                .map(|s| format!("'{s}'"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        }
+                    ),
+                )
+                .into());
             }
         }
 
         // Validate source file group reference
-        if let Some(source_files) = &job.source_files {
-            if !available_source_groups.contains(&source_files) {
-                if let Some(span) = span_finder.find_field_span(&["source_files"]) {
-                    return Err(DataValidationError::new(
-                        &self.file_path,
-                        self.file_content.clone(),
-                        span,
-                        format!(
-                            "Unknown source file group '{}'. Available groups: {}",
-                            source_files,
-                            if available_source_groups.is_empty() {
-                                "none defined".to_string()
-                            } else {
-                                available_source_groups
-                                    .iter()
-                                    .map(|s| format!("'{s}'"))
-                                    .collect::<Vec<_>>()
-                                    .join(", ")
-                            }
-                        ),
-                    )
-                    .into());
-                }
-            }
+        if let Some(source_files) = &job.source_files
+            && !available_source_groups.contains(&source_files)
+            && let Some(span) = span_finder.find_field_span(&["source_files"])
+        {
+            return Err(DataValidationError::new(
+                &self.file_path,
+                self.file_content.clone(),
+                span,
+                format!(
+                    "Unknown source file group '{}'. Available groups: {}",
+                    source_files,
+                    if available_source_groups.is_empty() {
+                        "none defined".to_string()
+                    } else {
+                        available_source_groups
+                            .iter()
+                            .map(|s| format!("'{s}'"))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                ),
+            )
+            .into());
         }
 
         Ok(())

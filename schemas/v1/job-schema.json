@@ -166,41 +166,72 @@
         "oneOf": [
           {
             "type": "string",
-            "description": "Reference to a command template"
+            "description": "Reference to a command"
           },
           {
             "type": "object",
+            "description": "Step with 'run' command",
             "properties": {
-              "name": {
-                "type": "string",
-                "description": "Step name"
-              },
               "run": {
-                "type": "string",
-                "description": "Shell command to execute"
-              },
-              "store_test_results": {
-                "type": "object",
-                "properties": {
-                  "path": {
+                "oneOf": [
+                  {
                     "type": "string",
-                    "description": "Path to test results"
-                  }
-                }
-              },
-              "store_artifacts": {
-                "type": "object",
-                "properties": {
-                  "path": {
-                    "type": "string",
-                    "description": "Path to artifacts to store"
+                    "description": "Simple command string"
                   },
-                  "destination": {
-                    "type": "string",
-                    "description": "Optional destination path"
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "Step name"
+                      },
+                      "command": {
+                        "type": "string",
+                        "description": "Command to execute"
+                      },
+                      "shell": {
+                        "type": "string",
+                        "description": "Shell to use"
+                      },
+                      "background": {
+                        "type": "boolean",
+                        "description": "Run in background"
+                      },
+                      "working_directory": {
+                        "type": "string",
+                        "description": "Working directory"
+                      },
+                      "no_output_timeout": {
+                        "type": "string",
+                        "description": "Timeout for no output"
+                      },
+                      "when": {
+                        "type": "string",
+                        "enum": ["always", "on_success", "on_fail"],
+                        "description": "When to run"
+                      },
+                      "environment": {
+                        "type": "object",
+                        "description": "Environment variables"
+                      }
+                    },
+                    "required": ["command"],
+                    "additionalProperties": false
                   }
-                }
+                ]
               }
+            },
+            "required": ["run"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "Built-in CircleCI steps or custom commands",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "maxProperties": 1,
+            "not": {
+              "required": ["run"]
             }
           }
         ]

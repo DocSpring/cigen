@@ -30,12 +30,12 @@ impl ConfigLoader {
         let yaml_value: Value = serde_yaml::from_str(content)?;
 
         // Look for $schema field to determine version
-        if let Some(schema_url) = yaml_value.get("$schema").and_then(|v| v.as_str()) {
-            if schema_url.contains("/v1/") {
-                return Ok("v1".to_string());
-            }
-            // Add future version detection here
+        if let Some(schema_url) = yaml_value.get("$schema").and_then(|v| v.as_str())
+            && schema_url.contains("/v1/")
+        {
+            return Ok("v1".to_string());
         }
+        // Add future version detection here
 
         // Default to v1 if no version specified
         Ok("v1".to_string())

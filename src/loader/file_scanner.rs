@@ -82,12 +82,12 @@ impl FileScanner {
                 Self::scan_job_files_recursive_impl(&path, job_files)?;
             } else if path.is_file() {
                 // Check if it's a YAML file in a jobs/ directory
-                if let Some(parent) = path.parent() {
-                    if let Some(parent_name) = parent.file_name() {
-                        if parent_name == "jobs" && Self::is_yaml_file(&path) {
-                            job_files.push(path);
-                        }
-                    }
+                if let Some(parent) = path.parent()
+                    && let Some(parent_name) = parent.file_name()
+                    && parent_name == "jobs"
+                    && Self::is_yaml_file(&path)
+                {
+                    job_files.push(path);
                 }
             }
         }

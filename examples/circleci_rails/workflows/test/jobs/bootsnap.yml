@@ -12,8 +12,9 @@ restore_cache:
 
 steps:
   # set -euo pipefail automatically added to all shell commands
-  - name: Bootsnap Precompile
-    run: |
-      rm -rf tmp/cache/bootsnap
-      bootsnap precompile --gemfile app/ lib/ config/
-      rails runner "puts 'Rails app loaded successfully'"
+  - run:
+      name: Bootsnap Precompile
+      command: |
+        rm -rf tmp/cache/bootsnap
+        bootsnap precompile --gemfile app/ lib/ config/
+        rails runner "puts 'Rails app loaded successfully'"

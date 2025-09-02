@@ -18,22 +18,25 @@ services:
 
 steps:
   - setup_database
-  - name: Split RSpec tests by timing
-    run: |
-      circleci tests glob "spec/**/*_spec.rb" \
-        | circleci tests split --split-by=timings \
-        > /tmp/split-rspec-tests
+  - run:
+      name: Split RSpec tests by timing
+      command: |
+        circleci tests glob "spec/**/*_spec.rb" \
+          | circleci tests split --split-by=timings \
+          > /tmp/split-rspec-tests
 
-  - name: Run RSpec
-    run: |
-      rspec \
-        --seed << pipeline.number >> \
-        --format RspecJunitFormatter \
-        --out spec/results/rspec.xml \
-        $(cat /tmp/split-rspec-tests)
+  - run:
+      name: Run RSpec
+      command: |
+        rspec \
+          --seed << pipeline.number >> \
+          --format RspecJunitFormatter \
+          --out spec/results/rspec.xml \
+          $(cat /tmp/split-rspec-tests)
 
-  - name: Delete artifacts for successful job
-    run: rm -rf spec/artifacts log
+  - run:
+      name: Delete artifacts for successful job
+      command: rm -rf spec/artifacts log
   - store_test_results:
       path: spec/results/rspec.xml
   - store_artifacts:

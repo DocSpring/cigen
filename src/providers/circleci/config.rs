@@ -179,24 +179,15 @@ impl CircleCIStep {
         match value {
             serde_yaml::Value::String(_) => Some("run".to_string()),
             serde_yaml::Value::Mapping(map) => {
-                if map.len() == 1 {
-                    if let Some((key, _)) = map.iter().next() {
-                        if let Some(key_str) = key.as_str() {
-                            return Some(key_str.to_string());
-                        }
-                    }
+                if map.len() == 1
+                    && let Some((key, _)) = map.iter().next()
+                    && let Some(key_str) = key.as_str()
+                {
+                    return Some(key_str.to_string());
                 }
                 None
             }
             _ => None,
-        }
-    }
-
-    pub fn is_builtin_step(&self) -> bool {
-        if let Some(step_type) = &self.step_type {
-            crate::providers::circleci::schema::is_builtin_step(step_type)
-        } else {
-            false
         }
     }
 }

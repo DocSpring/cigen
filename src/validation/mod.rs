@@ -5,6 +5,7 @@ mod error_reporter;
 mod job;
 mod post_template;
 mod schemas;
+pub mod steps;
 mod validator;
 
 #[cfg(test)]

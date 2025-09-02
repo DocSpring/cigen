@@ -21,7 +21,8 @@ environment:
   DATABASE_URL: "postgresql:does_not_exist"
 
 steps:
-  - name: Rails Assets Precompile
-    run: |
-      rails assets:clobber
-      rails assets:precompile
+  - run:
+      name: Rails Assets Precompile
+      command: |
+        rails assets:clobber
+        rails assets:precompile

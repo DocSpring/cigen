@@ -115,6 +115,7 @@ pub fn generate_command(
                 &workflow_config,
                 &workflow_name,
                 &workflow_jobs,
+                &loaded_config.commands,
                 &workflow_output_path,
             )
             .map_err(|e| anyhow::anyhow!("Failed to generate workflow: {}", e))?;
@@ -133,19 +134,25 @@ pub fn generate_command(
         let mut workflows: HashMap<String, HashMap<String, cigen::models::Job>> = HashMap::new();
 
         for (path, job) in loaded_config.jobs {
-            // Extract workflow name from path (e.g., "test/jobs/rspec" -> "test")
-            if let Some(workflow_name) = path.split('/').next() {
-                if let Some(job_name) = path.split('/').nth(2) {
-                    workflows
-                        .entry(workflow_name.to_string())
-                        .or_default()
-                        .insert(job_name.to_string(), job);
-                }
+            // Extract workflow name from path (e.g., "test/rspec" -> "test")
+            let parts: Vec<&str> = path.split('/').collect();
+            if parts.len() == 2 {
+                let workflow_name = parts[0];
+                let job_name = parts[1];
+                workflows
+                    .entry(workflow_name.to_string())
+                    .or_default()
+                    .insert(job_name.to_string(), job);
             }
         }
 
         provider
-            .generate_all(&loaded_config.config, &workflows, &output_path)
+            .generate_all(
+                &loaded_config.config,
+                &workflows,
+                &loaded_config.commands,
+                &output_path,
+            )
             .map_err(|e| anyhow::anyhow!("Failed to generate all workflows: {}", e))?;
 
         println!(

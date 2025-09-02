@@ -11,9 +11,10 @@ environment:
   BUNDLE_GEMFILE: "Gemfile"
 
 steps:
-  - name: Bundle Install
-    run: |
-      bundle config set --local deployment 'true'
-      bundle check || bundle install
-      bundle binstubs --all
-      bundle clean --force
+  - run:
+      name: Bundle Install
+      command: |
+        bundle config set --local deployment 'true'
+        bundle check || bundle install
+        bundle binstubs --all
+        bundle clean --force

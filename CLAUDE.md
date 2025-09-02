@@ -2,6 +2,17 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL: Git Commit Rules
+
+**NEVER EVER use `--no-verify` flag when committing**. This bypasses important checks and is lazy and unprofessional. If pre-commit hooks fail:
+
+1. FIX the issues that the hooks are reporting
+2. Run the hooks locally to verify they pass
+3. Only commit when ALL checks pass cleanly
+4. NO EXCEPTIONS to this rule
+
+Using `--no-verify` is a sign of poor craftsmanship and will not be tolerated.
+
 ## Project Overview
 
 `cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It integrates with Nx monorepo tooling and supports multiple CI providers starting with CircleCI.
@@ -134,6 +145,8 @@ This keeps the codebase maintainable and easier to understand.
 
 ## Development Approach
 
+**CRITICAL**: NEVER implement temporary solutions or workarounds. NEVER say "for now" or "this is not ideal but". Always implement the proper, clean, architectural solution from the start. If something needs to be done right, do it right the first time.
+
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
 
 **CRITICAL: Follow PROJECT_PLAN.md EXACTLY**
@@ -190,6 +203,14 @@ Good example:
 // DO THIS INSTEAD
 miette::bail!("Invalid step configuration: missing required 'command' field")
 ```
+
+## CircleCI Reference Implementation
+
+**IMPORTANT**: The source of truth for all base features is in `circleci_config_reference/src/*`. This contains the ERB templates from our production Ruby implementation. All features shown there must be supported.
+
+You can also reference `/Users/ndbroadbent/code/docspring/lib/tools/generate_circle_ci_config.rb` to understand how the Ruby script worked.
+
+**Testing Strategy**: Add comprehensive test cases as you implement features, based on what you find in the reference implementation. Every feature from the reference should have corresponding tests.
 
 ## Use Our Own Tool
 

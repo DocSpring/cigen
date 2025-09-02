@@ -95,15 +95,14 @@ impl Validator {
                 let entry = entry?;
                 let path = entry.path();
 
-                if path.is_file() {
-                    if let Some(ext) = path.extension() {
-                        if ext == "yml" || ext == "yaml" {
-                            debug!("  Validating {:?}...", path.file_name().unwrap());
+                if path.is_file()
+                    && let Some(ext) = path.extension()
+                    && (ext == "yml" || ext == "yaml")
+                {
+                    debug!("  Validating {:?}...", path.file_name().unwrap());
 
-                            // Validate against base schema (allows partial configs)
-                            self.config_validator.validate_config_fragment(&path)?;
-                        }
-                    }
+                    // Validate against base schema (allows partial configs)
+                    self.config_validator.validate_config_fragment(&path)?;
                 }
             }
             info!("✓ All split configs validated: {config_dir:?}");
@@ -161,18 +160,15 @@ impl Validator {
                 job_count += self.validate_jobs_in_directory(&path)?;
             } else if path.is_file() {
                 // Check if it's a YAML file in a jobs/ directory
-                if let Some(parent) = path.parent() {
-                    if let Some(parent_name) = parent.file_name() {
-                        if parent_name == "jobs" {
-                            if let Some(ext) = path.extension() {
-                                if ext == "yml" || ext == "yaml" {
-                                    debug!("  Validating job {:?}...", path.file_name().unwrap());
-                                    self.job_validator.validate_job(&path)?;
-                                    job_count += 1;
-                                }
-                            }
-                        }
-                    }
+                if let Some(parent) = path.parent()
+                    && let Some(parent_name) = parent.file_name()
+                    && parent_name == "jobs"
+                    && let Some(ext) = path.extension()
+                    && (ext == "yml" || ext == "yaml")
+                {
+                    debug!("  Validating job {:?}...", path.file_name().unwrap());
+                    self.job_validator.validate_job(&path)?;
+                    job_count += 1;
                 }
             }
         }
@@ -215,14 +211,13 @@ impl Validator {
             let entry = entry?;
             let path = entry.path();
 
-            if path.is_file() {
-                if let Some(ext) = path.extension() {
-                    if ext == "yml" || ext == "yaml" {
-                        debug!("  Validating command {:?}...", path.file_name().unwrap());
-                        self.command_validator.validate_command(&path)?;
-                        command_count += 1;
-                    }
-                }
+            if path.is_file()
+                && let Some(ext) = path.extension()
+                && (ext == "yml" || ext == "yaml")
+            {
+                debug!("  Validating command {:?}...", path.file_name().unwrap());
+                self.command_validator.validate_command(&path)?;
+                command_count += 1;
             }
         }
 

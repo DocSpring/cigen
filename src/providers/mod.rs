@@ -1,6 +1,6 @@
 pub mod circleci;
 
-use crate::models::{Config, Job};
+use crate::models::{Command, Config, Job};
 use miette::Result;
 use std::collections::HashMap;
 use std::path::Path;
@@ -19,6 +19,7 @@ pub trait Provider: Send + Sync {
         config: &Config,
         workflow_name: &str,
         jobs: &HashMap<String, Job>,
+        commands: &HashMap<String, Command>,
         output_path: &Path,
     ) -> Result<()>;
 
@@ -27,6 +28,7 @@ pub trait Provider: Send + Sync {
         &self,
         config: &Config,
         workflows: &HashMap<String, HashMap<String, Job>>,
+        commands: &HashMap<String, Command>,
         output_path: &Path,
     ) -> Result<()>;
 }

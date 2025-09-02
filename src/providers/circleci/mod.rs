@@ -1,11 +1,15 @@
+pub mod builtin_steps;
 mod config;
 mod generator;
-mod schema;
+pub mod schema;
+pub mod template_commands;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_cache;
 
-use crate::models::{Config, Job};
+use crate::models::{Command, Config, Job};
 use crate::providers::Provider;
 use miette::Result;
 use std::collections::HashMap;
@@ -43,18 +47,21 @@ impl Provider for CircleCIProvider {
         config: &Config,
         workflow_name: &str,
         jobs: &HashMap<String, Job>,
+        commands: &HashMap<String, Command>,
         output_path: &Path,
     ) -> Result<()> {
         self.generator
-            .generate_workflow(config, workflow_name, jobs, output_path)
+            .generate_workflow(config, workflow_name, jobs, commands, output_path)
     }
 
     fn generate_all(
         &self,
         config: &Config,
         workflows: &HashMap<String, HashMap<String, Job>>,
+        commands: &HashMap<String, Command>,
         output_path: &Path,
     ) -> Result<()> {
-        self.generator.generate_all(config, workflows, output_path)
+        self.generator
+            .generate_all(config, workflows, commands, output_path)
     }
 }

@@ -3,6 +3,7 @@ use crate::models::config::ServiceEnvironment;
 use crate::models::job::Step;
 use crate::models::{Config, Job};
 use crate::providers::Provider;
+use serde_yaml::{Mapping, Value};
 use std::collections::HashMap;
 
 #[test]
@@ -23,11 +24,33 @@ fn test_simple_job_conversion() {
             restore_cache: None,
             services: None,
             steps: Some(vec![
-                Step::Command("echo 'Hello World'".to_string()),
-                Step::Run {
-                    name: Some("Run tests".to_string()),
-                    run: "bundle exec rspec".to_string(),
-                },
+                // Run step with just command
+                Step({
+                    let mut run_step = Mapping::new();
+                    run_step.insert(
+                        Value::String("run".to_string()),
+                        Value::String("echo 'Hello World'".to_string()),
+                    );
+                    Value::Mapping(run_step)
+                }),
+                // Run step with name and command
+                Step({
+                    let mut run_step = Mapping::new();
+                    let mut run_details = Mapping::new();
+                    run_details.insert(
+                        Value::String("name".to_string()),
+                        Value::String("Run tests".to_string()),
+                    );
+                    run_details.insert(
+                        Value::String("command".to_string()),
+                        Value::String("bundle exec rspec".to_string()),
+                    );
+                    run_step.insert(
+                        Value::String("run".to_string()),
+                        Value::Mapping(run_details),
+                    );
+                    Value::Mapping(run_step)
+                }),
             ]),
         },
     );
@@ -38,7 +61,9 @@ fn test_simple_job_conversion() {
     let temp_dir = tempfile::tempdir().unwrap();
     let output_path = temp_dir.path();
 
-    let result = provider.generate_workflow(&config, "test_workflow", &jobs, output_path);
+    let commands = HashMap::new();
+    let result =
+        provider.generate_workflow(&config, "test_workflow", &jobs, &commands, output_path);
     if let Err(e) = &result {
         eprintln!("Error: {e}");
     }
@@ -59,8 +84,8 @@ fn test_simple_job_conversion() {
     assert!(job.docker.is_some());
     assert_eq!(job.resource_class, Some("medium".to_string()));
 
-    // Should have 2 steps (no automatic checkout)
-    assert_eq!(job.steps.len(), 2);
+    // Should have 3 steps (checkout + 2 user steps)
+    assert_eq!(job.steps.len(), 3);
 }
 
 #[test]
@@ -99,12 +124,20 @@ fn test_job_with_services() {
             requires: None,
             cache: None,
             restore_cache: None,
-            steps: Some(vec![Step::Command("echo 'Testing with DB'".to_string())]),
+            steps: Some(vec![Step({
+                let mut run_step = Mapping::new();
+                run_step.insert(
+                    Value::String("run".to_string()),
+                    Value::String("echo 'Testing with DB'".to_string()),
+                );
+                Value::Mapping(run_step)
+            })]),
         },
     );
 
     let generator = generator::CircleCIGenerator::new();
-    let result = generator.build_config(&config, "test_workflow", &jobs);
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "test_workflow", &jobs, &commands);
     assert!(result.is_ok());
 
     let circleci_config = result.unwrap();
@@ -139,7 +172,14 @@ fn test_job_dependencies() {
             cache: None,
             restore_cache: None,
             services: None,
-            steps: Some(vec![Step::Command("echo 'Building'".to_string())]),
+            steps: Some(vec![Step({
+                let mut run_step = Mapping::new();
+                run_step.insert(
+                    Value::String("run".to_string()),
+                    Value::String("echo 'Building'".to_string()),
+                );
+                Value::Mapping(run_step)
+            })]),
         },
     );
 
@@ -155,12 +195,20 @@ fn test_job_dependencies() {
             cache: None,
             restore_cache: None,
             services: None,
-            steps: Some(vec![Step::Command("echo 'Testing'".to_string())]),
+            steps: Some(vec![Step({
+                let mut run_step = Mapping::new();
+                run_step.insert(
+                    Value::String("run".to_string()),
+                    Value::String("echo 'Testing'".to_string()),
+                );
+                Value::Mapping(run_step)
+            })]),
         },
     );
 
     let generator = generator::CircleCIGenerator::new();
-    let result = generator.build_config(&config, "ci", &jobs);
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "ci", &jobs, &commands);
     assert!(result.is_ok());
 
     let circleci_config = result.unwrap();
@@ -169,12 +217,12 @@ fn test_job_dependencies() {
     // Check workflow job dependencies
     let mut found_test_with_requires = false;
     for job in &workflow.jobs {
-        if let config::CircleCIWorkflowJob::Detailed { job } = job {
-            if job.contains_key("test") {
-                let details = &job["test"];
-                assert_eq!(details.requires, Some(vec!["build".to_string()]));
-                found_test_with_requires = true;
-            }
+        if let config::CircleCIWorkflowJob::Detailed { job } = job
+            && job.contains_key("test")
+        {
+            let details = &job["test"];
+            assert_eq!(details.requires, Some(vec!["build".to_string()]));
+            found_test_with_requires = true;
         }
     }
     assert!(found_test_with_requires);

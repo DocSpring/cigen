@@ -3,12 +3,13 @@ architectures: ["amd64"]
 resource_class: medium
 
 steps:
-  - name: Generate Dynamic Config With CIGen
-    run: |
-      cigen generate \
-        --config .cigen/config.yml \
-        --workflow test \
-        --output .circleci/dynamic_config.yml
+  - run:
+      name: Generate Dynamic Config With CIGen
+      command: |
+        cigen generate \
+          --config .cigen/config.yml \
+          --workflow test \
+          --output .circleci/dynamic_config.yml
 
   - continue_circleci_pipeline:
       config_path: .circleci/dynamic_config.yml
