@@ -350,7 +350,62 @@ impl CircleCIGenerator {
         let checkout_step = serde_yaml::Value::String("checkout".to_string());
         circleci_job.steps.push(CircleCIStep::new(checkout_step));
 
-        // Add restore_cache steps if specified
+        // Add automatic cache restoration based on job.cache field
+        // This implements convention-over-configuration: declaring a cache automatically injects restore steps
+        if let Some(cache_defs) = &job.cache {
+            for (cache_name, cache_def) in cache_defs {
+                // Only restore caches that have restore enabled (default is true)
+                if cache_def.restore {
+                    let mut restore_step = serde_yaml::Mapping::new();
+                    let mut restore_config = serde_yaml::Mapping::new();
+
+                    // Build the cache key using the cache name from config's cache_definitions
+                    // For now, use a simplified key format - this should be enhanced to use
+                    // the full cache key generation logic with checksums
+                    let cache_key = if let Some(config_cache_defs) = &config.cache_definitions {
+                        if let Some(_cache_config) = config_cache_defs.get(cache_name) {
+                            // TODO: Use the key from cache_definitions if available
+                            // This should use cache_config.key if it exists, but that field
+                            // doesn't exist in CacheDefinition yet. For now, use a reasonable default.
+                            format!(
+                                "{}-{}-{{{{ checksum \"Gemfile.lock\" }}}}",
+                                cache_name, architecture
+                            )
+                        } else {
+                            // Fallback to simple key format
+                            format!(
+                                "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                                cache_name, architecture
+                            )
+                        }
+                    } else {
+                        format!(
+                            "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                            cache_name, architecture
+                        )
+                    };
+
+                    restore_config.insert(
+                        serde_yaml::Value::String("keys".to_string()),
+                        serde_yaml::Value::Sequence(vec![
+                            serde_yaml::Value::String(cache_key.clone()),
+                            serde_yaml::Value::String(format!("{}-{}-", cache_name, architecture)),
+                        ]),
+                    );
+
+                    restore_step.insert(
+                        serde_yaml::Value::String("restore_cache".to_string()),
+                        serde_yaml::Value::Mapping(restore_config),
+                    );
+
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(restore_step)));
+                }
+            }
+        }
+
+        // Add restore_cache steps if explicitly specified (legacy support)
         if let Some(restore_caches) = &job.restore_cache {
             for cache in restore_caches {
                 let cache_step = match cache {
@@ -413,6 +468,67 @@ impl CircleCIGenerator {
         if let Some(steps) = &job.steps {
             for step in steps {
                 circleci_job.steps.push(CircleCIStep::new(step.0.clone()));
+            }
+        }
+
+        // Add automatic cache saving based on job.cache field
+        // This implements convention-over-configuration: declaring a cache automatically injects save steps
+        if let Some(cache_defs) = &job.cache {
+            for (cache_name, cache_def) in cache_defs {
+                // Save all caches that are defined (paths are the value)
+                if !cache_def.paths.is_empty() {
+                    let mut save_step = serde_yaml::Mapping::new();
+                    let mut save_config = serde_yaml::Mapping::new();
+
+                    // Build the cache key - same as restore key
+                    let cache_key = if let Some(config_cache_defs) = &config.cache_definitions {
+                        if let Some(_cache_config) = config_cache_defs.get(cache_name) {
+                            // TODO: Use the key from cache_definitions if available
+                            // This should use cache_config.key if it exists, but that field
+                            // doesn't exist in CacheDefinition yet. For now, use a reasonable default.
+                            format!(
+                                "{}-{}-{{{{ checksum \"Gemfile.lock\" }}}}",
+                                cache_name, architecture
+                            )
+                        } else {
+                            // Fallback to simple key format
+                            format!(
+                                "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                                cache_name, architecture
+                            )
+                        }
+                    } else {
+                        format!(
+                            "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                            cache_name, architecture
+                        )
+                    };
+
+                    save_config.insert(
+                        serde_yaml::Value::String("key".to_string()),
+                        serde_yaml::Value::String(cache_key),
+                    );
+
+                    save_config.insert(
+                        serde_yaml::Value::String("paths".to_string()),
+                        serde_yaml::Value::Sequence(
+                            cache_def
+                                .paths
+                                .iter()
+                                .map(|p| serde_yaml::Value::String(p.clone()))
+                                .collect(),
+                        ),
+                    );
+
+                    save_step.insert(
+                        serde_yaml::Value::String("save_cache".to_string()),
+                        serde_yaml::Value::Mapping(save_config),
+                    );
+
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(save_step)));
+                }
             }
         }
 
