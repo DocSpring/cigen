@@ -79,6 +79,7 @@ mod tests {
         user_cache_defs.insert(
             "gems".to_string(),
             CacheDefinition {
+                key: None,
                 versions: None,
                 checksum_sources: None,
                 paths: None,

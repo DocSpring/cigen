@@ -360,25 +360,29 @@ impl CircleCIGenerator {
                     let mut restore_config = serde_yaml::Mapping::new();
 
                     // Build the cache key using the cache name from config's cache_definitions
-                    // For now, use a simplified key format - this should be enhanced to use
-                    // the full cache key generation logic with checksums
                     let cache_key = if let Some(config_cache_defs) = &config.cache_definitions {
-                        if let Some(_cache_config) = config_cache_defs.get(cache_name) {
-                            // TODO: Use the key from cache_definitions if available
-                            // This should use cache_config.key if it exists, but that field
-                            // doesn't exist in CacheDefinition yet. For now, use a reasonable default.
-                            format!(
-                                "{}-{}-{{{{ checksum \"Gemfile.lock\" }}}}",
-                                cache_name, architecture
-                            )
+                        if let Some(cache_config) = config_cache_defs.get(cache_name) {
+                            if let Some(key_template) = &cache_config.key {
+                                // Use the key template from cache_definitions
+                                // Replace {{ arch }} with the actual architecture
+                                // Note: We keep {{ checksum(...) }} as-is for CircleCI to process
+                                key_template.replace("{{ arch }}", architecture)
+                            } else {
+                                // No key template, use a reasonable default
+                                format!(
+                                    "{}-{}-{{{{ checksum \"Gemfile.lock\" }}}}",
+                                    cache_name, architecture
+                                )
+                            }
                         } else {
-                            // Fallback to simple key format
+                            // Cache not in definitions, use simple format
                             format!(
                                 "{}-{}-{{{{ checksum \"cache_key\" }}}}",
                                 cache_name, architecture
                             )
                         }
                     } else {
+                        // No cache definitions at all
                         format!(
                             "{}-{}-{{{{ checksum \"cache_key\" }}}}",
                             cache_name, architecture
@@ -410,13 +414,31 @@ impl CircleCIGenerator {
             for cache in restore_caches {
                 let cache_step = match cache {
                     crate::models::job::CacheRestore::Simple(name) => {
-                        // Simple cache restoration - just use the cache name as key
+                        // Simple cache restoration - check if cache_definitions has a key
                         let mut restore_step = serde_yaml::Mapping::new();
                         let mut restore_config = serde_yaml::Mapping::new();
 
-                        // Generate cache key based on cache name and architecture
-                        let cache_key =
-                            format!("{}-{}-{{{{ checksum \"cache_key\" }}}}", name, architecture);
+                        // Generate cache key - check cache_definitions first
+                        let cache_key = if let Some(config_cache_defs) = &config.cache_definitions {
+                            if let Some(cache_config) = config_cache_defs.get(name) {
+                                if let Some(key_template) = &cache_config.key {
+                                    key_template.replace("{{ arch }}", architecture)
+                                } else {
+                                    format!(
+                                        "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                                        name, architecture
+                                    )
+                                }
+                            } else {
+                                format!(
+                                    "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                                    name, architecture
+                                )
+                            }
+                        } else {
+                            format!("{}-{}-{{{{ checksum \"cache_key\" }}}}", name, architecture)
+                        };
+
                         restore_config.insert(
                             serde_yaml::Value::String("keys".to_string()),
                             serde_yaml::Value::Sequence(vec![
@@ -440,9 +462,27 @@ impl CircleCIGenerator {
                         let mut restore_step = serde_yaml::Mapping::new();
                         let mut restore_config = serde_yaml::Mapping::new();
 
-                        // Generate cache key based on cache name and architecture
-                        let cache_key =
-                            format!("{}-{}-{{{{ checksum \"cache_key\" }}}}", name, architecture);
+                        // Generate cache key - check cache_definitions first
+                        let cache_key = if let Some(config_cache_defs) = &config.cache_definitions {
+                            if let Some(cache_config) = config_cache_defs.get(name) {
+                                if let Some(key_template) = &cache_config.key {
+                                    key_template.replace("{{ arch }}", architecture)
+                                } else {
+                                    format!(
+                                        "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                                        name, architecture
+                                    )
+                                }
+                            } else {
+                                format!(
+                                    "{}-{}-{{{{ checksum \"cache_key\" }}}}",
+                                    name, architecture
+                                )
+                            }
+                        } else {
+                            format!("{}-{}-{{{{ checksum \"cache_key\" }}}}", name, architecture)
+                        };
+
                         restore_config.insert(
                             serde_yaml::Value::String("keys".to_string()),
                             serde_yaml::Value::Sequence(vec![
@@ -482,22 +522,28 @@ impl CircleCIGenerator {
 
                     // Build the cache key - same as restore key
                     let cache_key = if let Some(config_cache_defs) = &config.cache_definitions {
-                        if let Some(_cache_config) = config_cache_defs.get(cache_name) {
-                            // TODO: Use the key from cache_definitions if available
-                            // This should use cache_config.key if it exists, but that field
-                            // doesn't exist in CacheDefinition yet. For now, use a reasonable default.
-                            format!(
-                                "{}-{}-{{{{ checksum \"Gemfile.lock\" }}}}",
-                                cache_name, architecture
-                            )
+                        if let Some(cache_config) = config_cache_defs.get(cache_name) {
+                            if let Some(key_template) = &cache_config.key {
+                                // Use the key template from cache_definitions
+                                // Replace {{ arch }} with the actual architecture
+                                // Note: We keep {{ checksum(...) }} as-is for CircleCI to process
+                                key_template.replace("{{ arch }}", architecture)
+                            } else {
+                                // No key template, use a reasonable default
+                                format!(
+                                    "{}-{}-{{{{ checksum \"Gemfile.lock\" }}}}",
+                                    cache_name, architecture
+                                )
+                            }
                         } else {
-                            // Fallback to simple key format
+                            // Cache not in definitions, use simple format
                             format!(
                                 "{}-{}-{{{{ checksum \"cache_key\" }}}}",
                                 cache_name, architecture
                             )
                         }
                     } else {
+                        // No cache definitions at all
                         format!(
                             "{}-{}-{{{{ checksum \"cache_key\" }}}}",
                             cache_name, architecture

@@ -241,6 +241,9 @@ impl Config {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CacheDefinition {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub versions: Option<Vec<PathOrDetect>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
