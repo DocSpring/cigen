@@ -3,6 +3,7 @@ use miette::Result as MietteResult;
 use minijinja::{Environment, Value};
 use serde_yaml::Value as YamlValue;
 use std::collections::HashMap;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::error::TemplateError;
@@ -13,6 +14,8 @@ pub struct TemplateEngine {
     env: Environment<'static>,
     resolver: VariableResolver,
     current_file: Option<PathBuf>,
+    template_base: Option<PathBuf>,
+    templates: HashMap<String, String>,
 }
 
 impl Default for TemplateEngine {
@@ -34,6 +37,8 @@ impl TemplateEngine {
             env,
             resolver: VariableResolver::new(),
             current_file: None,
+            template_base: None,
+            templates: HashMap::new(),
         }
     }
 
@@ -48,6 +53,93 @@ impl TemplateEngine {
 
     pub fn add_cli_vars(&mut self, cli_vars: &HashMap<String, String>) {
         self.resolver.add_cli_vars(cli_vars);
+    }
+
+    /// Set the base directory for template resolution
+    pub fn set_template_base(&mut self, base_dir: &Path) -> Result<()> {
+        self.template_base = Some(base_dir.to_path_buf());
+        self.load_templates_recursive(base_dir, base_dir)?;
+        self.setup_template_loader()?;
+        Ok(())
+    }
+
+    /// Set up the template loader for includes
+    fn setup_template_loader(&mut self) -> Result<()> {
+        // The include functionality needs to be handled differently
+        // Since minijinja doesn't have set_loader, we'll use a different approach
+        // For now, we'll need to implement this at render time
+        Ok(())
+    }
+
+    /// Recursively load all .j2 templates from the base directory
+    fn load_templates_recursive(&mut self, current_dir: &Path, base_dir: &Path) -> Result<()> {
+        if !current_dir.is_dir() {
+            return Ok(());
+        }
+
+        for entry in fs::read_dir(current_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                self.load_templates_recursive(&path, base_dir)?;
+            } else if Self::is_template_file(&path) {
+                let content = fs::read_to_string(&path)?;
+
+                // Get relative path from base directory
+                let relative_path = path
+                    .strip_prefix(base_dir)
+                    .map_err(|_| anyhow::anyhow!("Failed to get relative path for template"))?;
+
+                // Use the path without .j2 extension as the template name
+                let template_name = if let Some(stem) = relative_path.file_stem() {
+                    relative_path.with_file_name(stem)
+                } else {
+                    relative_path.to_path_buf()
+                };
+
+                let template_name_str = template_name.to_string_lossy().into_owned();
+                self.templates.insert(template_name_str, content);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Preprocess template to resolve includes
+    fn preprocess_includes(&self, template: &str) -> Result<String> {
+        use regex::Regex;
+
+        // Match {% include "template_name" %} patterns
+        let include_regex = Regex::new(r#"\{\%\s*include\s+"([^"]+)"\s*\%\}"#)?;
+        let mut result = template.to_string();
+
+        // Keep processing until no more includes are found (handles nested includes)
+        let mut max_depth = 10; // Prevent infinite loops
+        while max_depth > 0 && include_regex.is_match(&result) {
+            let new_result = include_regex
+                .replace_all(&result, |caps: &regex::Captures| {
+                    let template_name = &caps[1];
+
+                    // Look up the template content
+                    if let Some(content) = self.templates.get(template_name) {
+                        content.clone()
+                    } else {
+                        // If template not found, leave the include tag as-is and let minijinja handle the error
+                        caps[0].to_string()
+                    }
+                })
+                .to_string();
+
+            if new_result == result {
+                break; // No changes made, stop processing
+            }
+
+            result = new_result;
+            max_depth -= 1;
+        }
+
+        Ok(result)
     }
 
     /// Set the current file being processed for better error messages
@@ -79,8 +171,16 @@ impl TemplateEngine {
             context.insert(key.clone(), value);
         }
 
+        // Preprocess includes if template_base is set
+        let processed_template = if self.template_base.is_some() {
+            self.preprocess_includes(template)
+                .map_err(|e| miette::miette!("Include preprocessing error: {}", e))?
+        } else {
+            template.to_string()
+        };
+
         // Render the template
-        match self.env.render_str(template, &context) {
+        match self.env.render_str(&processed_template, &context) {
             Ok(rendered) => Ok(rendered),
             Err(error) => {
                 // Determine the source path
@@ -148,6 +248,44 @@ impl TemplateEngine {
         // Render the template
         self.env
             .render_str(template, &minijinja_context)
+            .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))
+    }
+
+    /// Render a named template from the loaded template source
+    pub fn render_template(
+        &mut self,
+        template_name: &str,
+        context: &HashMap<String, serde_json::Value>,
+    ) -> Result<String> {
+        // Get the template content from our stored templates
+        let template_content = self
+            .templates
+            .get(template_name)
+            .ok_or_else(|| anyhow::anyhow!("Template '{}' not found", template_name))?;
+
+        // Convert serde_json::Value to minijinja::Value
+        let mut minijinja_context = HashMap::new();
+        for (key, json_value) in context {
+            let value = json_value_to_minijinja_value(json_value);
+            minijinja_context.insert(key.clone(), value);
+        }
+
+        // Also add variables from the resolver
+        for (key, yaml_value) in self.resolver.get_variables() {
+            if !minijinja_context.contains_key(key) {
+                let value = yaml_value_to_minijinja_value(yaml_value);
+                minijinja_context.insert(key.clone(), value);
+            }
+        }
+
+        // Preprocess includes in the template
+        let processed_template = self
+            .preprocess_includes(template_content)
+            .map_err(|e| anyhow::anyhow!("Include preprocessing error: {}", e))?;
+
+        // Render the template
+        self.env
+            .render_str(&processed_template, &minijinja_context)
             .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))
     }
 }
@@ -386,5 +524,158 @@ services:
         let template = "Hello {{ name | upper }}!";
         let result = engine.render_string(template).unwrap();
         assert_eq!(result, "Hello WORLD!");
+    }
+
+    #[test]
+    fn test_template_includes() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create a temporary directory for templates
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create includes directory
+        let includes_dir = base_path.join("includes");
+        fs::create_dir(&includes_dir).unwrap();
+
+        // Create a partial template
+        let partial_content = r#"version: {{ version }}
+image: ruby:{{ ruby_version }}"#;
+        fs::write(includes_dir.join("common.j2"), partial_content).unwrap();
+
+        // Create main template
+        let main_template = r#"name: test-app
+{% include "includes/common" %}
+environment: production"#;
+
+        // Set up the template engine
+        let mut engine = TemplateEngine::new();
+        engine.set_template_base(base_path).unwrap();
+
+        let mut vars = HashMap::new();
+        vars.insert(
+            "version".to_string(),
+            YamlValue::String("1.0.0".to_string()),
+        );
+        vars.insert(
+            "ruby_version".to_string(),
+            YamlValue::String("3.3.0".to_string()),
+        );
+        engine.add_vars_section(&vars);
+
+        // Render the template
+        let result = engine.render_string(main_template).unwrap();
+
+        assert!(result.contains("name: test-app"));
+        assert!(result.contains("version: 1.0.0"));
+        assert!(result.contains("image: ruby:3.3.0"));
+        assert!(result.contains("environment: production"));
+    }
+
+    #[test]
+    fn test_nested_template_includes() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create a temporary directory for templates
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create nested directories
+        let includes_dir = base_path.join("includes");
+        let docker_dir = includes_dir.join("docker");
+        fs::create_dir_all(&docker_dir).unwrap();
+
+        // Create nested partial templates
+        let base_partial = r#"base_image: ubuntu:{{ ubuntu_version }}"#;
+        fs::write(docker_dir.join("base.j2"), base_partial).unwrap();
+
+        let ruby_partial = r#"{% include "includes/docker/base" %}
+ruby_image: ruby:{{ ruby_version }}"#;
+        fs::write(includes_dir.join("ruby.j2"), ruby_partial).unwrap();
+
+        // Create main template
+        let main_template = r#"name: my-app
+{% include "includes/ruby" %}
+environment: {{ env }}"#;
+
+        // Set up the template engine
+        let mut engine = TemplateEngine::new();
+        engine.set_template_base(base_path).unwrap();
+
+        let mut vars = HashMap::new();
+        vars.insert(
+            "ubuntu_version".to_string(),
+            YamlValue::String("22.04".to_string()),
+        );
+        vars.insert(
+            "ruby_version".to_string(),
+            YamlValue::String("3.3.0".to_string()),
+        );
+        vars.insert(
+            "env".to_string(),
+            YamlValue::String("production".to_string()),
+        );
+        engine.add_vars_section(&vars);
+
+        // Render the template
+        let result = engine.render_string(main_template).unwrap();
+
+        assert!(result.contains("name: my-app"));
+        assert!(result.contains("base_image: ubuntu:22.04"));
+        assert!(result.contains("ruby_image: ruby:3.3.0"));
+        assert!(result.contains("environment: production"));
+    }
+
+    #[test]
+    fn test_render_named_template() {
+        use std::fs;
+        use tempfile::TempDir;
+
+        // Create a temporary directory for templates
+        let temp_dir = TempDir::new().unwrap();
+        let base_path = temp_dir.path();
+
+        // Create a named template
+        let template_content = r#"job_name: {{ job_name }}
+image: {{ image }}
+steps:
+{% for step in steps %}
+  - {{ step }}
+{% endfor %}"#;
+        fs::write(base_path.join("job.j2"), template_content).unwrap();
+
+        // Set up the template engine
+        let mut engine = TemplateEngine::new();
+        engine.set_template_base(base_path).unwrap();
+
+        // Create context
+        let mut context = HashMap::new();
+        context.insert(
+            "job_name".to_string(),
+            serde_json::Value::String("test-job".to_string()),
+        );
+        context.insert(
+            "image".to_string(),
+            serde_json::Value::String("ruby:3.3".to_string()),
+        );
+        context.insert(
+            "steps".to_string(),
+            serde_json::Value::Array(vec![
+                serde_json::Value::String("checkout".to_string()),
+                serde_json::Value::String("bundle install".to_string()),
+                serde_json::Value::String("rspec".to_string()),
+            ]),
+        );
+
+        // Render the named template
+        let result = engine.render_template("job", &context).unwrap();
+
+        assert!(result.contains("job_name: test-job"));
+        assert!(result.contains("image: ruby:3.3"));
+        assert!(result.contains("- checkout"));
+        assert!(result.contains("- bundle install"));
+        assert!(result.contains("- rspec"));
     }
 }

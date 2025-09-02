@@ -212,6 +212,9 @@ fn generate_with_templates(
     // Initialize template engine
     let mut engine = TemplateEngine::new();
 
+    // Set up template base directory for includes
+    engine.set_template_base(&template_dir)?;
+
     // Try to load full configuration, but don't fail if jobs/commands don't exist
     let config_path = current_dir.join("cigen.yml");
     let config_str = std::fs::read_to_string(&config_path)?;
