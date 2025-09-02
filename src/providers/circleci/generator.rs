@@ -350,6 +350,19 @@ impl CircleCIGenerator {
         let checkout_step = serde_yaml::Value::String("checkout".to_string());
         circleci_job.steps.push(CircleCIStep::new(checkout_step));
 
+        // Add skip logic if job has source_files defined (job-status cache)
+        let has_skip_logic = if let Some(source_files_group) = &job.source_files {
+            self.add_skip_check_initial_steps(
+                &mut circleci_job,
+                config,
+                source_files_group,
+                architecture,
+            )?;
+            true
+        } else {
+            false
+        };
+
         // Add automatic cache restoration based on job.cache field
         // This implements convention-over-configuration: declaring a cache automatically injects restore steps
         if let Some(cache_defs) = &job.cache {
@@ -576,6 +589,11 @@ impl CircleCIGenerator {
                         .push(CircleCIStep::new(serde_yaml::Value::Mapping(save_step)));
                 }
             }
+        }
+
+        // Add record completion step at the end if skip logic is enabled
+        if has_skip_logic {
+            self.add_record_completion_step(&mut circleci_job, architecture)?;
         }
 
         Ok(circleci_job)
@@ -858,5 +876,190 @@ impl CircleCIGenerator {
             }),
             steps,
         })
+    }
+
+    /// Add initial skip check steps for job-status cache (hash calculation and skip check)
+    fn add_skip_check_initial_steps(
+        &self,
+        circleci_job: &mut CircleCIJob,
+        config: &Config,
+        source_files_group: &str,
+        architecture: &str,
+    ) -> Result<()> {
+        // Add hash calculation step
+        let hash_step = self.build_hash_calculation_step(config, source_files_group)?;
+        circleci_job.steps.push(CircleCIStep::new(hash_step));
+
+        // Add skip check step
+        let skip_check_step = self.build_skip_check_step(config, architecture)?;
+        circleci_job.steps.push(CircleCIStep::new(skip_check_step));
+
+        Ok(())
+    }
+
+    fn build_hash_calculation_step(
+        &self,
+        config: &Config,
+        source_files_group: &str,
+    ) -> Result<serde_yaml::Value> {
+        let source_file_groups = config
+            .source_file_groups
+            .as_ref()
+            .ok_or_else(|| miette::miette!("source_file_groups not defined in config"))?;
+
+        let file_patterns = source_file_groups.get(source_files_group).ok_or_else(|| {
+            miette::miette!(
+                "source_files group '{}' not found in source_file_groups",
+                source_files_group
+            )
+        })?;
+
+        // Build find commands for all file patterns
+        let mut find_commands = Vec::new();
+        for pattern in file_patterns {
+            if pattern.starts_with('(') && pattern.ends_with(')') {
+                // Reference to another group like "(rails)"
+                let referenced_group = &pattern[1..pattern.len() - 1];
+                if let Some(referenced_patterns) = source_file_groups.get(referenced_group) {
+                    for ref_pattern in referenced_patterns {
+                        if ref_pattern.ends_with('/') {
+                            find_commands
+                                .push(format!("find {} -type f 2>/dev/null || true", ref_pattern));
+                        } else {
+                            find_commands.push(format!(
+                                "[ -f {} ] && echo {} || true",
+                                ref_pattern, ref_pattern
+                            ));
+                        }
+                    }
+                }
+            } else if pattern.ends_with('/') {
+                // Directory pattern
+                find_commands.push(format!("find {} -type f 2>/dev/null || true", pattern));
+            } else {
+                // File pattern
+                find_commands.push(format!("[ -f {} ] && echo {} || true", pattern, pattern));
+            }
+        }
+
+        let command = format!(
+            r#"
+echo "Calculating hash for source files..."
+TEMP_HASH_FILE="/tmp/source_files_for_hash"
+rm -f "$TEMP_HASH_FILE"
+
+{}
+
+if [ -f "$TEMP_HASH_FILE" ]; then
+    export JOB_HASH=$(sort "$TEMP_HASH_FILE" | xargs sha256sum | sha256sum | cut -d' ' -f1)
+    echo "Hash calculated: $JOB_HASH"
+else
+    export JOB_HASH="empty"
+    echo "No source files found, using empty hash"
+fi
+            "#,
+            find_commands
+                .iter()
+                .map(|cmd| format!("{} >> \"$TEMP_HASH_FILE\"", cmd))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+        .trim()
+        .to_string();
+
+        let mut step = serde_yaml::Mapping::new();
+        let mut run_details = serde_yaml::Mapping::new();
+        run_details.insert(
+            serde_yaml::Value::String("name".to_string()),
+            serde_yaml::Value::String("Calculate source file hash".to_string()),
+        );
+        run_details.insert(
+            serde_yaml::Value::String("command".to_string()),
+            serde_yaml::Value::String(command),
+        );
+
+        step.insert(
+            serde_yaml::Value::String("run".to_string()),
+            serde_yaml::Value::Mapping(run_details),
+        );
+
+        Ok(serde_yaml::Value::Mapping(step))
+    }
+
+    fn build_skip_check_step(
+        &self,
+        _config: &Config,
+        architecture: &str,
+    ) -> Result<serde_yaml::Value> {
+        let command = format!(
+            r#"
+if [ -f "/tmp/cigen_skip_cache/job_${{JOB_HASH}}_{}" ]; then
+    echo "Job already completed successfully for this file hash. Skipping..."
+    circleci step halt
+else
+    echo "No previous successful run found. Proceeding with job..."
+    mkdir -p /tmp/cigen_skip_cache
+fi
+            "#,
+            architecture
+        )
+        .trim()
+        .to_string();
+
+        let mut step = serde_yaml::Mapping::new();
+        let mut run_details = serde_yaml::Mapping::new();
+        run_details.insert(
+            serde_yaml::Value::String("name".to_string()),
+            serde_yaml::Value::String("Check if job should be skipped".to_string()),
+        );
+        run_details.insert(
+            serde_yaml::Value::String("command".to_string()),
+            serde_yaml::Value::String(command),
+        );
+
+        step.insert(
+            serde_yaml::Value::String("run".to_string()),
+            serde_yaml::Value::Mapping(run_details),
+        );
+
+        Ok(serde_yaml::Value::Mapping(step))
+    }
+
+    fn add_record_completion_step(
+        &self,
+        circleci_job: &mut CircleCIJob,
+        architecture: &str,
+    ) -> Result<()> {
+        let command = format!(
+            r#"
+echo "Recording successful completion for hash ${{JOB_HASH}}"
+echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_HASH}}_{}"
+            "#,
+            architecture
+        )
+        .trim()
+        .to_string();
+
+        let mut step = serde_yaml::Mapping::new();
+        let mut run_details = serde_yaml::Mapping::new();
+        run_details.insert(
+            serde_yaml::Value::String("name".to_string()),
+            serde_yaml::Value::String("Record job completion".to_string()),
+        );
+        run_details.insert(
+            serde_yaml::Value::String("command".to_string()),
+            serde_yaml::Value::String(command),
+        );
+
+        step.insert(
+            serde_yaml::Value::String("run".to_string()),
+            serde_yaml::Value::Mapping(run_details),
+        );
+
+        circleci_job
+            .steps
+            .push(CircleCIStep::new(serde_yaml::Value::Mapping(step)));
+
+        Ok(())
     }
 }

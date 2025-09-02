@@ -12,30 +12,23 @@ pub fn resolve_docker_image(
         return Ok(image_ref.to_string());
     }
 
-    // Look up the image in docker_images configuration
-    let docker_images = config.docker_images.as_ref().ok_or_else(|| {
-        format!(
-            "Docker image '{}' not found - no docker_images configuration",
-            image_ref
-        )
-    })?;
-
-    let image_config = docker_images.get(image_ref).ok_or_else(|| {
-        format!(
-            "Docker image '{}' not found in docker_images configuration",
-            image_ref
-        )
-    })?;
-
-    // If we have an architecture and architecture-specific images are defined
-    if let (Some(arch), Some(arch_images)) = (architecture, &image_config.architectures)
-        && let Some(arch_image) = arch_images.get(arch)
+    // Look up the image in docker_images configuration if it exists
+    if let Some(docker_images) = &config.docker_images
+        && let Some(image_config) = docker_images.get(image_ref)
     {
-        return Ok(arch_image.clone());
+        // If we have an architecture and architecture-specific images are defined
+        if let (Some(arch), Some(arch_images)) = (architecture, &image_config.architectures)
+            && let Some(arch_image) = arch_images.get(arch)
+        {
+            return Ok(arch_image.clone());
+        }
+        // Fall back to default image
+        return Ok(image_config.default.clone());
     }
 
-    // Fall back to default image
-    Ok(image_config.default.clone())
+    // If not found in docker_images config, pass through as-is
+    // This handles custom image references like 'ci_app_base' that should be used literally
+    Ok(image_ref.to_string())
 }
 
 /// Generate CircleCI docker image anchors from docker_images configuration
@@ -139,16 +132,12 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_docker_image_not_found() {
+    fn test_resolve_docker_image_not_found_passes_through() {
         let config = create_test_config();
 
         let result = resolve_docker_image("nonexistent", None, &config);
-        assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("not found in docker_images configuration")
-        );
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), "nonexistent");
     }
 
     #[test]
