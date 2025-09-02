@@ -1,10 +1,39 @@
 use anyhow::{Context, Result};
 use cigen::loader::ConfigLoader;
 use cigen::providers::get_provider;
+use cigen::templating::TemplateEngine;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub fn generate_command(
+    workflow: Option<String>,
+    output: Option<String>,
+    cli_vars: &HashMap<String, String>,
+) -> Result<()> {
+    let current_dir = std::env::current_dir()?;
+
+    // Check if we should use template-based multi-output generation
+    let config_path = current_dir.join("cigen.yml");
+
+    if config_path.exists() {
+        let config_str = std::fs::read_to_string(&config_path)?;
+        let config: cigen::models::Config = serde_yaml::from_str(&config_str)?;
+
+        // If outputs are defined, use template-based generation
+        if let Some(outputs) = &config.outputs {
+            println!(
+                "Generating CI configuration from templates in: {}",
+                current_dir.display()
+            );
+            return generate_with_templates(outputs, output, cli_vars);
+        }
+    }
+
+    // Fall back to the original job-based generation
+    generate_from_jobs(workflow, output, cli_vars)
+}
+
+fn generate_from_jobs(
     workflow: Option<String>,
     output: Option<String>,
     cli_vars: &HashMap<String, String>,
@@ -160,6 +189,102 @@ pub fn generate_command(
             provider.name(),
             output_path.display()
         );
+    }
+
+    Ok(())
+}
+
+fn generate_with_templates(
+    outputs: &[cigen::models::OutputConfig],
+    specific_output: Option<String>,
+    cli_vars: &HashMap<String, String>,
+) -> Result<()> {
+    let current_dir = std::env::current_dir()?;
+    let template_dir = current_dir.join("templates");
+
+    if !template_dir.exists() {
+        anyhow::bail!(
+            "Template directory not found at: {}",
+            template_dir.display()
+        );
+    }
+
+    // Initialize template engine
+    let mut engine = TemplateEngine::new();
+
+    // Try to load full configuration, but don't fail if jobs/commands don't exist
+    let config_path = current_dir.join("cigen.yml");
+    let config_str = std::fs::read_to_string(&config_path)?;
+    let config: cigen::models::Config = serde_yaml::from_str(&config_str)?;
+
+    // Add configuration to template context
+    engine.add_vars_section(config.vars.as_ref().unwrap_or(&HashMap::new()));
+    engine.add_cli_vars(cli_vars);
+    engine.add_env_vars()?;
+
+    // Build template context with available data
+    let mut context = HashMap::new();
+    context.insert("config".to_string(), serde_json::to_value(&config)?);
+
+    // Try to load jobs and commands if they exist
+    let loader_result = ConfigLoader::new_with_vars(cli_vars);
+    if let Ok(mut loader) = loader_result
+        && let Ok(loaded) = loader.load_all()
+    {
+        context.insert("jobs".to_string(), serde_json::to_value(&loaded.jobs)?);
+        context.insert(
+            "commands".to_string(),
+            serde_json::to_value(&loaded.commands)?,
+        );
+    }
+
+    // Filter outputs if specific one requested
+    let outputs_to_generate: Vec<&cigen::models::OutputConfig> =
+        if let Some(ref specific) = specific_output {
+            outputs.iter().filter(|o| &o.output == specific).collect()
+        } else {
+            outputs.iter().collect()
+        };
+
+    if outputs_to_generate.is_empty() && specific_output.is_some() {
+        anyhow::bail!(
+            "Output '{}' not found in configuration",
+            specific_output.unwrap()
+        );
+    }
+
+    // Generate each output
+    for output_config in outputs_to_generate {
+        let template_path = template_dir.join(&output_config.template);
+
+        if !template_path.exists() {
+            anyhow::bail!("Template not found: {}", template_path.display());
+        }
+
+        println!(
+            "Generating {} from template {}...",
+            output_config.output, output_config.template
+        );
+
+        let template_content = std::fs::read_to_string(&template_path)?;
+        let rendered = engine.render_str(&template_content, &context)?;
+
+        // Output path should be relative to original directory using context
+        let output_path =
+            cigen::loader::context::original_dir_path(std::path::Path::new(&output_config.output));
+
+        // Create parent directories if needed
+        if let Some(parent) = output_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(&output_path, rendered)?;
+
+        if let Some(ref desc) = output_config.description {
+            println!("✅ Generated: {} - {}", output_config.output, desc);
+        } else {
+            println!("✅ Generated: {}", output_config.output);
+        }
     }
 
     Ok(())

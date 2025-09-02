@@ -35,3 +35,16 @@ pub fn to_original_relative_path(path: &Path) -> PathBuf {
         path.to_path_buf()
     }
 }
+
+/// Get the absolute path to a file relative to the original directory
+pub fn original_dir_path(path: &Path) -> PathBuf {
+    if let Some(original) = ORIGINAL_DIR.get() {
+        if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            original.join(path)
+        }
+    } else {
+        path.to_path_buf()
+    }
+}

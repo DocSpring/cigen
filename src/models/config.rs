@@ -52,6 +52,18 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub setup: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<Vec<OutputConfig>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutputConfig {
+    pub template: String,
+    pub output: String,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +165,7 @@ impl Default for Config {
             graph: None,
             dynamic: None,
             setup: None,
+            outputs: None,
         }
     }
 }

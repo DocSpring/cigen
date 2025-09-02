@@ -435,19 +435,56 @@ cigen list-outputs
 
 ### Template Organization
 
-Templates are stored in `.cigen/templates/` and can include partials:
+Templates are stored in `.cigen/templates/`:
 
 ```
 .cigen/
 ├── cigen.yml
 ├── templates/
-│   ├── setup_workflow.yml.j2
-│   ├── main_workflow.yml.j2
-│   ├── scheduled_updates.yml.j2
-│   └── partials/
-│       ├── _commands.yml.j2
-│       └── _docker_images.yml.j2
+│   ├── setup_workflow.yml.j2      # Minimal template - just workflow structure
+│   ├── main_workflow.yml.j2       # Minimal template - just workflow structure
+│   └── scheduled_updates.yml.j2   # Minimal template - just workflow structure
 ```
+
+The cigen engine **automatically generates** all the boilerplate:
+
+- Commands are collected from `.cigen/commands/*.yml`
+- Docker images are defined once and referenced by name
+- Caches are managed based on job declarations
+- Architecture variants are handled systematically
+
+The templates only contain what makes each workflow unique - the cigen engine handles all the repetitive parts.
+
+### Docker Image Management
+
+Docker images are defined once in `cigen.yml` and referenced by logical names:
+
+```yaml
+# cigen.yml
+docker_images:
+  ruby:
+    default: cimg/ruby:3.3.5
+    architectures:
+      amd64: cimg/ruby:3.3.5
+      arm64: cimg/ruby:3.3.5-arm64
+  node:
+    default: cimg/node:18.17.1
+  postgres:
+    default: cimg/postgres:14.9
+
+# In job definitions - just reference by name
+docker: ruby
+# Or for jobs that need multiple containers
+docker:
+  - image: ruby
+  - image: postgres
+```
+
+The cigen engine automatically:
+
+- Selects the right image based on job architecture
+- Generates the CircleCI docker image anchors
+- Handles authentication if configured
 
 ## Migration
 

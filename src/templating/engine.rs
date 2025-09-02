@@ -123,6 +123,63 @@ impl TemplateEngine {
         self.clear_current_file();
         result
     }
+
+    /// Render a template string with a provided context
+    pub fn render_str(
+        &mut self,
+        template: &str,
+        context: &HashMap<String, serde_json::Value>,
+    ) -> Result<String> {
+        // Convert serde_json::Value to minijinja::Value
+        let mut minijinja_context = HashMap::new();
+        for (key, json_value) in context {
+            let value = json_value_to_minijinja_value(json_value);
+            minijinja_context.insert(key.clone(), value);
+        }
+
+        // Also add variables from the resolver
+        for (key, yaml_value) in self.resolver.get_variables() {
+            if !minijinja_context.contains_key(key) {
+                let value = yaml_value_to_minijinja_value(yaml_value);
+                minijinja_context.insert(key.clone(), value);
+            }
+        }
+
+        // Render the template
+        self.env
+            .render_str(template, &minijinja_context)
+            .map_err(|e| anyhow::anyhow!("Template rendering error: {}", e))
+    }
+}
+
+/// Convert a serde_json::Value to a minijinja::Value
+fn json_value_to_minijinja_value(json_value: &serde_json::Value) -> Value {
+    match json_value {
+        serde_json::Value::Null => Value::from_serialize(()),
+        serde_json::Value::Bool(b) => Value::from(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Value::from(i)
+            } else if let Some(f) = n.as_f64() {
+                Value::from(f)
+            } else {
+                Value::from_serialize(n)
+            }
+        }
+        serde_json::Value::String(s) => Value::from(s.as_str()),
+        serde_json::Value::Array(arr) => Value::from_serialize(
+            arr.iter()
+                .map(json_value_to_minijinja_value)
+                .collect::<Vec<_>>(),
+        ),
+        serde_json::Value::Object(obj) => {
+            let converted: HashMap<String, Value> = obj
+                .iter()
+                .map(|(k, v)| (k.clone(), json_value_to_minijinja_value(v)))
+                .collect();
+            Value::from_serialize(converted)
+        }
+    }
 }
 
 /// Convert a serde_yaml::Value to a minijinja::Value
