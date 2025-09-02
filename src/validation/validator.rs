@@ -58,6 +58,11 @@ impl Validator {
     }
 
     pub fn validate_all(&self, base_path: &Path) -> Result<()> {
+        println!(
+            "DEBUG: validate_all called with base_path: {}",
+            base_path.display()
+        );
+
         // First check if the base path exists
         if !base_path.exists() {
             anyhow::bail!(
@@ -73,11 +78,25 @@ impl Validator {
             );
         }
 
-        // Main config.yml is required
-        let config_path = base_path.join("config.yml");
+        // Main config file is required (either cigen.yml in .cigen or config.yml in root)
+        // Check if we're validating a .cigen directory by looking at the base_path
+        let is_cigen_dir = base_path.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        let config_path = if is_cigen_dir {
+            base_path.join("cigen.yml")
+        } else {
+            base_path.join("config.yml")
+        };
+
         if !config_path.exists() {
+            let expected_name = if is_cigen_dir {
+                "cigen.yml"
+            } else {
+                "config.yml"
+            };
             anyhow::bail!(
-                "Missing required config.yml in {}. Even with split configs, a root config.yml is required.",
+                "Missing required {} in {}. This file is required for configuration.",
+                expected_name,
                 base_path.display()
             );
         }

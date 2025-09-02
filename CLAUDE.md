@@ -2,6 +2,24 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL: Read Notes Before Starting
+
+**BEFORE beginning ANY work session and AFTER any context reset/compaction:**
+
+1. Read ALL .md files in the `notes/` directory
+2. These are YOUR working notes - keep them up to date
+3. Remove any inaccurate or outdated information
+4. Add new learnings and discoveries
+5. These notes contain critical architectural decisions and implementation details
+
+Key notes files:
+
+- `notes/CACHING.md` - Automatic cache injection system, NO manual cache steps
+- `notes/CONFIG_FORMAT.md` - Configuration structure and conventions
+- `notes/TEMPLATING.md` - Template engine details and syntax
+- `notes/REQUIREMENTS.md` - Core requirements and architecture
+- `notes/PROJECT_PLAN.md` - Implementation roadmap
+
 ## CRITICAL: Git Commit Rules
 
 **NEVER EVER use `--no-verify` flag when committing**. This bypasses important checks and is lazy and unprofessional. If pre-commit hooks fail:
@@ -217,6 +235,12 @@ You can also reference `/Users/ndbroadbent/code/docspring/lib/tools/generate_cir
 The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/cigen.yml` file.
 
 We will start by hand-writing our own GitHub Actions workflow files, but eventually migrate to using `cigen` to generate our CI configuration.
+
+## DocSpring Configuration Location
+
+**CRITICAL**: When working on DocSpring configuration conversion, the `.cigen/` directory is located in `/Users/ndbroadbent/code/cigen/docspring/.cigen/` (via the symlinked monorepo), NOT in the main cigen repository. This is on the `nathan/cigen-config` branch of the DocSpring monorepo.
+
+The DocSpring configuration uses cigen to replace their existing ERB-based CircleCI configuration system. All job definitions, commands, and templates for DocSpring should be created in `/Users/ndbroadbent/code/cigen/docspring/.cigen/`.
 
 ## Key Concepts
 

@@ -11,7 +11,6 @@ pub mod span_tracker;
 
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::Path;
 
 use self::cache_dependencies::infer_cache_dependencies;
 use self::command_loader::CommandLoader;
@@ -66,7 +65,21 @@ impl ConfigLoader {
         // 1. First validation pass: validate .yml files before template resolution
         // This gives nice miette error messages for IDE compatibility
         // Skip .yml.j2 files since they may not be valid YAML before resolution
-        self.validator.validate_all(Path::new("."))?;
+        let current_dir = std::env::current_dir()?;
+        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        let config_dir = if is_in_cigen_dir {
+            println!("DEBUG: Already in .cigen directory, using current directory as config_dir");
+            current_dir.clone()
+        } else if current_dir.join(".cigen").exists() {
+            println!("DEBUG: Found .cigen subdirectory, using .cigen as config_dir");
+            current_dir.join(".cigen")
+        } else {
+            println!("DEBUG: No .cigen directory found, using current directory as config_dir");
+            current_dir.clone()
+        };
+
+        self.validator.validate_all(&config_dir)?;
 
         // 2. Load and merge main config (with templating)
         let mut config_loader = ConfigFileLoader::new(&mut self.template_engine);

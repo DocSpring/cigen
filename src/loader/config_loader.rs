@@ -37,15 +37,30 @@ impl<'a> ConfigLoader<'a> {
 
     /// Load configs without templating (for extracting vars)
     fn load_configs_for_vars(&self) -> Result<(JsonValue, Vec<(PathBuf, JsonValue)>)> {
-        // Load main config
-        let config_path = Path::new("config.yml");
+        // Load main config - check if we're in .cigen directory or need to look for .cigen/cigen.yml
+        let current_dir = std::env::current_dir().unwrap();
+        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        let config_path = if is_in_cigen_dir {
+            Path::new("cigen.yml")
+        } else if Path::new(".cigen/cigen.yml").exists() {
+            Path::new(".cigen/cigen.yml")
+        } else {
+            Path::new("config.yml")
+        };
         let content = std::fs::read_to_string(config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
         let main_config: JsonValue = serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
 
         // Load split configs
-        let config_dir = Path::new("config");
+        let config_dir = if is_in_cigen_dir {
+            Path::new("config")
+        } else if Path::new(".cigen/config").exists() {
+            Path::new(".cigen/config")
+        } else {
+            Path::new("config")
+        };
         let mut split_configs = Vec::new();
 
         for path in FileScanner::scan_directory(config_dir)? {
@@ -86,13 +101,28 @@ impl<'a> ConfigLoader<'a> {
     /// Load configs with templating applied
     fn load_configs_with_templating(&mut self) -> Result<(JsonValue, Vec<(PathBuf, JsonValue)>)> {
         // Load main config with templating
-        let config_path = Path::new("config.yml");
+        let current_dir = std::env::current_dir().unwrap();
+        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        let config_path = if is_in_cigen_dir {
+            Path::new("cigen.yml")
+        } else if Path::new(".cigen/cigen.yml").exists() {
+            Path::new(".cigen/cigen.yml")
+        } else {
+            Path::new("config.yml")
+        };
         let content = std::fs::read_to_string(config_path)?;
         let processed = self.process_file_content(config_path, &content)?;
         let main_config: JsonValue = serde_yaml::from_str(&processed)?;
 
         // Load split configs with templating
-        let config_dir = Path::new("config");
+        let config_dir = if is_in_cigen_dir {
+            Path::new("config")
+        } else if Path::new(".cigen/config").exists() {
+            Path::new(".cigen/config")
+        } else {
+            Path::new("config")
+        };
         let mut split_configs = Vec::new();
 
         for path in FileScanner::scan_directory(config_dir)? {

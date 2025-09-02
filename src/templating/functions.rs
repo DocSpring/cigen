@@ -1,4 +1,6 @@
 use minijinja::{Environment, Error, Value};
+use sha2::{Digest, Sha256};
+use std::path::PathBuf;
 
 /// Read function for templates - reads file content relative to config directory
 pub fn read_function(filename: Value) -> Result<Value, Error> {
@@ -27,9 +29,104 @@ pub fn read_function(filename: Value) -> Result<Value, Error> {
     }
 }
 
+/// Checksum function for templates - calculates SHA256 hash of file/directory content
+pub fn checksum_function(path: Value) -> Result<Value, Error> {
+    let path_str = path.as_str().ok_or_else(|| {
+        Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            "checksum() function requires a path string",
+        )
+    })?;
+
+    // For checksum, we want to resolve paths relative to the project root,
+    // not the .cigen directory. If we're in .cigen, go up one level.
+    let current_dir = std::env::current_dir().map_err(|e| {
+        Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            format!("Failed to get current directory: {e}"),
+        )
+    })?;
+
+    let base_dir = if current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen")) {
+        current_dir.parent().unwrap_or(&current_dir).to_path_buf()
+    } else {
+        current_dir
+    };
+
+    let path = base_dir.join(path_str);
+
+    let mut hasher = Sha256::new();
+
+    if path.is_file() {
+        // Hash single file
+        match std::fs::read(&path) {
+            Ok(content) => {
+                hasher.update(&content);
+            }
+            Err(e) => {
+                return Err(Error::new(
+                    minijinja::ErrorKind::InvalidOperation,
+                    format!("Failed to read file '{}': {}", path.display(), e),
+                ));
+            }
+        }
+    } else if path.is_dir() {
+        // Hash directory contents recursively
+        let mut paths = Vec::new();
+        collect_paths(&path, &mut paths).map_err(|e| {
+            Error::new(
+                minijinja::ErrorKind::InvalidOperation,
+                format!("Failed to read directory '{}': {}", path.display(), e),
+            )
+        })?;
+
+        // Sort paths for consistent hashing
+        paths.sort();
+
+        for file_path in paths {
+            if let Ok(content) = std::fs::read(&file_path) {
+                // Include relative path in hash for context
+                if let Ok(rel_path) = file_path.strip_prefix(&base_dir) {
+                    hasher.update(rel_path.to_string_lossy().as_bytes());
+                }
+                hasher.update(&content);
+            }
+        }
+    } else {
+        return Err(Error::new(
+            minijinja::ErrorKind::InvalidOperation,
+            format!(
+                "Path '{}' is neither a file nor a directory",
+                path.display()
+            ),
+        ));
+    }
+
+    let result = hasher.finalize();
+    let hex_string = format!("{result:x}");
+    Ok(Value::from(hex_string))
+}
+
+/// Recursively collect all file paths in a directory
+fn collect_paths(dir: &PathBuf, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                collect_paths(&path, paths)?;
+            } else {
+                paths.push(path);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Register all custom functions with MiniJinja
 pub fn register_functions(env: &mut Environment) {
     env.add_function("read", read_function);
+    env.add_function("checksum", checksum_function);
 }
 
 #[cfg(test)]

@@ -524,6 +524,7 @@ impl CircleCIGenerator {
                     .arg("validate")
                     .arg("-c")
                     .arg(config_file)
+                    .current_dir(config_file.parent().unwrap().parent().unwrap())
                     .output()
                     .into_diagnostic()?;
 
@@ -532,7 +533,14 @@ impl CircleCIGenerator {
                 } else {
                     let stderr = String::from_utf8_lossy(&validation_result.stderr);
                     eprintln!("✗ Config validation failed:\n{stderr}");
-                    return Err(miette::miette!("CircleCI config validation failed"));
+                    return Err(miette::miette!(
+                        "CircleCI CLI validation failed for config file: {}\n\
+                         Working directory: {}\n\
+                         CircleCI CLI error: {}",
+                        config_file.display(),
+                        config_file.parent().unwrap().parent().unwrap().display(),
+                        stderr
+                    ));
                 }
             }
             Ok(_) => {

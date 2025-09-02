@@ -47,8 +47,17 @@ impl ReferenceValidator {
             .map(|s| s.keys().map(|k| k.as_str()).collect())
             .unwrap_or_default();
 
-        // 3. ALL cache definitions from ALL jobs
+        // 3. ALL cache definitions from config AND jobs
         let mut all_defined_caches: HashSet<String> = HashSet::new();
+
+        // Add cache definitions from the main config
+        if let Some(cache_defs) = &config.cache_definitions {
+            for cache_name in cache_defs.keys() {
+                all_defined_caches.insert(cache_name.clone());
+            }
+        }
+
+        // Add cache definitions from jobs
         for job in jobs.values() {
             if let Some(cache_defs) = &job.cache {
                 for cache_name in cache_defs.keys() {

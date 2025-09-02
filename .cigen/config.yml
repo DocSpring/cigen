@@ -1,3 +1,0 @@
-$schema: ../schemas/v1/config-schema.json
-version: 1
-provider: circleci
