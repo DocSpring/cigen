@@ -4,6 +4,7 @@ use crate::providers::circleci::config::{
     CircleCICommand, CircleCIConfig, CircleCIDockerAuth, CircleCIDockerImage, CircleCIJob,
     CircleCIStep, CircleCIWorkflow, CircleCIWorkflowJob, CircleCIWorkflowJobDetails,
 };
+use crate::providers::circleci::docker_images;
 use crate::providers::circleci::template_commands;
 use crate::validation::steps::StepValidator;
 use miette::{IntoDiagnostic, Result};
@@ -13,6 +14,12 @@ use std::path::Path;
 use std::process::Command;
 
 pub struct CircleCIGenerator;
+
+impl Default for CircleCIGenerator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CircleCIGenerator {
     pub fn new() -> Self {
@@ -331,8 +338,13 @@ impl CircleCIGenerator {
     }
 
     fn build_docker_image(&self, config: &Config, image: &str) -> Result<CircleCIDockerImage> {
+        // Resolve docker image reference to actual image string
+        // For now, don't pass architecture - that will be handled in architecture matrix support
+        let resolved_image = docker_images::resolve_docker_image(image, None, config)
+            .map_err(|e| miette::miette!("Failed to resolve docker image: {}", e))?;
+
         let mut docker_image = CircleCIDockerImage {
-            image: image.to_string(),
+            image: resolved_image,
             auth: None,
             name: None,
             entrypoint: None,

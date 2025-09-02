@@ -55,6 +55,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<Vec<OutputConfig>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_images: Option<HashMap<String, DockerImageConfig>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +67,16 @@ pub struct OutputConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockerImageConfig {
+    /// Default image used when no architecture-specific image is available
+    pub default: String,
+
+    /// Architecture-specific image variants
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architectures: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -166,6 +179,7 @@ impl Default for Config {
             dynamic: None,
             setup: None,
             outputs: None,
+            docker_images: None,
         }
     }
 }

@@ -227,3 +227,84 @@ fn test_job_dependencies() {
     }
     assert!(found_test_with_requires);
 }
+
+#[test]
+fn test_docker_image_resolution() {
+    use crate::models::DockerImageConfig;
+    use std::collections::HashMap;
+
+    // Create config with docker_images definitions
+    let mut docker_images = HashMap::new();
+
+    // Ruby image with architecture variants
+    let mut ruby_architectures = HashMap::new();
+    ruby_architectures.insert("amd64".to_string(), "cimg/ruby:3.3.5".to_string());
+    ruby_architectures.insert("arm64".to_string(), "cimg/ruby:3.3.5-arm64".to_string());
+
+    docker_images.insert(
+        "ruby".to_string(),
+        DockerImageConfig {
+            default: "cimg/ruby:3.3.5".to_string(),
+            architectures: Some(ruby_architectures),
+        },
+    );
+
+    let config = Config {
+        docker_images: Some(docker_images),
+        ..Default::default()
+    };
+
+    let provider = CircleCIProvider::new();
+
+    // Create a job that references docker image by logical name
+    let job = Job {
+        image: "ruby".to_string(), // Logical reference, not full image
+        architectures: None,
+        resource_class: None,
+        source_files: None,
+        parallelism: None,
+        requires: None,
+        cache: None,
+        restore_cache: None,
+        services: None,
+        steps: None,
+    };
+
+    // Convert job and check that the image was resolved
+    let circleci_job = provider.generator.convert_job(&config, &job).unwrap();
+
+    // Check that docker images were set
+    assert!(circleci_job.docker.is_some());
+    let docker_images = circleci_job.docker.unwrap();
+    assert_eq!(docker_images.len(), 1);
+
+    // Check that the logical name "ruby" was resolved to actual image
+    assert_eq!(docker_images[0].image, "cimg/ruby:3.3.5");
+}
+
+#[test]
+fn test_docker_image_full_reference_passthrough() {
+    let config = Config::default();
+    let provider = CircleCIProvider::new();
+
+    // Create a job with full docker image reference
+    let job = Job {
+        image: "postgres:14.9".to_string(), // Full image reference
+        architectures: None,
+        resource_class: None,
+        source_files: None,
+        parallelism: None,
+        requires: None,
+        cache: None,
+        restore_cache: None,
+        services: None,
+        steps: None,
+    };
+
+    // Convert job
+    let circleci_job = provider.generator.convert_job(&config, &job).unwrap();
+
+    // Check that full image reference was used as-is
+    let docker_images = circleci_job.docker.unwrap();
+    assert_eq!(docker_images[0].image, "postgres:14.9");
+}

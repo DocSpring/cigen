@@ -1,5 +1,6 @@
 pub mod builtin_steps;
 mod config;
+pub mod docker_images;
 mod generator;
 pub mod schema;
 pub mod template_commands;
@@ -16,7 +17,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub struct CircleCIProvider {
-    generator: generator::CircleCIGenerator,
+    pub generator: generator::CircleCIGenerator,
 }
 
 impl CircleCIProvider {
