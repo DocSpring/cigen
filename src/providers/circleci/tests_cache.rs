@@ -27,7 +27,9 @@ fn test_cache_restoration() {
         steps: None,
     };
 
-    let circleci_job = generator.convert_job(&config, &job).unwrap();
+    let circleci_job = generator
+        .convert_job_with_architecture(&config, &job, "amd64")
+        .unwrap();
 
     // Verify checkout + cache restore steps are added
     assert!(
@@ -105,7 +107,9 @@ fn test_job_with_cache_and_steps() {
         ]),
     };
 
-    let circleci_job = generator.convert_job(&config, &job).unwrap();
+    let circleci_job = generator
+        .convert_job_with_architecture(&config, &job, "amd64")
+        .unwrap();
 
     // Verify checkout + cache restore step comes before regular steps
     assert_eq!(

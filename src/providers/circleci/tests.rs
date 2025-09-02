@@ -271,7 +271,10 @@ fn test_docker_image_resolution() {
     };
 
     // Convert job and check that the image was resolved
-    let circleci_job = provider.generator.convert_job(&config, &job).unwrap();
+    let circleci_job = provider
+        .generator
+        .convert_job_with_architecture(&config, &job, "amd64")
+        .unwrap();
 
     // Check that docker images were set
     assert!(circleci_job.docker.is_some());
@@ -302,9 +305,219 @@ fn test_docker_image_full_reference_passthrough() {
     };
 
     // Convert job
-    let circleci_job = provider.generator.convert_job(&config, &job).unwrap();
+    let circleci_job = provider
+        .generator
+        .convert_job_with_architecture(&config, &job, "amd64")
+        .unwrap();
 
     // Check that full image reference was used as-is
     let docker_images = circleci_job.docker.unwrap();
     assert_eq!(docker_images[0].image, "postgres:14.9");
+}
+
+#[test]
+fn test_architecture_matrix_generation() {
+    let config = Config::default();
+
+    let mut jobs = HashMap::new();
+    jobs.insert(
+        "test".to_string(),
+        Job {
+            image: "cimg/ruby:3.3.5".to_string(),
+            architectures: Some(vec!["amd64".to_string(), "arm64".to_string()]),
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            requires: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            steps: None,
+        },
+    );
+
+    let generator = generator::CircleCIGenerator::new();
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "test_workflow", &jobs, &commands);
+    if let Err(e) = &result {
+        eprintln!("Error: {e}");
+    }
+    assert!(result.is_ok());
+
+    let circleci_config = result.unwrap();
+
+    // Should have generated two job variants
+    assert!(circleci_config.jobs.contains_key("test_amd64"));
+    assert!(circleci_config.jobs.contains_key("test_arm64"));
+
+    // Check workflow contains both jobs
+    let workflow = &circleci_config.workflows["test_workflow"];
+    let job_names: Vec<String> = workflow
+        .jobs
+        .iter()
+        .map(|job| match job {
+            config::CircleCIWorkflowJob::Simple(name) => name.clone(),
+            config::CircleCIWorkflowJob::Detailed { job } => job.keys().next().unwrap().clone(),
+        })
+        .collect();
+
+    assert!(job_names.contains(&"test_amd64".to_string()));
+    assert!(job_names.contains(&"test_arm64".to_string()));
+}
+
+#[test]
+fn test_architecture_matrix_with_dependencies() {
+    let config = Config::default();
+
+    let mut jobs = HashMap::new();
+
+    // Build job with architectures
+    jobs.insert(
+        "build".to_string(),
+        Job {
+            image: "cimg/ruby:3.3.5".to_string(),
+            architectures: Some(vec!["amd64".to_string(), "arm64".to_string()]),
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            requires: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            steps: None,
+        },
+    );
+
+    // Test job that depends on build
+    jobs.insert(
+        "test".to_string(),
+        Job {
+            image: "cimg/ruby:3.3.5".to_string(),
+            architectures: Some(vec!["amd64".to_string(), "arm64".to_string()]),
+            requires: Some(crate::models::job::JobRequires::Single("build".to_string())),
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            steps: None,
+        },
+    );
+
+    let generator = generator::CircleCIGenerator::new();
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "test_workflow", &jobs, &commands);
+    assert!(result.is_ok());
+
+    let circleci_config = result.unwrap();
+
+    // Should have generated architecture variants for both jobs
+    assert!(circleci_config.jobs.contains_key("build_amd64"));
+    assert!(circleci_config.jobs.contains_key("build_arm64"));
+    assert!(circleci_config.jobs.contains_key("test_amd64"));
+    assert!(circleci_config.jobs.contains_key("test_arm64"));
+
+    // Check workflow dependencies are correctly mapped
+    let workflow = &circleci_config.workflows["test_workflow"];
+
+    // Find test_amd64 job and check its dependencies
+    for job in &workflow.jobs {
+        if let config::CircleCIWorkflowJob::Detailed { job } = job
+            && job.contains_key("test_amd64")
+        {
+            let details = &job["test_amd64"];
+            assert_eq!(details.requires, Some(vec!["build_amd64".to_string()]));
+        }
+        if let config::CircleCIWorkflowJob::Detailed { job } = job
+            && job.contains_key("test_arm64")
+        {
+            let details = &job["test_arm64"];
+            assert_eq!(details.requires, Some(vec!["build_arm64".to_string()]));
+        }
+    }
+}
+
+#[test]
+fn test_single_architecture_no_suffix() {
+    let config = Config::default();
+
+    let mut jobs = HashMap::new();
+    jobs.insert(
+        "test".to_string(),
+        Job {
+            image: "cimg/ruby:3.3.5".to_string(),
+            architectures: Some(vec!["amd64".to_string()]), // Single architecture
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            requires: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            steps: None,
+        },
+    );
+
+    let generator = generator::CircleCIGenerator::new();
+    let commands = HashMap::new();
+    let result = generator.build_config(&config, "test_workflow", &jobs, &commands);
+    assert!(result.is_ok());
+
+    let circleci_config = result.unwrap();
+
+    // Should have only one job without architecture suffix
+    assert!(circleci_config.jobs.contains_key("test"));
+    assert!(!circleci_config.jobs.contains_key("test_amd64"));
+}
+
+#[test]
+fn test_architecture_environment_variables() {
+    use crate::models::DockerImageConfig;
+    use std::collections::HashMap;
+
+    // Create config with docker_images definitions
+    let mut docker_images = HashMap::new();
+    let mut ruby_architectures = HashMap::new();
+    ruby_architectures.insert("amd64".to_string(), "cimg/ruby:3.3.5".to_string());
+    ruby_architectures.insert("arm64".to_string(), "cimg/ruby:3.3.5-arm64".to_string());
+
+    docker_images.insert(
+        "ruby".to_string(),
+        DockerImageConfig {
+            default: "cimg/ruby:3.3.5".to_string(),
+            architectures: Some(ruby_architectures),
+        },
+    );
+
+    let config = Config {
+        docker_images: Some(docker_images),
+        ..Default::default()
+    };
+
+    let job = Job {
+        image: "ruby".to_string(),
+        architectures: Some(vec!["arm64".to_string()]),
+        resource_class: None,
+        source_files: None,
+        parallelism: None,
+        requires: None,
+        cache: None,
+        restore_cache: None,
+        services: None,
+        steps: None,
+    };
+
+    let generator = generator::CircleCIGenerator::new();
+    let circleci_job = generator
+        .convert_job_with_architecture(&config, &job, "arm64")
+        .unwrap();
+
+    // Check environment variables
+    let env = circleci_job.environment.unwrap();
+    assert_eq!(env.get("DOCKER_ARCH").unwrap(), "arm64");
+
+    // Check that the correct architecture-specific image was used
+    let docker_images = circleci_job.docker.unwrap();
+    assert_eq!(docker_images[0].image, "cimg/ruby:3.3.5-arm64");
 }

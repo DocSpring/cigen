@@ -76,10 +76,23 @@ impl CircleCIGenerator {
                 .workflows
                 .insert(workflow_name.clone(), workflow_config);
 
-            // Process all jobs in the workflow
+            // Process all jobs in the workflow with architecture variants
             for (job_name, job_def) in jobs {
-                let circleci_job = self.convert_job(config, job_def)?;
-                circleci_config.jobs.insert(job_name.clone(), circleci_job);
+                let architectures = job_def
+                    .architectures
+                    .clone()
+                    .unwrap_or_else(|| vec!["amd64".to_string()]); // Default to amd64
+
+                for arch in &architectures {
+                    let variant_job_name = if architectures.len() > 1 {
+                        format!("{}_{}", job_name, arch)
+                    } else {
+                        job_name.clone()
+                    };
+
+                    let circleci_job = self.convert_job_with_architecture(config, job_def, arch)?;
+                    circleci_config.jobs.insert(variant_job_name, circleci_job);
+                }
             }
         }
 
@@ -152,10 +165,23 @@ impl CircleCIGenerator {
             .workflows
             .insert(workflow_name.to_string(), workflow);
 
-        // Convert jobs
+        // Convert jobs with architecture variants
         for (job_name, job_def) in jobs {
-            let circleci_job = self.convert_job(config, job_def)?;
-            circleci_config.jobs.insert(job_name.clone(), circleci_job);
+            let architectures = job_def
+                .architectures
+                .clone()
+                .unwrap_or_else(|| vec!["amd64".to_string()]); // Default to amd64
+
+            for arch in &architectures {
+                let variant_job_name = if architectures.len() > 1 {
+                    format!("{}_{}", job_name, arch)
+                } else {
+                    job_name.clone()
+                };
+
+                let circleci_job = self.convert_job_with_architecture(config, job_def, arch)?;
+                circleci_config.jobs.insert(variant_job_name, circleci_job);
+            }
         }
 
         // Add services as executors if any
@@ -206,25 +232,55 @@ impl CircleCIGenerator {
         let mut workflow_jobs = Vec::new();
 
         for (job_name, job_def) in jobs {
-            // Handle job dependencies
-            if let Some(requires) = &job_def.requires {
-                let details = CircleCIWorkflowJobDetails {
-                    requires: Some(requires.to_vec()),
-                    context: None,
-                    filters: None,
-                    matrix: None,
-                    name: None,
-                    job_type: None,
-                    pre_steps: None,
-                    post_steps: None,
+            // Generate architecture variants if architectures are specified
+            let architectures = job_def
+                .architectures
+                .clone()
+                .unwrap_or_else(|| vec!["amd64".to_string()]); // Default to amd64
+
+            for arch in &architectures {
+                let variant_job_name = if architectures.len() > 1 {
+                    format!("{}_{}", job_name, arch)
+                } else {
+                    job_name.clone()
                 };
 
-                let mut job_map = HashMap::new();
-                job_map.insert(job_name.clone(), details);
+                // Handle job dependencies with architecture variants
+                if let Some(requires) = &job_def.requires {
+                    let arch_requires = requires
+                        .to_vec()
+                        .into_iter()
+                        .map(|req| {
+                            // If the required job also has architectures, append architecture
+                            if let Some(required_job) = jobs.get(&req)
+                                && let Some(req_archs) = &required_job.architectures
+                                && req_archs.len() > 1
+                                && req_archs.contains(arch)
+                            {
+                                return format!("{}_{}", req, arch);
+                            }
+                            req
+                        })
+                        .collect();
 
-                workflow_jobs.push(CircleCIWorkflowJob::Detailed { job: job_map });
-            } else {
-                workflow_jobs.push(CircleCIWorkflowJob::Simple(job_name.clone()));
+                    let details = CircleCIWorkflowJobDetails {
+                        requires: Some(arch_requires),
+                        context: None,
+                        filters: None,
+                        matrix: None,
+                        name: None,
+                        job_type: None,
+                        pre_steps: None,
+                        post_steps: None,
+                    };
+
+                    let mut job_map = HashMap::new();
+                    job_map.insert(variant_job_name, details);
+
+                    workflow_jobs.push(CircleCIWorkflowJob::Detailed { job: job_map });
+                } else {
+                    workflow_jobs.push(CircleCIWorkflowJob::Simple(variant_job_name));
+                }
             }
         }
 
@@ -235,7 +291,12 @@ impl CircleCIGenerator {
         })
     }
 
-    pub(crate) fn convert_job(&self, config: &Config, job: &Job) -> Result<CircleCIJob> {
+    pub(crate) fn convert_job_with_architecture(
+        &self,
+        config: &Config,
+        job: &Job,
+        architecture: &str,
+    ) -> Result<CircleCIJob> {
         let mut circleci_job = CircleCIJob {
             executor: None,
             docker: None,
@@ -248,8 +309,14 @@ impl CircleCIGenerator {
             steps: Vec::new(),
         };
 
-        // Build Docker images
-        let mut docker_images = vec![self.build_docker_image(config, &job.image)?];
+        // Set environment variables including DOCKER_ARCH
+        let mut environment = HashMap::new();
+        environment.insert("DOCKER_ARCH".to_string(), architecture.to_string());
+        circleci_job.environment = Some(environment);
+
+        // Build Docker images with architecture awareness
+        let mut docker_images =
+            vec![self.build_docker_image_with_architecture(config, &job.image, architecture)?];
 
         // Add service containers
         if let Some(service_refs) = &job.services
@@ -265,7 +332,6 @@ impl CircleCIGenerator {
         circleci_job.docker = Some(docker_images);
 
         // Add checkout step as the first step (standard CircleCI practice)
-        // TODO: Make this configurable via job settings
         let checkout_step = serde_yaml::Value::String("checkout".to_string());
         circleci_job.steps.push(CircleCIStep::new(checkout_step));
 
@@ -278,13 +344,14 @@ impl CircleCIGenerator {
                         let mut restore_step = serde_yaml::Mapping::new();
                         let mut restore_config = serde_yaml::Mapping::new();
 
-                        // Generate cache key based on cache name
-                        let cache_key = format!("{}-{{{{ checksum \"cache_key\" }}}}", name);
+                        // Generate cache key based on cache name and architecture
+                        let cache_key =
+                            format!("{}-{}-{{{{ checksum \"cache_key\" }}}}", name, architecture);
                         restore_config.insert(
                             serde_yaml::Value::String("keys".to_string()),
                             serde_yaml::Value::Sequence(vec![
                                 serde_yaml::Value::String(cache_key.clone()),
-                                serde_yaml::Value::String(format!("{}-", name)),
+                                serde_yaml::Value::String(format!("{}-{}-", name, architecture)),
                             ]),
                         );
 
@@ -303,14 +370,14 @@ impl CircleCIGenerator {
                         let mut restore_step = serde_yaml::Mapping::new();
                         let mut restore_config = serde_yaml::Mapping::new();
 
-                        // If dependency is false, we might handle it differently
-                        // For now, just restore the cache normally
-                        let cache_key = format!("{}-{{{{ checksum \"cache_key\" }}}}", name);
+                        // Generate cache key based on cache name and architecture
+                        let cache_key =
+                            format!("{}-{}-{{{{ checksum \"cache_key\" }}}}", name, architecture);
                         restore_config.insert(
                             serde_yaml::Value::String("keys".to_string()),
                             serde_yaml::Value::Sequence(vec![
                                 serde_yaml::Value::String(cache_key.clone()),
-                                serde_yaml::Value::String(format!("{}-", name)),
+                                serde_yaml::Value::String(format!("{}-{}-", name, architecture)),
                             ]),
                         );
 
@@ -337,10 +404,14 @@ impl CircleCIGenerator {
         Ok(circleci_job)
     }
 
-    fn build_docker_image(&self, config: &Config, image: &str) -> Result<CircleCIDockerImage> {
-        // Resolve docker image reference to actual image string
-        // For now, don't pass architecture - that will be handled in architecture matrix support
-        let resolved_image = docker_images::resolve_docker_image(image, None, config)
+    fn build_docker_image_with_architecture(
+        &self,
+        config: &Config,
+        image: &str,
+        architecture: &str,
+    ) -> Result<CircleCIDockerImage> {
+        // Resolve docker image reference with architecture awareness
+        let resolved_image = docker_images::resolve_docker_image(image, Some(architecture), config)
             .map_err(|e| miette::miette!("Failed to resolve docker image: {}", e))?;
 
         let mut docker_image = CircleCIDockerImage {
