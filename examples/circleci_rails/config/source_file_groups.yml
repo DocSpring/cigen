@@ -20,3 +20,17 @@ source_file_groups:
   rspec:
     - (rails)
     - spec/
+  ruby:
+    - "**/*.rb"
+    - "Gemfile*"
+    - ".ruby-version"
+  javascript:
+    - "**/*.js"
+    - "**/*.jsx"
+    - "**/*.ts"
+    - "**/*.tsx"
+    - "package*.json"
+  rails_assets:
+    - "app/assets/**/*"
+    - "app/javascript/**/*"
+    - "config/webpack/**/*"

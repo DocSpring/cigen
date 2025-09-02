@@ -1,20 +1,18 @@
-image: build_libs
-architectures: ["arm64", "amd64"]
+image: cimg/ruby:3.3.5
+architectures: ["amd64", "arm64"]
 resource_class: large
-source_files: bundler
-cache:
-  gems:
-    - .bundle
-    - vendor/bundle
 
-environment:
-  BUNDLE_GEMFILE: "Gemfile"
+cache:
+  gems: "vendor/bundle"
 
 steps:
   - run:
-      name: Bundle Install
+      name: Install gems
       command: |
+        # Configure bundle for deployment
         bundle config set --local deployment 'true'
-        bundle check || bundle install
+        bundle config set --local without 'development'
+        bundle install --jobs=4 --retry=3
         bundle binstubs --all
         bundle clean --force
+        bundle check

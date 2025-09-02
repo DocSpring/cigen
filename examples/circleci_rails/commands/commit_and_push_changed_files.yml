@@ -1,0 +1,41 @@
+description: Commit and push changed files to git repository
+
+parameters:
+  pathspecs:
+    type: string
+    description: JSON array of pathspec objects with pathspec and update_command fields
+
+steps:
+  - name: Commit and push changed files
+    run: |
+      # Skip for arm64 builds - only run on amd64
+      if [ "$CIRCLE_NODE_INDEX" != "0" ] && [ "$(uname -m)" = "aarch64" ]; then
+        echo "Skipping commit and push for arm64 build"
+        exit 0
+      fi
+
+      echo "Checking for changed files to commit..."
+
+      # Parse the pathspecs parameter as JSON
+      echo '<< parameters.pathspecs >>' | jq -r '.[] | "\(.pathspec) \(.update_command)"' | while read -r pathspec update_command; do
+        if git diff --exit-code $pathspec > /dev/null; then
+          echo "No changes in $pathspec"
+        else
+          echo "Changes detected in $pathspec (from: $update_command)"
+          git add $pathspec
+        fi
+      done
+
+      # Check if there are any staged changes
+      if git diff --cached --exit-code > /dev/null; then
+        echo "No changes to commit"
+      else
+        echo "Committing changes..."
+        git commit -m "Auto-update files from CI
+
+        Updated by: $CIRCLE_JOB on $CIRCLE_BRANCH
+        Build: $CIRCLE_BUILD_URL"
+
+        echo "Pushing changes..."
+        git push origin $CIRCLE_BRANCH
+      fi

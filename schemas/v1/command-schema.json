@@ -46,17 +46,37 @@
       "description": "Steps to execute in this command",
       "minItems": 1,
       "items": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Step name"
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Simple run step",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Step name"
+              },
+              "run": {
+                "type": "string",
+                "description": "Shell command to execute"
+              }
+            },
+            "required": ["name", "run"],
+            "additionalProperties": false
           },
-          "run": {
+          {
             "type": "string",
-            "description": "Shell command to execute"
+            "description": "Reference to another command"
+          },
+          {
+            "type": "object",
+            "description": "Raw CircleCI step (orb commands, etc)",
+            "additionalProperties": true,
+            "minProperties": 1,
+            "not": {
+              "allOf": [{ "required": ["name"] }, { "required": ["run"] }]
+            }
           }
-        }
+        ]
       }
     }
   },

@@ -1,0 +1,29 @@
+image: cimg/ruby:3.3.5
+architectures: ["amd64", "arm64"]
+resource_class: medium
+
+requires:
+  - "install_gems"
+  - "install_app_npm_packages"
+
+cache:
+  rails_assets: "public/assets"
+
+source_files: "rails_assets"
+
+steps:
+  - run:
+      name: Compile Rails assets
+      command: |
+        echo "Compiling Rails assets for test environment"
+
+        # Compile assets
+        RAILS_ENV=test bundle exec rails assets:precompile
+
+        # Verify assets were compiled
+        if [ ! -d "public/assets" ]; then
+          echo "Error: Assets directory not found after compilation"
+          exit 1
+        fi
+
+        echo "Rails assets compiled successfully"

@@ -178,28 +178,40 @@ impl DataValidator {
 
         // Validate source file group reference
         if let Some(source_files) = &job.source_files
-            && !available_source_groups.contains(&source_files)
             && let Some(span) = span_finder.find_field_span(&["source_files"])
         {
-            return Err(DataValidationError::new(
-                &self.file_path,
-                self.file_content.clone(),
-                span,
-                format!(
-                    "Unknown source file group '{}'. Available groups: {}",
-                    source_files,
-                    if available_source_groups.is_empty() {
-                        "none defined".to_string()
-                    } else {
-                        available_source_groups
-                            .iter()
-                            .map(|s| format!("'{s}'"))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    }
-                ),
-            )
-            .into());
+            let mut unknown_groups = Vec::new();
+            for source_file in source_files {
+                if let Some(group_name) = source_file.strip_prefix('@')
+                    && !available_source_groups
+                        .iter()
+                        .any(|g| g.as_str() == group_name)
+                {
+                    unknown_groups.push(group_name);
+                }
+            }
+
+            if !unknown_groups.is_empty() {
+                return Err(DataValidationError::new(
+                    &self.file_path,
+                    self.file_content.clone(),
+                    span,
+                    format!(
+                        "Unknown source file group(s) '{}'. Available groups: {}",
+                        unknown_groups.join("', '"),
+                        if available_source_groups.is_empty() {
+                            "none defined".to_string()
+                        } else {
+                            available_source_groups
+                                .iter()
+                                .map(|s| format!("'{s}'"))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        }
+                    ),
+                )
+                .into());
+            }
         }
 
         Ok(())

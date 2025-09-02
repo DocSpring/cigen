@@ -123,6 +123,7 @@ impl StepValidator {
                         "when",
                         "unless",
                         "deploy",
+                        "commit_and_push_changed_files",
                     ];
 
                     if !known_steps.contains(&step_type) {

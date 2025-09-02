@@ -351,11 +351,11 @@ impl CircleCIGenerator {
         circleci_job.steps.push(CircleCIStep::new(checkout_step));
 
         // Add skip logic if job has source_files defined (job-status cache)
-        let has_skip_logic = if let Some(source_files_group) = &job.source_files {
+        let has_skip_logic = if let Some(source_files) = &job.source_files {
             self.add_skip_check_initial_steps(
                 &mut circleci_job,
                 config,
-                source_files_group,
+                source_files,
                 architecture,
             )?;
             true
@@ -828,29 +828,39 @@ impl CircleCIGenerator {
         let mut steps = Vec::new();
 
         for step in &user_cmd.steps {
-            // Convert old format to new CircleCI format
-            if let Some(run) = &step.run {
-                let mut step_map = serde_yaml::Mapping::new();
-                let mut run_details = serde_yaml::Mapping::new();
+            match step {
+                crate::models::command::Step::Simple { name, run } => {
+                    // Convert simple step to CircleCI run format
+                    let mut step_map = serde_yaml::Mapping::new();
+                    let mut run_details = serde_yaml::Mapping::new();
 
-                if let Some(name) = &step.name {
                     run_details.insert(
                         serde_yaml::Value::String("name".to_string()),
                         serde_yaml::Value::String(name.clone()),
                     );
+
+                    run_details.insert(
+                        serde_yaml::Value::String("command".to_string()),
+                        serde_yaml::Value::String(run.clone()),
+                    );
+
+                    step_map.insert(
+                        serde_yaml::Value::String("run".to_string()),
+                        serde_yaml::Value::Mapping(run_details),
+                    );
+
+                    steps.push(CircleCIStep::new(serde_yaml::Value::Mapping(step_map)));
                 }
-
-                run_details.insert(
-                    serde_yaml::Value::String("command".to_string()),
-                    serde_yaml::Value::String(run.clone()),
-                );
-
-                step_map.insert(
-                    serde_yaml::Value::String("run".to_string()),
-                    serde_yaml::Value::Mapping(run_details),
-                );
-
-                steps.push(CircleCIStep::new(serde_yaml::Value::Mapping(step_map)));
+                crate::models::command::Step::CommandRef(cmd_ref) => {
+                    // Convert command reference to string step
+                    steps.push(CircleCIStep::new(serde_yaml::Value::String(
+                        cmd_ref.clone(),
+                    )));
+                }
+                crate::models::command::Step::Raw(raw_value) => {
+                    // Use raw value directly
+                    steps.push(CircleCIStep::new(raw_value.clone()));
+                }
             }
         }
 
@@ -883,11 +893,11 @@ impl CircleCIGenerator {
         &self,
         circleci_job: &mut CircleCIJob,
         config: &Config,
-        source_files_group: &str,
+        source_files: &Vec<String>,
         architecture: &str,
     ) -> Result<()> {
         // Add hash calculation step
-        let hash_step = self.build_hash_calculation_step(config, source_files_group)?;
+        let hash_step = self.build_hash_calculation_step(config, source_files)?;
         circleci_job.steps.push(CircleCIStep::new(hash_step));
 
         // Add skip check step
@@ -900,23 +910,36 @@ impl CircleCIGenerator {
     fn build_hash_calculation_step(
         &self,
         config: &Config,
-        source_files_group: &str,
+        source_files: &Vec<String>,
     ) -> Result<serde_yaml::Value> {
         let source_file_groups = config
             .source_file_groups
             .as_ref()
             .ok_or_else(|| miette::miette!("source_file_groups not defined in config"))?;
 
-        let file_patterns = source_file_groups.get(source_files_group).ok_or_else(|| {
-            miette::miette!(
-                "source_files group '{}' not found in source_file_groups",
-                source_files_group
-            )
-        })?;
+        let mut all_patterns = Vec::new();
+
+        for source_file in source_files {
+            if let Some(group_name) = source_file.strip_prefix('@') {
+                // Named group reference like "@ruby"
+
+                let file_patterns = source_file_groups.get(group_name).ok_or_else(|| {
+                    miette::miette!(
+                        "source_files group '{}' not found in source_file_groups",
+                        group_name
+                    )
+                })?;
+
+                all_patterns.extend(file_patterns.clone());
+            } else {
+                // Inline pattern like "scripts/**/*"
+                all_patterns.push(source_file.clone());
+            }
+        }
 
         // Build find commands for all file patterns
         let mut find_commands = Vec::new();
-        for pattern in file_patterns {
+        for pattern in all_patterns {
             if pattern.starts_with('(') && pattern.ends_with(')') {
                 // Reference to another group like "(rails)"
                 let referenced_group = &pattern[1..pattern.len() - 1];

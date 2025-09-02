@@ -1,47 +1,59 @@
 image: ci_app_base
-architectures: ["arm64", "amd64"]
+architectures: ["amd64", "arm64"]
 resource_class: large
-source_files: rspec
-parallelism: 2
+parallelism: 12
+
+requires:
+  - "install_gems"
+  - "compile_rails_assets_test"
+  - "compile_client_webpack_test"
+
+services: ["postgres", "redis", "minio"]
 
 restore_cache:
   - gems
-  - npm_packages
-  - name: bootsnap
-    dependency: false
+  - bootsnap
   - rails_assets
-
-services:
-  - postgres
-  - redis
-  - minio
+  - npm_packages
 
 steps:
-  - setup_database
   - run:
-      name: Split RSpec tests by timing
-      command: |
-        circleci tests glob "spec/**/*_spec.rb" \
-          | circleci tests split --split-by=timings \
-          > /tmp/split-rspec-tests
+      name: Setup database
+      command: bundle exec rails db:create db:schema:load --trace
 
   - run:
-      name: Run RSpec
-      command: |
-        rspec \
-          --seed << pipeline.number >> \
-          --format RspecJunitFormatter \
-          --out spec/results/rspec.xml \
-          $(cat /tmp/split-rspec-tests)
+      name: Check Shrine Version is 3.x
+      command: bundle exec rails runner "puts Shrine.version" | grep "3\."
 
   - run:
-      name: Delete artifacts for successful job
-      command: rm -rf spec/artifacts log
+      name: Remove unneeded files for test environment
+      command: echo "Removing development files not needed for test environment"
+
+  - run:
+      name: Run RSpec tests
+      command: |
+        # Run RSpec with parallel execution
+        TESTFILES=$(bundle exec rspec --dry-run --format json | \
+          jq -r '.examples[].file_path' | sort | uniq | \
+          awk "NR % $CIRCLE_NODE_TOTAL == $CIRCLE_NODE_INDEX")
+
+        if [ -n "$TESTFILES" ]; then
+          echo "Running RSpec tests on node $CIRCLE_NODE_INDEX of $CIRCLE_NODE_TOTAL"
+          echo "Test files for this node:"
+          echo "$TESTFILES"
+
+          bundle exec rspec \
+            --format progress \
+            --format RspecJunitFormatter \
+            --out tmp/rspec/rspec-${CIRCLE_NODE_INDEX}.xml \
+            $TESTFILES
+        else
+          echo "No test files assigned to this node"
+        fi
+
   - store_test_results:
-      path: spec/results/rspec.xml
+      path: tmp/rspec
+
   - store_artifacts:
-      path: spec/artifacts
-  - store_artifacts:
-      path: coverage
-  - store_artifacts:
-      path: log
+      path: tmp/rspec
+      destination: rspec

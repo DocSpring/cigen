@@ -28,8 +28,20 @@
       "enum": ["small", "medium", "large", "xlarge", "2xlarge", "self_hosted"]
     },
     "source_files": {
-      "type": "string",
-      "description": "Reference to a source file group defined in config"
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Reference to a source file group (e.g., '@ruby') or inline glob pattern"
+        },
+        {
+          "type": "array",
+          "description": "Array of source file group references and/or glob patterns",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      ]
     },
     "parallelism": {
       "type": "integer",

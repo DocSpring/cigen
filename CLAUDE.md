@@ -230,6 +230,29 @@ You can also reference `/Users/ndbroadbent/code/docspring/lib/tools/generate_cir
 
 **Testing Strategy**: Add comprehensive test cases as you implement features, based on what you find in the reference implementation. Every feature from the reference should have corresponding tests.
 
+## DocSpring Integration vs Public Examples
+
+**CRITICAL SECURITY DISTINCTION**:
+
+### Public Examples (`examples/`)
+
+- **PUBLIC MIT LICENSED** code visible to all users
+- Serves as demonstration of complex, production-ready CI pipeline patterns
+- Must contain NO internal DocSpring information, secrets, or sensitive details
+- Use generic company names, sanitized configurations, example data only
+- This is what users see to learn how to use cigen
+
+### Private DocSpring Work (`./docspring/`)
+
+- **PRIVATE INTERNAL** DocSpring monorepo (symlinked)
+- Contains actual DocSpring production CI configuration
+- Work in `./docspring/.cigen/` directory for real DocSpring conversion
+- Source jobs are in `./docspring/.circleci/src/ci_jobs/` and `./docspring/.circleci/src/deploy_jobs/`
+- Convert ERB templates to cigen YAML format in `./docspring/.cigen/workflows/`
+- Use DocSpring's actual production requirements
+
+**NEVER COPY INTERNAL DOCSPRING DETAILS TO PUBLIC EXAMPLES**
+
 ## Use Our Own Tool
 
 The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/cigen.yml` file.

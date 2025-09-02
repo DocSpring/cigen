@@ -18,7 +18,7 @@ fn test_load_example_job() {
 
     assert_eq!(job.image, "ci_app_base");
     assert!(job.parallelism.is_some());
-    assert_eq!(job.parallelism.unwrap(), 2);
+    assert_eq!(job.parallelism.unwrap(), 12);
 
     // Test service references
     let service_refs = job.service_references();

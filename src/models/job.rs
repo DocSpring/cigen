@@ -29,8 +29,12 @@ pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resource_class: Option<String>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_files: Option<String>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "deserialize_source_files"
+    )]
+    pub source_files: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallelism: Option<u32>,
@@ -209,5 +213,36 @@ where
             Ok(Some(converted_map))
         }
         None => Ok(None),
+    }
+}
+
+fn deserialize_source_files<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let value: Option<serde_yaml::Value> = Option::deserialize(deserializer)?;
+
+    match value {
+        None => Ok(None),
+        Some(serde_yaml::Value::String(s)) => Ok(Some(vec![s])),
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            let mut result = Vec::new();
+            for item in seq {
+                match item {
+                    serde_yaml::Value::String(s) => result.push(s),
+                    _ => {
+                        return Err(D::Error::custom(
+                            "source_files array must contain only strings",
+                        ));
+                    }
+                }
+            }
+            Ok(Some(result))
+        }
+        Some(_) => Err(D::Error::custom(
+            "source_files must be a string or array of strings",
+        )),
     }
 }

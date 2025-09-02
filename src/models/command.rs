@@ -27,12 +27,14 @@ pub struct Parameter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Step {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub run: Option<String>,
+#[serde(untagged)]
+pub enum Step {
+    /// Simple run step with name and run command
+    Simple { name: String, run: String },
+    /// Reference to another command
+    CommandRef(String),
+    /// Raw CircleCI step (orb commands, etc)
+    Raw(serde_yaml::Value),
 }
 
 impl Command {

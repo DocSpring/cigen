@@ -1,0 +1,25 @@
+image: cimg/ruby:3.3.5
+architectures: ["amd64", "arm64"]
+resource_class: medium
+
+cache:
+  npm_packages: "node_modules"
+
+source_files: "javascript"
+
+steps:
+  - run:
+      name: Install app npm packages
+      command: |
+        echo "Installing npm packages"
+
+        # Install packages using pnpm
+        pnpm install --frozen-lockfile
+
+        # Verify installation
+        if [ ! -d "node_modules" ]; then
+          echo "Error: node_modules directory not found after installation"
+          exit 1
+        fi
+
+        echo "npm packages installed successfully"
