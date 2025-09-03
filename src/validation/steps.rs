@@ -108,6 +108,11 @@ impl StepValidator {
                         return Ok(());
                     }
 
+                    // Check if it's an orb command (contains /)
+                    if step_type.contains('/') {
+                        return Ok(());
+                    }
+
                     // List of known CircleCI step types that don't need commands
                     let known_steps = [
                         "run",

@@ -1,5 +1,13 @@
 # Cigen Caching System
 
+========================
+TODO: switch from: cache: gems, cache: node_modules, etc.
+to "packages": gems, node, etc.
+
+### packages is a better name for package management if we're going to handle the install as well.
+
+=======================
+
 ## Overview
 
 Cigen provides an intelligent caching system that automatically generates optimal cache keys based on your project's runtime environments and dependencies. The system is designed to be both smart by default and fully customizable.

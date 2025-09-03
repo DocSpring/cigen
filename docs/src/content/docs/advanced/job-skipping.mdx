@@ -1,0 +1,336 @@
+---
+title: Job Skipping
+description: Intelligent job skipping based on source file changes for maximum CI efficiency
+---
+
+import { Code, Aside, Steps, CardGrid, Card } from '@astrojs/starlight/components';
+
+Cigen's job skipping system automatically skips jobs when their source files haven't changed since the last successful run. This is the core efficiency feature that eliminates unnecessary work in CI pipelines while maintaining correctness.
+
+## How It Works
+
+<Steps>
+
+1. **Pre-execution**: Calculate SHA-256 hash of all source files
+2. **Skip check**: If cache marker exists for this hash, skip the job entirely
+3. **Post-execution**: On successful completion, record the hash in skip cache
+
+</Steps>
+
+<Aside type="tip">
+Job skipping only occurs after successful completion - failed jobs never create skip markers, ensuring reliability.
+</Aside>
+
+## Source File Configuration
+
+### Named Source File Groups
+
+Define reusable patterns in your configuration:
+
+<Code code={`# In cigen.yml or config/source_file_groups.yml
+source_file_groups:
+  ruby:
+    - '**/*.rb'
+    - '**/*.rake'
+    - 'Gemfile*'
+    - 'Rakefile'
+    - '.ruby-version'
+
+  frontend:
+    - 'client/**/*'
+    - 'package.json'
+    - 'pnpm-lock.yaml'
+    - 'config/webpack/**/*'
+    - 'babel.config.js'
+
+  docker:
+    - 'Dockerfile*'
+    - '.dockerignore'
+    - 'docker-compose*.yml'`} lang="yaml" title="Source file group definitions" />
+
+### Using Source File Groups
+
+<Code code={`jobs:
+  ruby_lint:
+    image: cimg/ruby:3.3
+    source_files: '@ruby'  # References the ruby group
+    steps:
+      - run: bundle exec rubocop
+
+  frontend_test:
+    image: cimg/node:18
+    source_files:
+      - '@frontend'        # Named group
+      - 'jest.config.js'   # Additional files
+      - 'tsconfig.json'
+    steps:
+      - run: npm test`} lang="yaml" title="Using source file groups" />
+
+### Inline Source Files
+
+For job-specific patterns:
+
+<Code code={`jobs:
+  shellcheck:
+    image: cimg/base:stable
+    source_files:
+      - 'scripts/**/*.sh'
+      - '*.sh'
+      - '.shellcheckrc'
+    steps:
+      - run: shellcheck scripts/*.sh`} lang="yaml" title="Inline source file patterns" />
+
+## Automatic Template Inclusion
+
+<Aside type="note">
+**Automatic Behavior**: Cigen automatically includes relevant CI template files in source file hashes, so template changes trigger job re-runs.
+</Aside>
+
+When processing `workflows/test/jobs/ruby_lint.yml`, cigen automatically includes:
+- The job definition file itself
+- Any referenced command templates
+- Provider-specific template files
+
+This ensures that changes to CI configuration trigger appropriate job re-runs.
+
+## Multi-Architecture Support
+
+Job skipping is architecture-aware:
+
+<Code code={`jobs:
+  build_multiarch:
+    image: cimg/base:stable
+    architectures: [amd64, arm64]  # Each arch tracked separately
+    source_files: '@docker'
+    steps:
+      - run: docker build -t myapp:latest .`} lang="yaml" title="Architecture-aware skipping" />
+
+Generates separate skip cache entries:
+- `/tmp/cigen_skip_cache/job_{hash}_amd64`
+- `/tmp/cigen_skip_cache/job_{hash}_arm64`
+
+Each architecture can skip independently based on completion status.
+
+## Generated Implementation
+
+### Hash Calculation
+
+<Code code={`- run:
+    name: Calculate source file hash
+    command: |
+      echo "Calculating hash for source files..."
+      TEMP_HASH_FILE="/tmp/source_files_for_hash"
+      rm -f "$TEMP_HASH_FILE"
+
+      # Collect matching files for each pattern
+      find . -name "*.rb" -type f >> "$TEMP_HASH_FILE" 2>/dev/null || true
+      find . -name "Gemfile*" -type f >> "$TEMP_HASH_FILE" 2>/dev/null || true
+
+      if [ -f "$TEMP_HASH_FILE" ]; then
+        export JOB_HASH=$(sort "$TEMP_HASH_FILE" | xargs sha256sum | sha256sum | cut -d' ' -f1)
+        echo "Source file hash: $JOB_HASH"
+      else
+        export JOB_HASH="empty"
+        echo "No source files found"
+      fi`} lang="bash" title="Hash calculation step" />
+
+### Skip Logic
+
+<Code code={`- run:
+    name: Check if job should be skipped
+    command: |
+      SKIP_MARKER="/tmp/cigen_skip_cache/job_\${JOB_HASH}_amd64"
+      if [ -f "$SKIP_MARKER" ]; then
+        echo "Job completed successfully for hash \${JOB_HASH}. Skipping..."
+        circleci step halt  # CircleCI: halt remaining steps
+      else
+        echo "No previous successful run found. Proceeding..."
+        mkdir -p /tmp/cigen_skip_cache
+      fi`} lang="bash" title="Skip check logic" />
+
+### Completion Marking
+
+<Code code={`- run:
+    name: Record successful completion
+    command: |
+      echo "Recording successful completion for hash \${JOB_HASH}"
+      echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_\${JOB_HASH}_amd64"
+    when: on_success  # Only run if job succeeds`} lang="bash" title="Success recording" />
+
+## Platform Implementations
+
+<CardGrid>
+  <Card title="CircleCI" icon="seti:config">
+    Uses `circleci step halt` to skip remaining steps in job
+  </Card>
+  <Card title="GitHub Actions" icon="github">
+    Uses early `exit 0` with conditional step execution
+  </Card>
+  <Card title="GitLab CI" icon="seti:gitlab">
+    Uses `exit 0` with job result caching
+  </Card>
+</CardGrid>
+
+## Benefits
+
+<CardGrid>
+  <Card title="Time Savings" icon="rocket">
+    Skip jobs when source files haven't changed - often 50-80% reduction in CI time
+  </Card>
+  <Card title="Cost Efficiency" icon="approve-check">
+    Reduce CI resource usage and costs significantly
+  </Card>
+  <Card title="Faster Feedback" icon="forward">
+    Get results faster for unchanged components and dependencies
+  </Card>
+  <Card title="Reliability" icon="star">
+    Only skips after successful completion - failed jobs always re-run
+  </Card>
+</CardGrid>
+
+## Real-World Examples
+
+### Ruby Application
+
+<Code code={`source_file_groups:
+  ruby: ['**/*.rb', 'Gemfile*', '.ruby-version']
+  javascript: ['client/**/*', 'package.json', 'pnpm-lock.yaml']
+
+jobs:
+  ruby_lint:
+    source_files: '@ruby'
+    steps: [run: bundle exec rubocop]
+
+  ruby_test:
+    source_files: ['@ruby', 'spec/**/*']
+    steps: [run: bundle exec rspec]
+
+  javascript_test:
+    source_files: '@javascript'
+    steps: [run: npm test]
+
+  security_scan:
+    source_files: ['@ruby', '@javascript', 'Gemfile.lock']
+    steps: [run: bundle audit]`} lang="yaml" title="Multi-language application" />
+
+### Microservices
+
+<Code code={`source_file_groups:
+  user_service: ['services/user/**/*', 'shared/**/*']
+  order_service: ['services/order/**/*', 'shared/**/*']
+  payment_service: ['services/payment/**/*', 'shared/**/*']
+
+jobs:
+  test_user_service:
+    source_files: '@user_service'
+    steps: [run: go test ./services/user/...]
+
+  test_order_service:
+    source_files: '@order_service'
+    steps: [run: go test ./services/order/...]
+
+  build_user_image:
+    source_files: ['@user_service', 'Dockerfile.user']
+    steps: [run: docker build -f Dockerfile.user .]`} lang="yaml" title="Microservices architecture" />
+
+## Best Practices
+
+### Source File Precision
+
+<Aside type="caution">
+**Be Precise**: Only include files that actually affect the job outcome. Too broad patterns reduce skip efficiency.
+</Aside>
+
+<Code code={`# Good - precise patterns
+source_files:
+  - 'src/**/*.py'      # Only Python source
+  - 'requirements.txt' # Dependencies
+  - 'pytest.ini'      # Test config
+
+# Bad - too broad
+source_files:
+  - '**/*'  # Includes everything - rarely skips
+
+# Bad - too narrow
+source_files:
+  - 'src/main.py'  # Missing dependencies and config`} lang="yaml" title="Pattern precision" />
+
+### Configuration Dependencies
+
+Include all files that affect job behavior:
+
+<Code code={`jobs:
+  docker_build:
+    source_files:
+      - 'src/**/*'        # Source code
+      - 'Dockerfile'      # Build instructions
+      - '.dockerignore'   # Build context rules
+      - 'requirements.txt' # Dependencies
+      - 'config/*.json'   # App configuration
+
+  lint_javascript:
+    source_files:
+      - 'src/**/*.js'     # Source files
+      - '.eslintrc.json'  # Lint configuration
+      - 'package.json'    # Dependencies
+      - 'tsconfig.json'   # TypeScript config`} lang="yaml" title="Complete dependencies" />
+
+## Troubleshooting
+
+### Jobs Never Skip
+
+If jobs always run despite unchanged files:
+
+<Steps>
+1. **Check patterns match files**: Verify glob patterns find expected files
+2. **Remove broad patterns**: Avoid `**/*` or overly inclusive patterns
+3. **Check for changing files**: Look for files that change on every run (logs, timestamps)
+4. **Validate template stability**: Ensure CI templates aren't changing
+</Steps>
+
+### Jobs Skip When They Shouldn't
+
+If jobs skip despite relevant changes:
+
+<Steps>
+1. **Expand source files**: Add missing dependencies and config files
+2. **Check ignored files**: Ensure important files aren't in `.gitignore`
+3. **Clear skip cache**: Remove `/tmp/cigen_skip_cache` to reset state
+4. **Add debug logging**: Use verbose mode to see hash calculations
+</Steps>
+
+### Debug Hash Calculation
+
+<Code code={`# Add to job for debugging
+steps:
+  - run:
+      name: Debug source file tracking
+      command: |
+        echo "=== Source File Debug ==="
+        find . -name "*.rb" -type f | sort
+        find . -name "Gemfile*" -type f | sort
+        echo "=== Hash Calculation ==="
+        # Show exactly which files contribute to hash`} lang="bash" title="Debug source file tracking" />
+
+## Performance Impact
+
+Job skipping provides significant performance improvements:
+
+| Project Size | Typical Skip Rate | Time Savings |
+|--------------|------------------|--------------|
+| Small (< 10 jobs) | 60-70% | 40-50% |
+| Medium (10-50 jobs) | 70-80% | 50-70% |
+| Large (50+ jobs) | 80-90% | 60-80% |
+
+<Aside type="note">
+Skip rates depend on development patterns. Feature branches touching specific components see the highest skip rates.
+</Aside>
+
+## Cache Storage
+
+Skip cache markers are stored in:
+- **CircleCI**: `/tmp/cigen_skip_cache/` (persists across workflow steps)
+- **GitHub Actions**: Workspace cache (persists across jobs)
+- **Self-hosted**: Configurable cache backend (Redis, S3, etc.)
+
+The cache can be cleared by removing the cache directory or using provider-specific cache clearing mechanisms.

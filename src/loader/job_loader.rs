@@ -25,13 +25,24 @@ impl<'a> JobLoader<'a> {
         span_tracker: &mut SpanTracker,
     ) -> Result<HashMap<String, Job>> {
         let mut jobs = HashMap::new();
-        let workflows_dir = Path::new("workflows");
+
+        // Check if we're in .cigen directory or need to look for .cigen/workflows
+        let current_dir = std::env::current_dir()?;
+        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        let workflows_dir = if is_in_cigen_dir {
+            Path::new("workflows")
+        } else if current_dir.join(".cigen/workflows").exists() {
+            Path::new(".cigen/workflows")
+        } else {
+            Path::new("workflows")
+        };
 
         // Validate workflows directory exists
         if !workflows_dir.exists() {
             anyhow::bail!(
                 "Missing required 'workflows' directory in {}",
-                std::env::current_dir()?.display()
+                current_dir.display()
             );
         }
 

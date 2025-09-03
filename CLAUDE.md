@@ -165,6 +165,8 @@ This keeps the codebase maintainable and easier to understand.
 
 **CRITICAL**: NEVER implement temporary solutions or workarounds. NEVER say "for now" or "this is not ideal but". Always implement the proper, clean, architectural solution from the start. If something needs to be done right, do it right the first time.
 
+**CRITICAL**: NEVER say "quickly" or "let me quickly" - nothing should be done quickly. Everything requires careful thought and proper implementation. Speed is not a priority; correctness is.
+
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
 
 **CRITICAL: Follow PROJECT_PLAN.md EXACTLY**
@@ -261,9 +263,40 @@ We will start by hand-writing our own GitHub Actions workflow files, but eventua
 
 ## DocSpring Configuration Location
 
-**CRITICAL**: When working on DocSpring configuration conversion, the `.cigen/` directory is located in `/Users/ndbroadbent/code/cigen/docspring/.cigen/` (via the symlinked monorepo), NOT in the main cigen repository. This is on the `nathan/cigen-config` branch of the DocSpring monorepo.
+**CRITICAL**: The `docspring/` directory in this repository is a SYMLINK to a COMPLETELY SEPARATE repository - the DocSpring monorepo. These are TWO SEPARATE REPOS:
 
-The DocSpring configuration uses cigen to replace their existing ERB-based CircleCI configuration system. All job definitions, commands, and templates for DocSpring should be created in `/Users/ndbroadbent/code/cigen/docspring/.cigen/`.
+1. **cigen repository** (`/Users/ndbroadbent/code/cigen/`) - The tool itself
+2. **DocSpring monorepo** (`/Users/ndbroadbent/code/docspring/`) - A separate private repository
+
+The symlink at `/Users/ndbroadbent/code/cigen/docspring` → `/Users/ndbroadbent/code/docspring` exists ONLY for convenience during development.
+
+**IMPORTANT**:
+
+- The `docspring/` directory is in `.gitignore` - it is IGNORED by git
+- It is NOT a submodule
+- There is NO git relationship between these repositories
+- Changes to files in `docspring/` are tracked by the DocSpring repo, not cigen
+- When working on DocSpring configuration, you're editing files in the DocSpring monorepo
+
+When working on DocSpring configuration conversion:
+
+- The `.cigen/` directory is located in the DocSpring monorepo at `/Users/ndbroadbent/code/docspring/.cigen/`
+- This is on the `nathan/cigen-config` branch of the DocSpring monorepo
+- All job definitions, commands, and templates for DocSpring should be created there
+- **You CAN and SHOULD commit DocSpring changes**: Simply `cd docspring` and commit normally
+- The whole point is developing cigen AND porting DocSpring CI config in tandem
+- DocSpring changes are tracked on its own cigen branch, completely separate from the main cigen repo
+
+## Split Configuration
+
+**IMPORTANT**: CIGen supports a "split config" style where different top-level keys can be refactored into their own files under `.cigen/config/`, and it all gets merged together. This prevents `.cigen/cigen.yml` from becoming unmaintainable.
+
+We MUST use split config for large configuration sections:
+
+- Source file groups are already split: `docspring/.cigen/config/source_file_groups.yml`
+- Any other config section that grows beyond ~20 lines should be split into its own file
+- Files in `.cigen/config/` are automatically merged with the main `cigen.yml`
+- Use descriptive filenames that match the top-level key (e.g., `cache_definitions.yml` for cache definitions)
 
 ## Key Concepts
 

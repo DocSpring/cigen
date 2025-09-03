@@ -1,0 +1,242 @@
+---
+title: generate
+description: Generate CI configuration files from cigen templates
+---
+
+import { Code } from '@astrojs/starlight/components';
+
+The `generate` command converts your universal cigen configuration into provider-specific CI configuration files.
+
+## Usage
+
+```bash
+cigen generate [OPTIONS]
+```
+
+## Options
+
+### `--config <PATH>`
+Path to the cigen configuration directory or file.
+
+- **Default**: Current directory (`.`)
+- **Example**: `--config .cigen/` or `--config .cigen/cigen.yml`
+
+### `--output <PATH>`
+Override the output path specified in the configuration.
+
+- **Example**: `--output .github/workflows/`
+
+### `--provider <PROVIDER>`
+Override the provider specified in the configuration.
+
+- **Supported**: `circleci`
+- **Example**: `--provider circleci`
+
+### `--dry-run`
+Show what would be generated without creating files.
+
+### `--verbose` / `-v`
+Enable verbose output showing detailed generation steps.
+
+## Examples
+
+### Basic Usage
+
+Generate configuration using current directory:
+
+```bash
+cigen generate
+```
+
+### Specify Configuration Directory
+
+```bash
+cigen generate --config .cigen/
+```
+
+### Override Output Path
+
+```bash
+cigen generate --config .cigen/ --output .circleci-test/
+```
+
+### Dry Run
+
+Preview what would be generated:
+
+```bash
+cigen generate --dry-run
+```
+
+## What Gets Generated
+
+The generate command:
+
+1. **Reads** your cigen configuration files
+2. **Validates** the configuration against JSON schemas
+3. **Processes** templates and variables
+4. **Generates** provider-specific configuration
+5. **Validates** the output using provider CLI tools (if available)
+
+### Generated Files
+
+For CircleCI (`provider: circleci`):
+- Creates `.circleci/config.yml` (or path specified in `output_path`)
+- Includes all jobs, workflows, commands, and executors
+- Applies provider-specific transformations
+
+### Multi-Architecture Jobs
+
+<Code code={`# Input (cigen.yml):
+jobs:
+  build:
+    architectures: [amd64, arm64]
+    image: cimg/base:stable
+
+# Output (generated):
+jobs:
+  build_amd64:
+    docker:
+      - image: cimg/base:stable
+    resource_class: medium
+
+  build_arm64:
+    docker:
+      - image: cimg/base:stable
+    resource_class: arm.medium`} lang="yaml" title="Architecture expansion" />
+
+### Cache Injection
+
+<Code code={`# Input (cigen.yml):
+jobs:
+  test:
+    cache: [node_modules]
+    steps:
+      - run: npm test
+
+# Output (generated):
+jobs:
+  test:
+    steps:
+      - restore_cache:
+          keys:
+            - node-modules-{{ checksum "package.json" }}
+      - run: npm test
+      - save_cache:
+          key: node-modules-{{ checksum "package.json" }}
+          paths: [node_modules/]`} lang="yaml" title="Automatic cache steps" />
+
+## Validation
+
+After generation, cigen automatically validates the output:
+
+### Schema Validation
+All generated configurations are validated against provider schemas.
+
+### Provider CLI Validation
+If the provider's CLI tool is installed (e.g., `circleci`), cigen runs:
+
+```bash
+circleci config validate .circleci/config.yml
+```
+
+This catches syntax errors and configuration issues early.
+
+## Error Handling
+
+Common errors and solutions:
+
+### Schema Validation Errors
+```
+Error: Invalid job configuration: missing required property 'image'
+```
+**Solution**: Ensure all required fields are specified in your job definitions.
+
+### Template Errors
+```
+Error: Failed to render template: undefined variable 'app_name'
+```
+**Solution**: Define missing variables in the `vars` section of your config.
+
+### Provider CLI Errors
+```
+CircleCI config validation failed: workflow 'main' not found
+```
+**Solution**: Ensure workflows reference existing jobs and follow provider requirements.
+
+## Advanced Features
+
+### Dynamic Configuration
+
+For CircleCI dynamic workflows:
+
+```yaml
+setup: true
+# or
+dynamic: true
+```
+
+Generates a setup workflow that can conditionally trigger other workflows.
+
+### Custom Templates
+
+Override built-in templates by placing files in your config directory:
+
+```
+.cigen/
+├── cigen.yml
+├── templates/
+│   └── custom_job.yml
+└── workflows/
+    └── main/
+        └── jobs/
+            └── my_job.yml
+```
+
+## Performance
+
+Generation time scales with:
+- Number of jobs and workflows
+- Complexity of template processing
+- Amount of cache key calculations
+- Provider validation overhead
+
+Typical generation times:
+- Small projects (< 10 jobs): < 1 second
+- Medium projects (10-50 jobs): 1-3 seconds
+- Large projects (50+ jobs): 3-10 seconds
+
+## Integration
+
+### Pre-commit Hooks
+
+Add to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: cigen-generate
+        name: Generate CI config
+        entry: cigen generate
+        language: system
+        files: '^\.cigen/'
+        pass_filenames: false
+```
+
+### CI/CD Integration
+
+Validate generated configs in CI:
+
+```yaml
+# GitHub Actions
+- name: Generate and validate CI config
+  run: |
+    cigen generate --config .cigen/
+    cigen validate --config .cigen/
+```
+
+## Related Commands
+
+- [`validate`](/commands/validate/) - Validate configuration without generating
+- See [configuration overview](/configuration/overview/) for config file format

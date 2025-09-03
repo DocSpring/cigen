@@ -1,0 +1,390 @@
+---
+title: Basic Usage Examples
+description: Common patterns and examples for getting started with cigen
+---
+
+import { Code, CardGrid, Card, Tabs, TabItem } from '@astrojs/starlight/components';
+
+Here are common patterns and examples to help you get started with cigen.
+
+## Simple Test Job
+
+The most basic cigen configuration:
+
+<Code code={`$schema: https://cigen.dev/schemas/v1/config-schema.json
+
+provider: circleci
+output_path: .circleci
+
+jobs:
+  test:
+    image: cimg/node:18.0
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm install
+      - run:
+          name: Run tests
+          command: npm test
+
+workflows:
+  main:
+    jobs:
+      - test`} lang="yaml" title=".cigen/cigen.yml" />
+
+Generates a complete CircleCI configuration with proper job and workflow structure.
+
+## Multi-Job Workflow
+
+<Code code={`jobs:
+  install:
+    image: cimg/node:18.0
+    cache: node_modules
+    steps:
+      - checkout
+      - run: npm install
+
+  lint:
+    image: cimg/node:18.0
+    cache: node_modules
+    requires: [install]
+    steps:
+      - checkout
+      - run: npm run lint
+
+  test:
+    image: cimg/node:18.0
+    cache: node_modules
+    requires: [install]
+    steps:
+      - checkout
+      - run: npm test
+
+  build:
+    image: cimg/node:18.0
+    cache: node_modules
+    requires: [lint, test]
+    steps:
+      - checkout
+      - run: npm run build
+
+workflows:
+  main:
+    jobs:
+      - install
+      - lint:
+          requires: [install]
+      - test:
+          requires: [install]
+      - build:
+          requires: [lint, test]`} lang="yaml" title="Multi-job pipeline" />
+
+## Service Dependencies
+
+<Code code={`services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: testdb
+
+  redis:
+    image: redis:7
+
+jobs:
+  integration_test:
+    image: cimg/ruby:3.3
+    services: [postgres, redis]
+    steps:
+      - checkout
+      - run: bundle install
+      - run:
+          name: Setup database
+          command: |
+            bundle exec rails db:create
+            bundle exec rails db:migrate
+      - run: bundle exec rspec spec/integration/`} lang="yaml" title="Using service containers" />
+
+## Multi-Architecture Builds
+
+<Code code={`jobs:
+  build_image:
+    image: cimg/base:stable
+    architectures: [amd64, arm64]
+    steps:
+      - checkout
+      - run:
+          name: Build Docker image
+          command: |
+            docker build -t myapp:latest-$\{CIRCLE_JOB##*_} .
+            docker push myapp:latest-$\{CIRCLE_JOB##*_}
+
+workflows:
+  build:
+    jobs:
+      - build_image
+
+# Generates:
+# - build_image_amd64 (resource_class: medium)
+# - build_image_arm64 (resource_class: arm.medium)`} lang="yaml" title="Multi-architecture Docker builds" />
+
+## Intelligent Job Skipping
+
+<Code code={`source_file_groups:
+  backend: ['src/**/*.py', 'requirements.txt', 'pyproject.toml']
+  frontend: ['web/**/*.js', 'web/**/*.css', 'package.json']
+  docs: ['docs/**/*.md', 'mkdocs.yml']
+
+jobs:
+  test_backend:
+    image: cimg/python:3.11
+    source_files: '@backend'
+    steps:
+      - checkout
+      - run: pip install -r requirements.txt
+      - run: pytest
+
+  test_frontend:
+    image: cimg/node:18.0
+    source_files: '@frontend'
+    steps:
+      - checkout
+      - run: npm install
+      - run: npm test
+
+  build_docs:
+    image: cimg/python:3.11
+    source_files: '@docs'
+    steps:
+      - checkout
+      - run: pip install mkdocs
+      - run: mkdocs build`} lang="yaml" title="Skip jobs when files haven't changed" />
+
+## Approval Workflows
+
+<Code code={`jobs:
+  test:
+    image: cimg/node:18.0
+    steps:
+      - checkout
+      - run: npm test
+
+  approve_deploy:
+    type: approval
+    requires: [test]
+
+  deploy_staging:
+    image: cimg/base:stable
+    requires: [approve_deploy]
+    steps:
+      - checkout
+      - run: ./deploy.sh staging
+
+  deploy_production:
+    image: cimg/base:stable
+    requires: [approve_deploy]
+    context: [production-secrets]
+    steps:
+      - checkout
+      - run: ./deploy.sh production`} lang="yaml" title="Manual approval gates" />
+
+## OR Dependencies
+
+<Code code={`jobs:
+  build_app:
+    image: cimg/base:stable
+    requires_any:
+      - manual_approval
+      - scheduled_trigger
+      - hotfix_trigger
+    steps:
+      - run: ./build.sh
+
+  manual_approval:
+    type: approval
+
+  scheduled_trigger:
+    image: cimg/base:stable
+    # Could be triggered by schedule or other conditions
+    steps:
+      - run: echo "Scheduled build trigger"
+
+# Cigen automatically creates shim jobs to make OR logic work`} lang="yaml" title="OR dependency logic" />
+
+## Custom Commands
+
+<Tabs>
+  <TabItem label="Command Definition">
+    <Code code={`# commands/deploy.yml
+parameters:
+  environment:
+    type: string
+    default: staging
+
+steps:
+  - run:
+      name: Deploy to << parameters.environment >>
+      command: |
+        echo "Deploying to << parameters.environment >>"
+        ./scripts/deploy.sh << parameters.environment >>
+
+  - run:
+      name: Verify deployment
+      command: |
+        curl -f https://api-<< parameters.environment >>.example.com/health`} lang="yaml" title="commands/deploy.yml" />
+  </TabItem>
+
+  <TabItem label="Using Command">
+    <Code code={`jobs:
+  deploy_staging:
+    image: cimg/base:stable
+    steps:
+      - checkout
+      - deploy:
+          environment: staging
+
+  deploy_production:
+    image: cimg/base:stable
+    context: [production-secrets]
+    steps:
+      - checkout
+      - deploy:
+          environment: production`} lang="yaml" title="Using custom command" />
+  </TabItem>
+</Tabs>
+
+## Environment-Specific Configuration
+
+<Code code={`# Global configuration
+vars:
+  app_name: myapp
+  version: "1.0.0"
+
+# Environment-specific jobs
+jobs:
+  deploy_staging:
+    image: cimg/base:stable
+    context: [staging-secrets]
+    environment:
+      ENVIRONMENT: staging
+      API_URL: https://api-staging.example.com
+    steps:
+      - run: ./deploy.sh
+
+  deploy_production:
+    image: cimg/base:stable
+    context: [production-secrets]
+    environment:
+      ENVIRONMENT: production
+      API_URL: https://api.example.com
+    steps:
+      - run: ./deploy.sh`} lang="yaml" title="Environment-specific deployments" />
+
+## Complex Cache Configuration
+
+<Code code={`cache_definitions:
+  ml_models:
+    versions: [python]
+    checksum_sources:
+      - requirements-ml.txt
+      - models/config.json
+    paths:
+      - models/cache
+      - ~/.cache/torch
+
+jobs:
+  train_model:
+    image: cimg/python:3.11
+    resource_class: gpu.large
+    cache:
+      - pip
+      - ml_models
+    steps:
+      - checkout
+      - run: pip install -r requirements-ml.txt
+      - run: python train.py
+
+  inference_test:
+    image: cimg/python:3.11
+    cache: [ml_models]  # Reuse cached models
+    requires: [train_model]
+    steps:
+      - run: python test_inference.py`} lang="yaml" title="ML pipeline with model caching" />
+
+## Full-Stack Application
+
+<Code code={`services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: testpass
+  redis:
+    image: redis:7
+
+source_file_groups:
+  backend: ['api/**/*.py', 'requirements.txt']
+  frontend: ['web/**/*', 'package.json', 'webpack.config.js']
+  shared: ['shared/**/*', 'docker-compose.yml']
+
+jobs:
+  test_backend:
+    image: cimg/python:3.11
+    services: [postgres, redis]
+    source_files: ['@backend', '@shared']
+    cache: pip
+    steps:
+      - checkout
+      - run: pip install -r requirements.txt
+      - run: pytest api/
+
+  test_frontend:
+    image: cimg/node:18.0
+    source_files: ['@frontend', '@shared']
+    cache: node_modules
+    steps:
+      - checkout
+      - run: npm install
+      - run: npm test
+
+  build_images:
+    image: cimg/base:stable
+    architectures: [amd64, arm64]
+    requires: [test_backend, test_frontend]
+    steps:
+      - checkout
+      - run: docker build -t myapp:backend-latest .
+      - run: docker build -f Dockerfile.frontend -t myapp:frontend-latest .
+
+workflows:
+  full_pipeline:
+    jobs:
+      - test_backend
+      - test_frontend
+      - build_images:
+          requires: [test_backend, test_frontend]`} lang="yaml" title="Complete full-stack application" />
+
+## Tips for Getting Started
+
+<CardGrid>
+  <Card title="Start Simple" icon="rocket">
+    Begin with a single job, then gradually add complexity as you understand the patterns.
+  </Card>
+  <Card title="Use Built-in Caches" icon="approve-check">
+    Leverage `cache: gems`, `cache: node_modules` instead of manual cache steps.
+  </Card>
+  <Card title="Enable Job Skipping" icon="forward">
+    Add `source_files` to jobs that can be skipped when unchanged.
+  </Card>
+  <Card title="Validate Early" icon="star">
+    Use `cigen validate` frequently to catch configuration errors early.
+  </Card>
+</CardGrid>
+
+## Next Steps
+
+- Explore [advanced features](/advanced/multi-arch/) like OR dependencies
+- Learn about [CircleCI-specific features](/providers/circleci/)
+- Read about [intelligent caching](/configuration/cache/)
+- Understand [job skipping](/advanced/job-skipping/) for maximum efficiency

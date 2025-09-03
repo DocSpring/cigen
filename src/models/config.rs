@@ -57,6 +57,9 @@ pub struct Config {
     pub parameters: Option<HashMap<String, ParameterConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub orbs: Option<HashMap<String, String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<Vec<OutputConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -195,6 +198,7 @@ impl Default for Config {
             dynamic: None,
             setup: None,
             parameters: None,
+            orbs: None,
             outputs: None,
             docker_images: None,
         }

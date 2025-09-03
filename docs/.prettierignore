@@ -1,0 +1,10 @@
+dist/
+.astro/
+node_modules/
+public/
+.vercel/
+*.json
+*.js
+*.ts
+*.tsx
+*.jsx

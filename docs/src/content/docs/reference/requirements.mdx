@@ -1,0 +1,283 @@
+---
+title: Requirements & Architecture
+description: Core requirements and architectural principles behind cigen
+---
+
+import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
+
+This document outlines the core requirements and architectural principles that drive cigen's design and implementation.
+
+## Architectural Philosophy
+
+<Aside type="note">
+**Key Principle**: cigen is NOT a 1:1 port of existing CI systems. It represents a complete architectural redesign based on lessons learned from existing implementations.
+</Aside>
+
+### Core Principles
+
+<CardGrid>
+  <Card title="Convention over Configuration" icon="approve-check">
+    Common patterns (cache keys, job naming, dependencies) are handled by the cigen engine, not manual template code
+  </Card>
+  <Card title="Declarative over Imperative" icon="list-format">
+    Jobs declare what they need (caches, services, dependencies), not HOW to implement them
+  </Card>
+  <Card title="DRY Templates" icon="pencil">
+    Templates contain ONLY what makes each workflow/job unique - all boilerplate is eliminated
+  </Card>
+  <Card title="Smart Defaults" icon="star">
+    The system infers sensible defaults from context rather than requiring explicit configuration
+  </Card>
+</CardGrid>
+
+### Separation of Concerns
+
+Business logic lives in the cigen engine, not in templates:
+
+- **Cache management**: Declared in job definitions, handled automatically
+- **Architecture matrix**: Declared once, applied systematically
+- **Job dependencies**: Inferred from file patterns and explicit declarations
+- **Resource allocation**: Based on job type and architecture conventions
+
+Templates become clean, readable YAML with minimal logic - just variable substitution and simple conditionals where necessary.
+
+## Core Requirements
+
+### 1. Universal CI Abstraction
+
+**Status**: ✅ Implemented (CircleCI), 🚧 In Progress (GitHub Actions)
+
+Provide a single configuration format that generates native configurations for multiple CI platforms:
+
+- CircleCI (primary focus)
+- GitHub Actions (planned)
+- GitLab CI (planned)
+- Jenkins (future consideration)
+
+### 2. Multi-Architecture Support
+
+**Status**: ✅ Implemented
+
+Automatic generation of jobs for multiple architectures:
+
+```yaml
+jobs:
+  build:
+    architectures: [amd64, arm64]
+    # Generates: build_amd64, build_arm64
+```
+
+Features:
+- Architecture-specific resource classes
+- Independent job execution and caching
+- Automatic naming conventions
+
+### 3. Intelligent Caching System
+
+**Status**: ✅ Implemented
+
+Automatic cache key generation and management:
+
+- SHA256-based cache keys including platform, versions, and file checksums
+- Built-in cache definitions for common technologies (Ruby, Node.js, Python)
+- Automatic cache step injection
+- Multiple cache backend support (native, S3, Redis)
+
+### 4. Job Skipping Optimization
+
+**Status**: ✅ Implemented
+
+Skip jobs when source files haven't changed:
+
+- Source file tracking with glob patterns
+- Architecture-aware skip caches
+- SHA256 hash-based change detection
+- Only skip after successful completion
+
+### 5. OR Dependencies
+
+**Status**: ✅ Implemented (CircleCI)
+
+Support for "requires any of" logic through platform-specific workarounds:
+
+- Automatic shim job generation for CircleCI
+- API-based approval automation
+- Maintains clean declarative syntax
+
+### 6. Template Engine
+
+**Status**: ✅ Implemented
+
+Jinja2-style template processing with:
+
+- Variable substitution
+- Conditional logic
+- File inclusion and reading
+- Custom template functions
+- Schema validation
+
+### 7. Dynamic Configuration
+
+**Status**: ✅ Implemented (CircleCI)
+
+Support for conditional workflow execution:
+
+- Setup workflows for job skipping
+- Parameter-driven job execution
+- Dynamic workflow generation
+
+### 8. Service Container Management
+
+**Status**: ✅ Implemented
+
+Clean separation between primary containers and service dependencies:
+
+```yaml
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: test
+
+jobs:
+  test:
+    image: cimg/ruby:3.3
+    services: [postgres]
+```
+
+### 9. Validation and Error Handling
+
+**Status**: ✅ Implemented
+
+Comprehensive validation at multiple levels:
+
+- JSON Schema validation
+- Provider CLI validation (circleci config validate)
+- Dependency graph validation
+- Template syntax validation
+
+### 10. Command Composition
+
+**Status**: ✅ Implemented
+
+Reusable command definitions with parameterization:
+
+```yaml
+# commands/deploy.yml
+parameters:
+  environment:
+    type: string
+steps:
+  - run: ./deploy.sh << parameters.environment >>
+```
+
+## Migration Requirements
+
+### From DocSpring Ruby System
+
+The existing DocSpring Ruby-based ERB system has specific requirements:
+
+#### Generated Configurations
+- **config.yml**: Setup workflow with dynamic configuration
+- **test_and_deploy_config.yml**: Main workflow with test and deployment jobs
+- **package_updates_config.yml**: Scheduled package update checks
+- **staging_postman_tests_config.yml**: Scheduled API testing
+
+#### Key Features to Support
+- Multi-architecture builds (amd64/arm64)
+- Complex job dependency graphs
+- Cache management with SHA256 keys
+- GitHub status fixing for approval jobs
+- OR dependency workarounds
+
+#### Migration Approach
+Rather than porting complex ERB helpers, cigen provides:
+
+1. **Declarative job definitions** replacing imperative template logic
+2. **Automatic cache management** replacing manual cache helpers
+3. **Convention-based naming** replacing custom naming logic
+4. **Built-in platform workarounds** replacing manual API calls
+
+## Performance Requirements
+
+### Build Time
+- Configuration generation: < 5 seconds for large projects
+- Validation: < 2 seconds for comprehensive checks
+- Template processing: < 1 second for complex templates
+
+### Runtime Efficiency
+- Job skipping: 60-80% reduction in unnecessary work
+- Cache hit rates: > 90% for unchanged dependencies
+- Multi-architecture builds: Parallel execution with shared caches
+
+### Resource Usage
+- Memory: < 100MB for configuration processing
+- Disk: Minimal footprint for cache storage
+- Network: Efficient cache backend communication
+
+## Quality Requirements
+
+### Reliability
+- **Zero data loss**: Configuration changes are atomic
+- **Rollback capability**: Previous configurations preserved
+- **Error recovery**: Graceful handling of partial failures
+
+### Maintainability
+- **Schema-driven**: All configuration validated against schemas
+- **Modular architecture**: Clear separation of provider-specific code
+- **Comprehensive testing**: Unit and integration test coverage
+
+### Usability
+- **Clear error messages**: Actionable feedback for configuration errors
+- **IDE support**: Schema-based autocompletion and validation
+- **Documentation**: Comprehensive examples and guides
+
+## Security Requirements
+
+### Secrets Management
+- No secrets in configuration files
+- Support for provider-specific secret injection (contexts, environments)
+- Clear separation between public configuration and sensitive data
+
+### Access Control
+- Honor provider-specific access controls
+- Support for environment-specific permissions
+- Audit trail for configuration changes
+
+### Supply Chain Security
+- Template provenance tracking
+- Built-in security scanning integration
+- Dependency validation and alerts
+
+## Extensibility Requirements
+
+### Plugin Architecture
+- Provider plugins for new CI platforms
+- Cache backend plugins for different storage systems
+- Template function plugins for custom logic
+
+### Community Integration
+- Shareable cache definitions and job templates
+- Community-contributed provider implementations
+- Plugin registry and discovery
+
+### API Stability
+- Semantic versioning for breaking changes
+- Backward compatibility for configuration formats
+- Migration tooling for version upgrades
+
+## Future Considerations
+
+### Advanced Features
+- **Visual workflow editor**: GUI for complex pipeline design
+- **Performance analytics**: Metrics on job efficiency and cache hit rates
+- **Cost optimization**: Recommendations for resource usage
+- **Integration testing**: Cross-platform configuration validation
+
+### Platform Evolution
+- **New CI providers**: Support for emerging platforms
+- **Cloud-native features**: Kubernetes-based job execution
+- **Edge computing**: Distributed build and test execution
+- **AI integration**: Intelligent optimization recommendations
+
+The requirements continue to evolve as cigen matures and new use cases emerge. The core architectural principles remain constant while implementation details adapt to new platforms and user needs.

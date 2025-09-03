@@ -1,0 +1,227 @@
+---
+title: Quick Start
+description: Get up and running with cigen in minutes
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Get started with cigen by creating your first universal CI configuration.
+
+## Prerequisites
+
+- [Cigen installed](/installation/) on your system
+- A project with existing CI needs
+- Basic familiarity with CI/CD concepts
+
+## Your First Configuration
+
+<Steps>
+
+1. **Create a cigen directory**
+
+   Navigate to your project root and create the cigen configuration directory:
+
+   ```bash
+   mkdir .cigen
+   cd .cigen
+   ```
+
+2. **Create the main configuration file**
+
+   ```yaml title=".cigen/cigen.yml"
+   $schema: https://cigen.dev/schemas/v1/config-schema.json
+
+   provider: circleci
+   output_path: .circleci
+   output_filename: config.yml
+
+   # Simple job that runs tests
+   jobs:
+     test:
+       image: cimg/node:18.0
+       steps:
+         - checkout
+         - run:
+             name: Install dependencies
+             command: npm install
+         - run:
+             name: Run tests
+             command: npm test
+
+   # Workflow that runs the test job
+   workflows:
+     main:
+       jobs:
+         - test
+   ```
+
+3. **Generate your CI configuration**
+
+   From your project root, run:
+
+   ```bash
+   cigen generate --config .cigen/
+   ```
+
+   This creates `.circleci/config.yml` with a complete CircleCI configuration.
+
+4. **Validate the generated configuration**
+
+   ```bash
+   cigen validate --config .cigen/
+   ```
+
+   If you have the CircleCI CLI installed, this will also validate with `circleci config validate`.
+
+</Steps>
+
+## Add More Advanced Features
+
+<Steps>
+
+5. **Add multi-architecture builds**
+
+   ```yaml title="Multi-architecture job"
+   jobs:
+     build_image:
+       image: cimg/base:stable
+       architectures: [amd64, arm64]  # Creates build_image_amd64 and build_image_arm64
+       requires: [test]
+       steps:
+         - checkout
+         - run: docker build -t myapp:latest .
+   ```
+
+6. **Add intelligent caching**
+
+   ```yaml title="Automatic cache injection"
+   cache:
+     node_modules:
+       key_files: ['package.json', 'package-lock.json']
+       paths: ['node_modules/']
+
+   jobs:
+     test:
+       image: cimg/node:18.0
+       cache: [node_modules]  # Automatically injects cache restore/save
+       steps:
+         - checkout
+         - run: npm install
+         - run: npm test
+   ```
+
+7. **Add job skipping for unchanged files**
+
+   ```yaml title="Smart job skipping"
+   source_file_groups:
+     frontend: ['src/**/*.js', 'src/**/*.css', 'package.json']
+     backend: ['api/**/*.py', 'requirements.txt']
+
+   jobs:
+     test_frontend:
+       image: cimg/node:18.0
+       source_files: '@frontend'  # Only runs if frontend files changed
+       steps: [...]
+
+     test_backend:
+       image: cimg/python:3.9
+       source_files: '@backend'   # Only runs if backend files changed
+       steps: [...]
+   ```
+
+</Steps>
+
+## Understanding the Generated Output
+
+When you run `cigen generate`, you get:
+
+```yaml title=".circleci/config.yml"
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/node:18.0
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm install
+      - run:
+          name: Run tests
+          command: npm test
+
+  build_image_amd64:
+    docker:
+      - image: cimg/base:stable
+    resource_class: medium
+    # ... architecture-specific configuration
+
+  build_image_arm64:
+    docker:
+      - image: cimg/base:stable
+    resource_class: arm.medium
+    # ... architecture-specific configuration
+
+workflows:
+  main:
+    jobs:
+      - test
+      - build_image_amd64:
+          requires: [test]
+      - build_image_arm64:
+          requires: [test]
+```
+
+<Aside type="tip">
+Notice how cigen automatically:
+- Generated separate jobs for each architecture
+- Set appropriate resource classes (`medium` vs `arm.medium`)
+- Created proper dependency chains in the workflow
+- Injected cache restore/save steps where needed
+</Aside>
+
+## Next Steps
+
+- Learn about [configuration options](/configuration/overview/)
+- Explore [CircleCI-specific features](/providers/circleci/)
+- Read about [advanced features](/advanced/multi-arch/) like OR dependencies
+- Check out [real-world examples](/examples/)
+
+## Common Patterns
+
+### Approval Jobs
+
+```yaml
+jobs:
+  approve_deploy:
+    type: approval
+
+  deploy:
+    image: cimg/base:stable
+    requires: [approve_deploy]
+    steps: [...]
+```
+
+### OR Dependencies (CircleCI)
+
+```yaml
+jobs:
+  deploy:
+    requires_any: [manual_approval, automated_trigger]
+    steps: [...]
+```
+
+Cigen automatically creates shim jobs to make this work on CircleCI.
+
+### Environment-Specific Contexts
+
+```yaml
+jobs:
+  deploy_production:
+    image: deploy
+    context: [production-secrets, aws-credentials]
+    steps: [...]
+```
+
+Maps directly to CircleCI contexts for secure environment variables.

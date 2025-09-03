@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use cigen::loader::ConfigLoader;
+use cigen::loader::context::original_dir_path;
 use cigen::providers::get_provider;
 use cigen::templating::TemplateEngine;
 use std::collections::HashMap;
@@ -13,7 +14,12 @@ pub fn generate_command(
     let current_dir = std::env::current_dir()?;
 
     // Check if we should use template-based multi-output generation
-    let config_path = current_dir.join("cigen.yml");
+    // First check for .cigen/cigen.yml, then cigen.yml in current directory
+    let config_path = if current_dir.join(".cigen/cigen.yml").exists() {
+        current_dir.join(".cigen/cigen.yml")
+    } else {
+        current_dir.join("cigen.yml")
+    };
 
     if config_path.exists() {
         let config_str = std::fs::read_to_string(&config_path)?;
@@ -59,15 +65,15 @@ fn generate_from_jobs(
         )
     })?;
 
-    // Determine output path
+    // Determine output path - relative to the original directory, not the config directory
     let output_path = if let Some(output) = output {
         Path::new(&output).to_path_buf()
     } else {
         // Use config's output_path or default to provider's default
         if let Some(config_output) = &loaded_config.config.output_path {
-            current_dir.join(config_output)
+            original_dir_path(Path::new(config_output))
         } else {
-            current_dir.join(provider.default_output_path())
+            original_dir_path(Path::new(provider.default_output_path()))
         }
     };
 
@@ -134,7 +140,7 @@ fn generate_from_jobs(
 
         // Determine workflow-specific output path
         let workflow_output_path = if let Some(workflow_output) = &workflow_config.output_path {
-            current_dir.join(workflow_output)
+            original_dir_path(Path::new(workflow_output))
         } else {
             output_path.clone()
         };

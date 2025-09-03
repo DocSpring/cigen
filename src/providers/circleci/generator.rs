@@ -13,6 +13,10 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+// Embedded template for GitHub status patch job
+#[allow(dead_code)]
+const PATCH_APPROVAL_JOBS_TEMPLATE: &str = include_str!("templates/patch_approval_jobs_status.yml");
+
 pub struct CircleCIGenerator;
 
 impl Default for CircleCIGenerator {
@@ -77,6 +81,11 @@ impl CircleCIGenerator {
         // Add pipeline parameters if specified
         if let Some(parameters) = &config.parameters {
             circleci_config.parameters = Some(self.convert_parameters(parameters)?);
+        }
+
+        // Add orbs if specified
+        if let Some(orbs) = &config.orbs {
+            circleci_config.orbs = Some(orbs.clone());
         }
 
         // Process all workflows
@@ -771,6 +780,7 @@ impl CircleCIGenerator {
         available_commands: &HashMap<String, crate::models::Command>,
     ) -> HashSet<String> {
         let mut used_commands = HashSet::new();
+        let mut to_scan = Vec::new();
 
         // Scan all jobs for user command usage
         for job in config.jobs.values() {
@@ -779,19 +789,90 @@ impl CircleCIGenerator {
                 if let serde_yaml::Value::String(cmd_name) = &step.raw
                     && available_commands.contains_key(cmd_name)
                 {
-                    used_commands.insert(cmd_name.clone());
+                    to_scan.push(cmd_name.clone());
                 }
 
                 // Also check step_type for mapped commands
                 if let Some(step_type) = &step.step_type
                     && available_commands.contains_key(step_type)
                 {
-                    used_commands.insert(step_type.clone());
+                    to_scan.push(step_type.clone());
+                }
+
+                // Handle command references in raw YAML (e.g., mapped commands with parameters)
+                Self::scan_yaml_for_commands(
+                    &step.raw,
+                    available_commands,
+                    &HashSet::new(),
+                    &mut to_scan,
+                );
+            }
+        }
+
+        // Recursively scan commands for other command dependencies
+        while let Some(cmd_name) = to_scan.pop() {
+            if used_commands.contains(&cmd_name) {
+                continue;
+            }
+            used_commands.insert(cmd_name.clone());
+
+            // Check if this command references other commands
+            if let Some(cmd) = available_commands.get(&cmd_name) {
+                for step in &cmd.steps {
+                    match step {
+                        crate::models::command::Step::CommandRef(ref_name) => {
+                            if available_commands.contains_key(ref_name)
+                                && !used_commands.contains(ref_name)
+                            {
+                                to_scan.push(ref_name.clone());
+                            }
+                        }
+                        crate::models::command::Step::Raw(raw_value) => {
+                            // Handle command references in raw YAML (e.g., mapped commands with parameters)
+                            Self::scan_yaml_for_commands(
+                                raw_value,
+                                available_commands,
+                                &used_commands,
+                                &mut to_scan,
+                            );
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
 
         used_commands
+    }
+
+    /// Recursively scan YAML for command references
+    fn scan_yaml_for_commands(
+        value: &serde_yaml::Value,
+        available_commands: &HashMap<String, crate::models::Command>,
+        used_commands: &HashSet<String>,
+        to_scan: &mut Vec<String>,
+    ) {
+        match value {
+            serde_yaml::Value::Mapping(map) => {
+                for (key, val) in map {
+                    // Check if the key is a command name
+                    if let serde_yaml::Value::String(cmd_name) = key
+                        && available_commands.contains_key(cmd_name)
+                        && !used_commands.contains(cmd_name)
+                    {
+                        to_scan.push(cmd_name.clone());
+                    }
+                    // Recursively scan the value
+                    Self::scan_yaml_for_commands(val, available_commands, used_commands, to_scan);
+                }
+            }
+            serde_yaml::Value::Sequence(seq) => {
+                for item in seq {
+                    Self::scan_yaml_for_commands(item, available_commands, used_commands, to_scan);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn convert_parameters(
@@ -829,7 +910,7 @@ impl CircleCIGenerator {
 
         for step in &user_cmd.steps {
             match step {
-                crate::models::command::Step::Simple { name, run } => {
+                crate::models::command::Step::Simple { name, run, when } => {
                     // Convert simple step to CircleCI run format
                     let mut step_map = serde_yaml::Mapping::new();
                     let mut run_details = serde_yaml::Mapping::new();
@@ -843,6 +924,14 @@ impl CircleCIGenerator {
                         serde_yaml::Value::String("command".to_string()),
                         serde_yaml::Value::String(run.clone()),
                     );
+
+                    // Add when condition if present
+                    if let Some(when_condition) = when {
+                        run_details.insert(
+                            serde_yaml::Value::String("when".to_string()),
+                            serde_yaml::Value::String(when_condition.clone()),
+                        );
+                    }
 
                     step_map.insert(
                         serde_yaml::Value::String("run".to_string()),
@@ -870,15 +959,23 @@ impl CircleCIGenerator {
                 params
                     .iter()
                     .map(|(k, v)| {
-                        // For now, assume all parameters are strings
-                        // TODO: Handle other parameter types based on param_type
-                        let param = crate::providers::circleci::config::CircleCIParameter::String {
-                            param_type: v.param_type.clone(),
-                            description: v.description.clone(),
-                            default: v
-                                .default
-                                .as_ref()
-                                .and_then(|d| d.as_str().map(|s| s.to_string())),
+                        // Handle different parameter types based on param_type
+                        let param = match v.param_type.as_str() {
+                            "boolean" => {
+                                crate::providers::circleci::config::CircleCIParameter::Boolean {
+                                    param_type: v.param_type.clone(),
+                                    description: v.description.clone(),
+                                    default: v.default.as_ref().and_then(|d| d.as_bool()),
+                                }
+                            }
+                            _ => crate::providers::circleci::config::CircleCIParameter::String {
+                                param_type: v.param_type.clone(),
+                                description: v.description.clone(),
+                                default: v
+                                    .default
+                                    .as_ref()
+                                    .and_then(|d| d.as_str().map(|s| s.to_string())),
+                            },
                         };
                         (k.clone(), param)
                     })

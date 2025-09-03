@@ -1,0 +1,93 @@
+---
+title: Installation
+description: How to install cigen on your system
+---
+
+## Prerequisites
+
+- Rust 1.80 or later (if building from source)
+- Git (for cloning repositories)
+
+## Install from Source
+
+Currently, cigen must be built from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/DocSpring/cigen.git
+cd cigen
+
+# Build and install
+cargo install --path .
+```
+
+## Verify Installation
+
+```bash
+cigen --version
+```
+
+## Shell Completion
+
+Generate shell completion scripts:
+
+```bash
+# Bash
+cigen generate-completion bash > ~/.local/share/bash-completion/completions/cigen
+
+# Zsh
+cigen generate-completion zsh > ~/.zfunc/_cigen
+
+# Fish
+cigen generate-completion fish > ~/.config/fish/completions/cigen.fish
+```
+
+## Development Installation
+
+For development work:
+
+```bash
+git clone https://github.com/DocSpring/cigen.git
+cd cigen
+
+# Run directly with cargo
+cargo run -- --help
+
+# Or install in development mode
+cargo install --path . --debug
+```
+
+## Updating
+
+To update to the latest version:
+
+```bash
+cd cigen
+git pull
+cargo install --path . --force
+```
+
+## Troubleshooting
+
+### Build Issues
+
+If you encounter build errors:
+
+1. Ensure you have Rust 1.80+ installed: `rustc --version`
+2. Update Rust: `rustup update`
+3. Clean and rebuild: `cargo clean && cargo build`
+
+### Permission Issues
+
+On Unix systems, ensure `~/.cargo/bin` is in your PATH:
+
+```bash
+echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+## Next Steps
+
+- Follow the [Quick Start guide](/quick-start/)
+- Learn about cigen's [philosophy](/philosophy/)
+- Explore [configuration options](/configuration/overview/)

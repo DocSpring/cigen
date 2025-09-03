@@ -20,7 +20,18 @@ impl<'a> CommandLoader<'a> {
     /// Load all commands from the commands directory
     pub fn load_all_commands(&mut self) -> Result<HashMap<String, Command>> {
         let mut commands = HashMap::new();
-        let commands_dir = Path::new("commands");
+
+        // Check if we're in .cigen directory or need to look for .cigen/commands
+        let current_dir = std::env::current_dir()?;
+        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        let commands_dir = if is_in_cigen_dir {
+            Path::new("commands")
+        } else if current_dir.join(".cigen/commands").exists() {
+            Path::new(".cigen/commands")
+        } else {
+            Path::new("commands")
+        };
 
         // Commands directory is optional
         if !commands_dir.exists() {

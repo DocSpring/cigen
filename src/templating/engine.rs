@@ -152,6 +152,46 @@ impl TemplateEngine {
         self.current_file = None;
     }
 
+    /// Render a string with only simple variable substitution (no complex template features)
+    /// This is used for regular YAML files that may contain target CI system template syntax
+    fn render_string_variables_only(&mut self, content: &str) -> MietteResult<String> {
+        // Simple regex-based variable substitution to avoid complex template processing
+        // This handles {{ variable_name }} patterns but skips complex Liquid syntax
+        let mut result = content.to_string();
+
+        // Match simple variable patterns like {{ variable_name }} (no filters or complex expressions)
+        let re = regex::Regex::new(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+            .map_err(|e| miette::miette!("Regex compilation error: {}", e))?;
+
+        for captures in re.captures_iter(content) {
+            if let Some(var_match) = captures.get(0)
+                && let Some(var_name) = captures.get(1)
+            {
+                let var_name_str = var_name.as_str();
+                if let Some(value) = self.get_variable_value(var_name_str) {
+                    result = result.replace(var_match.as_str(), &value);
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Get variable value as string from current context
+    fn get_variable_value(&self, var_name: &str) -> Option<String> {
+        // Get from variable resolver
+        if let Some(value) = self.resolver.get_variable(var_name) {
+            match value {
+                serde_yaml::Value::String(s) => Some(s.clone()),
+                serde_yaml::Value::Number(n) => Some(n.to_string()),
+                serde_yaml::Value::Bool(b) => Some(b.to_string()),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
     /// Render a template string with current variables
     pub fn render_string(&mut self, template: &str) -> MietteResult<String> {
         self.render_string_with_path(template, None)
@@ -206,9 +246,15 @@ impl TemplateEngine {
     }
 
     /// Render a file, handling both .yml and .yml.j2 files
-    pub fn render_file(&mut self, content: &str, _is_template: bool) -> MietteResult<String> {
-        // Both file types get full template processing now
-        self.render_string(content)
+    pub fn render_file(&mut self, content: &str, is_template: bool) -> MietteResult<String> {
+        if is_template {
+            // Template files get full template processing
+            self.render_string(content)
+        } else {
+            // Regular YAML files still get variable substitution but not complex template processing
+            // This allows {{ postgres_version }} to work but prevents complex Liquid syntax from failing
+            self.render_string_variables_only(content)
+        }
     }
 
     /// Render a file with a specific path

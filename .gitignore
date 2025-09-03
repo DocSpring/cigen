@@ -43,3 +43,6 @@ flamegraph.svg
 /target/doc
 /target/criterion
 
+
+# Renamify workspace
+.renamify/

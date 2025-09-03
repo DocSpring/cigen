@@ -1,0 +1,29 @@
+{
+  "name": "docs",
+  "type": "module",
+  "version": "0.1.1",
+  "scripts": {
+    "dev": "astro dev",
+    "start": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
+    "lint": "biome lint .",
+    "lint:fix": "biome check --write .",
+    "format": "prettier --write '**/*.{md,mdx,astro}'",
+    "format:check": "prettier --check '**/*.{md,mdx,astro}'",
+    "check": "biome check . && pnpm format:check"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.35.2",
+    "astro": "^5.6.1",
+    "sharp": "^0.34.2",
+    "starlight-image-zoom": "^0.13.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.2",
+    "prettier": "^3.6.2",
+    "prettier-plugin-astro": "^0.14.1",
+    "ultracite": "^5.2.10"
+  }
+}

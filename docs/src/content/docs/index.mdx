@@ -1,0 +1,123 @@
+---
+title: Cigen - Universal CI Configuration Generator
+description: Write your CI pipeline configuration once and deploy it anywhere. Cigen generates provider-specific configurations from universal templates.
+template: splash
+hero:
+  tagline: Write once, run anywhere
+  image:
+    file: ../../assets/houston.webp
+  actions:
+    - text: Get started
+      link: /installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/DocSpring/cigen
+      icon: external
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+Cigen is a universal CI pipeline configuration generator that allows you to write your CI configuration once in a provider-agnostic format, then generate native configurations for any CI platform.
+
+## Why Cigen?
+
+<CardGrid>
+  <Card title="Universal Configuration" icon="puzzle">
+    Write your CI pipeline once using cigen's universal format. No more
+    maintaining separate configurations for different CI providers.
+  </Card>
+  <Card title="Multi-Architecture Support" icon="laptop">
+    Automatically generate jobs for multiple architectures (amd64, arm64) from a
+    single job definition.
+  </Card>
+  <Card title="Intelligent Caching" icon="rocket">
+    Automatic cache key generation and injection based on file dependencies and
+    checksums.
+  </Card>
+  <Card title="Advanced Features" icon="star">
+    Built-in workarounds for CI platform limitations like OR dependencies and
+    approval job status fixes.
+  </Card>
+</CardGrid>
+
+## Core Philosophy
+
+**If a CI platform doesn't support a feature we need, we build it ourselves.**
+
+Cigen doesn't just translate configurations - it enhances them. When CircleCI lacks OR dependencies, we implement them with automated approval jobs. When GitHub status updates fail for approval jobs, we fix them with API calls.
+
+## Quick Example
+
+Define your pipeline structure:
+
+```
+.cigen/
+├── cigen.yml                    # Provider and global config
+├── config/
+│   └── source_file_groups.yml  # Reusable file patterns
+├── workflows/
+│   └── main/
+│       └── jobs/
+│           ├── test.yml         # Test job definition
+│           └── build.yml        # Build job definition
+```
+
+```yaml title=".cigen/cigen.yml"
+provider: circleci
+```
+
+```yaml title=".cigen/config/source_file_groups.yml"
+source_file_groups:
+  nodejs:
+    - 'src/**/*.js'
+    - 'package.json'
+    - 'package-lock.json'
+```
+
+```yaml title=".cigen/workflows/main/jobs/test.yml"
+image: cimg/node:18.0
+source_files: '@nodejs'
+packages: node
+steps:
+  - run: npm test
+```
+
+```yaml title=".cigen/workflows/main/jobs/build.yml"
+image: cimg/node:18.0
+architectures: [amd64, arm64]
+requires: [test]
+source_files: '@nodejs'
+packages: node
+steps:
+  - run: npm run build
+```
+
+Generate native CircleCI configuration:
+
+```bash
+cigen generate
+```
+
+Results in a complete `.circleci/config.yml` with:
+
+- Git checkout
+- Package installation with caching - automatically detects npm, pnpm, yarn, bun, etc.
+- Job skipping if files haven't changed
+- Separate jobs for each architecture (`build_amd64`, `build_arm64`), or a job matrix on supported providers
+
+## Current Status
+
+Cigen supports:
+
+- **CircleCI** (full support with advanced features)
+- **GitHub Actions** (planned)
+- **GitLab CI** (planned)
+- **Jenkins** (planned)
+
+## Getting Started
+
+1. [Install cigen](/installation/)
+2. Follow the [Quick Start guide](/quick-start/)
+3. Read about cigen's [philosophy](/philosophy/)
+4. Explore [configuration options](/configuration/overview/)

@@ -27,6 +27,11 @@
       "description": "Resource class size (e.g., small, medium, large, xlarge)",
       "enum": ["small", "medium", "large", "xlarge", "2xlarge", "self_hosted"]
     },
+    "type": {
+      "type": "string",
+      "description": "Job type (e.g., approval for manual approval jobs)",
+      "enum": ["approval"]
+    },
     "source_files": {
       "oneOf": [
         {
@@ -170,6 +175,23 @@
           "type": "string"
         }
       }
+    },
+    "context": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Single CircleCI context name"
+        },
+        {
+          "type": "array",
+          "description": "List of CircleCI context names",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ],
+      "description": "CircleCI contexts to use for this job"
     },
     "steps": {
       "type": "array",

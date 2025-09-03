@@ -58,6 +58,11 @@
               "run": {
                 "type": "string",
                 "description": "Shell command to execute"
+              },
+              "when": {
+                "type": "string",
+                "description": "CircleCI when condition (always, on_success, on_fail)",
+                "enum": ["always", "on_success", "on_fail"]
               }
             },
             "required": ["name", "run"],
