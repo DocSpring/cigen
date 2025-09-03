@@ -23,6 +23,7 @@ fn test_simple_job_conversion() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: Some(vec![
                 // Run step with just command
                 Step({
@@ -124,6 +125,7 @@ fn test_job_with_services() {
             requires: None,
             cache: None,
             restore_cache: None,
+            packages: None,
             steps: Some(vec![Step({
                 let mut run_step = Mapping::new();
                 run_step.insert(
@@ -172,6 +174,7 @@ fn test_job_dependencies() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: Some(vec![Step({
                 let mut run_step = Mapping::new();
                 run_step.insert(
@@ -195,6 +198,7 @@ fn test_job_dependencies() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: Some(vec![Step({
                 let mut run_step = Mapping::new();
                 run_step.insert(
@@ -267,6 +271,7 @@ fn test_docker_image_resolution() {
         cache: None,
         restore_cache: None,
         services: None,
+        packages: None,
         steps: None,
     };
 
@@ -301,6 +306,7 @@ fn test_docker_image_full_reference_passthrough() {
         cache: None,
         restore_cache: None,
         services: None,
+        packages: None,
         steps: None,
     };
 
@@ -332,6 +338,7 @@ fn test_architecture_matrix_generation() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         },
     );
@@ -384,6 +391,7 @@ fn test_architecture_matrix_with_dependencies() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         },
     );
@@ -401,6 +409,7 @@ fn test_architecture_matrix_with_dependencies() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         },
     );
@@ -455,6 +464,7 @@ fn test_single_architecture_no_suffix() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         },
     );
@@ -505,6 +515,7 @@ fn test_architecture_environment_variables() {
         cache: None,
         restore_cache: None,
         services: None,
+        packages: None,
         steps: None,
     };
 
@@ -565,6 +576,7 @@ fn test_dynamic_config_with_parameters() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         },
     );
@@ -633,6 +645,7 @@ fn test_dynamic_flag_enables_setup() {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         },
     );

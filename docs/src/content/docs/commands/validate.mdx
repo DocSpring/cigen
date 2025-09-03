@@ -14,15 +14,18 @@ cigen validate [OPTIONS]
 ## Options
 
 ### `--config <PATH>`
+
 Path to the cigen configuration directory or file.
 
 - **Default**: Current directory (`.`)
 - **Example**: `--config .cigen/` or `--config .cigen/cigen.yml`
 
 ### `--verbose` / `-v`
+
 Enable verbose output showing detailed validation steps.
 
 ### `--strict`
+
 Enable strict validation mode with additional checks.
 
 ## Examples
@@ -50,31 +53,37 @@ cigen validate --config .cigen/ --verbose
 The validate command performs comprehensive checks:
 
 ### 1. Configuration File Syntax
+
 - YAML syntax validation
 - JSON schema compliance
 - Required field presence
 
 ### 2. Job Definitions
+
 - Image specifications
 - Step references and syntax
 - Dependency graphs (circular dependency detection)
 - Required vs optional fields
 
 ### 3. Workflow Structure
+
 - Job references exist
 - Dependency chains are valid
 - No orphaned jobs
 
 ### 4. Template Variables
+
 - All referenced variables are defined
 - Template syntax is correct
 - No undefined template expressions
 
 ### 5. Provider-Specific Validation
+
 - CircleCI: Resource class compatibility, orb usage
 - Platform-specific constraints and limits
 
 ### 6. File References
+
 - Referenced files exist (e.g., Dockerfiles, scripts)
 - Source file groups are valid
 - Cache key dependencies are resolvable
@@ -82,11 +91,13 @@ The validate command performs comprehensive checks:
 ## Validation Levels
 
 ### Basic Validation (Default)
+
 - Schema compliance
 - Basic syntax checks
 - Job/workflow reference validation
 
 ### Strict Validation (`--strict`)
+
 - All basic validations
 - Warning-level issues become errors
 - Additional best practice checks
@@ -189,6 +200,7 @@ For VS Code, add to `.vscode/settings.json`:
 ## Performance
 
 Validation is typically fast:
+
 - Small configs (< 10 jobs): < 100ms
 - Medium configs (10-50 jobs): < 500ms
 - Large configs (50+ jobs): < 2 seconds
@@ -198,6 +210,7 @@ Strict mode adds ~50% overhead for additional checks.
 ## Best Practices
 
 ### Regular Validation
+
 Run validation frequently during development:
 
 ```bash
@@ -206,11 +219,13 @@ watch -n 1 cigen validate
 ```
 
 ### Team Workflows
+
 - Add validation to pull request checks
 - Include validation in development workflows
 - Use `--strict` mode in CI pipelines
 
 ### Configuration Organization
+
 Structure your config for easier validation:
 
 ```

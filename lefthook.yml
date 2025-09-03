@@ -22,7 +22,7 @@ pre-commit:
       file_types:
         - text
       stage_fixed: true
-    - run: npx ultracite format {staged_files}
+    - run: pnpm exec ultracite fix {staged_files}
       glob:
         - "*.js"
         - "*.jsx"
@@ -39,7 +39,7 @@ pre-commit:
         - "**/*.jsonc"
         - "**/*.css"
       stage_fixed: true
-    - run: npx prettier --write {staged_files}
+    - run: pnpm exec prettier --write {staged_files}
       glob:
         - "*.yml"
         - "*.yaml"

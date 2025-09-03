@@ -167,6 +167,7 @@ mod tests {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
         };
 
         jobs.insert("test".to_string(), job);
@@ -197,6 +198,7 @@ mod tests {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
         };
 
         jobs.insert("test".to_string(), job);
@@ -236,6 +238,7 @@ mod tests {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
         };
 
         jobs.insert("test".to_string(), job);

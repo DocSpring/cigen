@@ -10,23 +10,29 @@ This document outlines the core requirements and architectural principles that d
 ## Architectural Philosophy
 
 <Aside type="note">
-**Key Principle**: cigen is NOT a 1:1 port of existing CI systems. It represents a complete architectural redesign based on lessons learned from existing implementations.
+  **Key Principle**: cigen is NOT a 1:1 port of existing CI systems. It
+  represents a complete architectural redesign based on lessons learned from
+  existing implementations.
 </Aside>
 
 ### Core Principles
 
 <CardGrid>
   <Card title="Convention over Configuration" icon="approve-check">
-    Common patterns (cache keys, job naming, dependencies) are handled by the cigen engine, not manual template code
+    Common patterns (cache keys, job naming, dependencies) are handled by the
+    cigen engine, not manual template code
   </Card>
   <Card title="Declarative over Imperative" icon="list-format">
-    Jobs declare what they need (caches, services, dependencies), not HOW to implement them
+    Jobs declare what they need (caches, services, dependencies), not HOW to
+    implement them
   </Card>
   <Card title="DRY Templates" icon="pencil">
-    Templates contain ONLY what makes each workflow/job unique - all boilerplate is eliminated
+    Templates contain ONLY what makes each workflow/job unique - all boilerplate
+    is eliminated
   </Card>
   <Card title="Smart Defaults" icon="star">
-    The system infers sensible defaults from context rather than requiring explicit configuration
+    The system infers sensible defaults from context rather than requiring
+    explicit configuration
   </Card>
 </CardGrid>
 
@@ -68,6 +74,7 @@ jobs:
 ```
 
 Features:
+
 - Architecture-specific resource classes
 - Independent job execution and caching
 - Automatic naming conventions
@@ -178,12 +185,14 @@ steps:
 The existing DocSpring Ruby-based ERB system has specific requirements:
 
 #### Generated Configurations
+
 - **config.yml**: Setup workflow with dynamic configuration
 - **test_and_deploy_config.yml**: Main workflow with test and deployment jobs
 - **package_updates_config.yml**: Scheduled package update checks
 - **staging_postman_tests_config.yml**: Scheduled API testing
 
 #### Key Features to Support
+
 - Multi-architecture builds (amd64/arm64)
 - Complex job dependency graphs
 - Cache management with SHA256 keys
@@ -191,6 +200,7 @@ The existing DocSpring Ruby-based ERB system has specific requirements:
 - OR dependency workarounds
 
 #### Migration Approach
+
 Rather than porting complex ERB helpers, cigen provides:
 
 1. **Declarative job definitions** replacing imperative template logic
@@ -201,16 +211,19 @@ Rather than porting complex ERB helpers, cigen provides:
 ## Performance Requirements
 
 ### Build Time
+
 - Configuration generation: < 5 seconds for large projects
 - Validation: < 2 seconds for comprehensive checks
 - Template processing: < 1 second for complex templates
 
 ### Runtime Efficiency
+
 - Job skipping: 60-80% reduction in unnecessary work
 - Cache hit rates: > 90% for unchanged dependencies
 - Multi-architecture builds: Parallel execution with shared caches
 
 ### Resource Usage
+
 - Memory: < 100MB for configuration processing
 - Disk: Minimal footprint for cache storage
 - Network: Efficient cache backend communication
@@ -218,16 +231,19 @@ Rather than porting complex ERB helpers, cigen provides:
 ## Quality Requirements
 
 ### Reliability
+
 - **Zero data loss**: Configuration changes are atomic
 - **Rollback capability**: Previous configurations preserved
 - **Error recovery**: Graceful handling of partial failures
 
 ### Maintainability
+
 - **Schema-driven**: All configuration validated against schemas
 - **Modular architecture**: Clear separation of provider-specific code
 - **Comprehensive testing**: Unit and integration test coverage
 
 ### Usability
+
 - **Clear error messages**: Actionable feedback for configuration errors
 - **IDE support**: Schema-based autocompletion and validation
 - **Documentation**: Comprehensive examples and guides
@@ -235,16 +251,19 @@ Rather than porting complex ERB helpers, cigen provides:
 ## Security Requirements
 
 ### Secrets Management
+
 - No secrets in configuration files
 - Support for provider-specific secret injection (contexts, environments)
 - Clear separation between public configuration and sensitive data
 
 ### Access Control
+
 - Honor provider-specific access controls
 - Support for environment-specific permissions
 - Audit trail for configuration changes
 
 ### Supply Chain Security
+
 - Template provenance tracking
 - Built-in security scanning integration
 - Dependency validation and alerts
@@ -252,16 +271,19 @@ Rather than porting complex ERB helpers, cigen provides:
 ## Extensibility Requirements
 
 ### Plugin Architecture
+
 - Provider plugins for new CI platforms
 - Cache backend plugins for different storage systems
 - Template function plugins for custom logic
 
 ### Community Integration
+
 - Shareable cache definitions and job templates
 - Community-contributed provider implementations
 - Plugin registry and discovery
 
 ### API Stability
+
 - Semantic versioning for breaking changes
 - Backward compatibility for configuration formats
 - Migration tooling for version upgrades
@@ -269,12 +291,14 @@ Rather than porting complex ERB helpers, cigen provides:
 ## Future Considerations
 
 ### Advanced Features
+
 - **Visual workflow editor**: GUI for complex pipeline design
 - **Performance analytics**: Metrics on job efficiency and cache hit rates
 - **Cost optimization**: Recommendations for resource usage
 - **Integration testing**: Cross-platform configuration validation
 
 ### Platform Evolution
+
 - **New CI providers**: Support for emerging platforms
 - **Cloud-native features**: Kubernetes-based job execution
 - **Edge computing**: Distributed build and test execution

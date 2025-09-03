@@ -3,28 +3,38 @@ title: Cache System
 description: Intelligent caching with automatic cache key generation and built-in cache types
 ---
 
-import { Code, Aside, Steps, CardGrid, Card } from '@astrojs/starlight/components';
+import {
+  Code,
+  Aside,
+  Steps,
+  CardGrid,
+  Card,
+} from '@astrojs/starlight/components';
 
 Cigen provides an intelligent caching system that automatically generates optimal cache keys based on your project's runtime environments and dependencies.
 
 ## Cache Key Structure
 
 <Aside type="note">
-All cache keys follow a consistent structure for maximum cache hit rates and platform compatibility.
+  All cache keys follow a consistent structure for maximum cache hit rates and
+  platform compatibility.
 </Aside>
 
 Cache keys use this pattern:
+
 ```
 {{ os }}-{{ os_version }}-{{ arch }}-{{ cache_name }}-{{ versions }}-{{ checksum }}
 ```
 
 Where:
+
 - **Platform prefix** (`os`, `os_version`, `arch`) - Automatically included for all caches
 - **cache_name** - The name you give to the cache (e.g., `gems`, `node_modules`)
 - **versions** - Runtime versions detected from version files (e.g., `ruby3.3.0`)
 - **checksum** - Combined hash of dependency files (e.g. package lock files)
 
 Example cache key:
+
 ```
 linux-ubuntu22.04-amd64-gems-ruby3.3.0-bundler2.5.6-abc123def456
 ```
@@ -57,14 +67,10 @@ Cigen includes intelligent cache definitions for common technologies:
     paths: [vendor/bundle, .bundle]
 
 version_sources:
-  ruby:
-    - file: .ruby-version
-    - file: .tool-versions
-      pattern: 'ruby (.+)'
-    - command: 'ruby --version'
-  bundler:
-    - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1 | tr -d ' '"
-      parse_version: false`} lang="yaml" title="Built-in Ruby cache definition" />
+ruby: - file: .ruby-version - file: .tool-versions
+pattern: 'ruby (.+)' - command: 'ruby --version'
+bundler: - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1 | tr -d ' '"
+parse_version: false`} lang="yaml" title="Built-in Ruby cache definition" />
 
 ### Node.js Modules
 
@@ -77,12 +83,8 @@ version_sources:
     paths: [node_modules]
 
 version_sources:
-  node:
-    - file: .node-version
-    - file: .nvmrc
-    - file: .tool-versions
-      pattern: 'node (.+)'
-    - command: 'node --version'`} lang="yaml" title="Built-in Node.js cache definition" />
+node: - file: .node-version - file: .nvmrc - file: .tool-versions
+pattern: 'node (.+)' - command: 'node --version'`} lang="yaml" title="Built-in Node.js cache definition" />
 
 ### Python Packages
 
@@ -97,33 +99,62 @@ version_sources:
       - ~/.cache/pip
 
 version_sources:
-  python:
-    - file: .python-version
-    - file: .tool-versions
-      pattern: 'python (.+)'
-    - file: runtime.txt  # Heroku-style
-    - command: 'python --version'`} lang="yaml" title="Built-in Python cache definition" />
+python: - file: .python-version - file: .tool-versions
+pattern: 'python (.+)' - file: runtime.txt # Heroku-style - command: 'python --version'`} lang="yaml" title="Built-in Python cache definition" />
 
 ## Using Caches in Jobs
 
+### Cache Field vs Restore Cache
+
+The `cache` and `restore_cache` fields serve different purposes:
+
+- **`cache`**: Both restores AND saves the cache (read/write)
+- **`restore_cache`**: Only restores the cache (read-only)
+
+```yaml
+# Read and write cache
+jobs:
+  build:
+    cache: gems  # Restores before steps, saves after steps
+
+# Read-only cache
+jobs:
+  test:
+    restore_cache: gems  # Only restores, doesn't save
+```
+
+The `restore_cache` field is a shorthand for:
+```yaml
+cache:
+  gems:
+    restore: true  # Always true by default anyway
+    save: false    # This is what restore_cache does
+```
+
 ### Simple Cache Usage
 
-<Code code={`jobs:
+<Code
+  code={`jobs:
   test:
     image: cimg/ruby:3.3
     cache: gems  # Uses all defaults from gems cache definition
     steps:
       - checkout
       - run: bundle install
-      - run: bundle exec rspec`} lang="yaml" title="Simple cache usage" />
+      - run: bundle exec rspec`}
+  lang="yaml"
+  title="Simple cache usage"
+/>
 
 This automatically injects:
+
 1. A `restore_cache` step before your steps
 2. A `save_cache` step after your steps
 
 ### Multiple Caches
 
-<Code code={`jobs:
+<Code
+  code={`jobs:
   full_stack_test:
     image: cimg/ruby:3.3
     cache: [gems, node_modules]  # Multiple cache types
@@ -132,11 +163,15 @@ This automatically injects:
       - checkout
       - run: bundle install
       - run: npm install
-      - run: bundle exec rspec`} lang="yaml" title="Multiple caches" />
+      - run: bundle exec rspec`}
+  lang="yaml"
+  title="Multiple caches"
+/>
 
 ### Custom Cache Paths
 
-<Code code={`jobs:
+<Code
+  code={`jobs:
   test:
     image: cimg/ruby:3.3
     cache:
@@ -145,66 +180,11 @@ This automatically injects:
         # versions and checksum_sources from definition
     steps:
       - checkout
-      - run: bundle install --path vendor/rubygems`} lang="yaml" title="Customizing cache paths" />
+      - run: bundle install --path vendor/rubygems`}
+  lang="yaml"
+  title="Customizing cache paths"
+/>
 
-## Smart Cache Job Deduplication
-
-<Aside type="tip">
-**Intelligent Optimization**: When multiple jobs use the same cache, cigen automatically optimizes the workflow structure.
-</Aside>
-
-Cigen automatically detects cache usage patterns and optimizes accordingly:
-
-### Single Job Usage (Inline)
-```yaml
-jobs:
-  test:
-    packages: node
-    steps:
-      - run: npm test
-```
-**Result**: Package installation is handled inline within the job.
-
-### Multiple Job Usage (Dedicated Job)
-```yaml
-jobs:
-  test:
-    packages: node
-    steps:
-      - run: npm test
-
-  lint:
-    packages: node
-    steps:
-      - run: npm run lint
-
-  build:
-    packages: node
-    steps:
-      - run: npm run build
-```
-
-**Result**: Cigen automatically creates a dedicated `install_packages` job and adds it as a dependency:
-
-```yaml
-# Generated workflow structure:
-jobs:
-  install_packages:
-    packages: node
-    # Cache restore, npm install, cache save
-  test:
-    requires: [install_packages]
-  lint:
-    requires: [install_packages]
-  build:
-    requires: [install_packages]
-```
-
-This optimization:
-- **Eliminates redundant installs** across multiple jobs
-- **Runs installations once** in parallel with other setup
-- **Reduces total CI time** through better parallelization
-- **Maintains cache efficiency** with centralized dependency management
 
 ## Advanced Cache Configuration
 
@@ -221,33 +201,33 @@ cache_definitions:
       - models/cache
       - ~/.cache/torch
 
-  webpack_assets:
-    checksum_sources:  # No versions - pure checksum cache
-      - package.json
-      - webpack.config.js
-      - src/**/*.js
-    paths:
-      - dist/assets
-      - .webpack-cache`} lang="yaml" title="Custom cache definitions" />
+webpack\*assets:
+checksum_sources: # No versions - pure checksum cache - package.json - webpack.config.js - src/\*\*/\_.js
+paths: - dist/assets - .webpack-cache`} lang="yaml" title="Custom cache definitions" />
 
 ### Cache Without Versions
 
 For caches that don't depend on runtime versions:
 
-<Code code={`cache_definitions:
+<Code
+  code={`cache_definitions:
   static_assets:
     checksum_sources: [assets/**/*.css, assets/**/*.js]
-    paths: [public/compiled-assets]`} lang="yaml" title="Version-less cache" />
+    paths: [public/compiled-assets]`}
+  lang="yaml"
+  title="Version-less cache"
+/>
 
 Example key: `linux-ubuntu22.04-amd64-static_assets-abc123def456`
 
 ### Path Detection
 
 <Aside type="caution">
-Cigen validates cache paths exist before upload, preventing silent failures.
+  Cigen validates cache paths exist before upload, preventing silent failures.
 </Aside>
 
-<Code code={`paths:
+<Code
+  code={`paths:
   - node_modules  # Required - job fails if missing
   - detect:       # At least one must exist
       - .venv
@@ -255,7 +235,10 @@ Cigen validates cache paths exist before upload, preventing silent failures.
       - virtualenv
   - detect_optional:  # All are optional
       - .cache/pre-commit
-      - ~/.cache/myapp`} lang="yaml" title="Path detection strategies" />
+      - ~/.cache/myapp`}
+  lang="yaml"
+  title="Path detection strategies"
+/>
 
 ## Manual Cache Steps
 
@@ -266,15 +249,16 @@ For fine-grained control, use manual cache steps:
       name: Restore webpack cache
       key: webpack-{{ checksum "webpack.config.js" }}
 
-  - name: Build assets
-    run: npm run build
+- name: Build assets
+  run: npm run build
 
-  - save_cache:
-      name: Save webpack cache
-      key: webpack-{{ checksum "webpack.config.js" }}
-      paths: [.webpack-cache, dist/]`} lang="yaml" title="Manual cache steps" />
+- save_cache:
+  name: Save webpack cache
+  key: webpack-{{ checksum "webpack.config.js" }}
+  paths: [.webpack-cache, dist/]`} lang="yaml" title="Manual cache steps" />
 
 These steps:
+
 - Use identical syntax across all CI providers
 - Automatically use the configured cache backend
 - Support template variables and functions
@@ -286,27 +270,29 @@ Configure different storage backends for various scenarios:
 <Code code={`cache_backends:
   default: native  # Use CI provider's native cache
 
-  # Backend configurations
-  s3:
-    bucket: my-cache-bucket
-    region: us-east-1
-    prefix: cigen-cache/
+# Backend configurations
 
-  redis:
-    url: redis://cache.example.com:6379
-    ttl: 604800  # 7 days
+s3:
+bucket: my-cache-bucket
+region: us-east-1
+prefix: cigen-cache/
 
-  minio:
-    endpoint: minio.internal:9000
-    bucket: ci-cache
-    access_key: \${MINIO_ACCESS_KEY}
-    secret_key: \${MINIO_SECRET_KEY}
+redis:
+url: redis://cache.example.com:6379
+ttl: 604800 # 7 days
+
+minio:
+endpoint: minio.internal:9000
+bucket: ci-cache
+access_key: \${MINIO_ACCESS_KEY}
+secret_key: \${MINIO_SECRET_KEY}
 
 # Per-cache backend override
+
 cache_definitions:
-  ml_models:
-    backend: s3  # Large models go to S3
-    paths: [models/]`} lang="yaml" title="Cache backend configuration" />
+ml_models:
+backend: s3 # Large models go to S3
+paths: [models/]`} lang="yaml" title="Cache backend configuration" />
 
 ## Version Detection
 
@@ -317,25 +303,28 @@ Version sources are checked in order until one succeeds:
 <Steps>
 
 1. **Version files** - Read directly from committed files
+
    ```yaml
-   - file: .ruby-version  # Contains: 3.3.0
+   - file: .ruby-version # Contains: 3.3.0
    ```
 
 2. **Tool version files** - Extract using patterns
+
    ```yaml
    - file: .tool-versions
-     pattern: 'ruby (.+)'  # From: ruby 3.3.0
+     pattern: 'ruby (.+)' # From: ruby 3.3.0
    ```
 
 3. **Runtime commands** - Query installed versions
+
    ```yaml
-   - command: 'ruby --version'  # Auto-parses version numbers
+   - command: 'ruby --version' # Auto-parses version numbers
    ```
 
 4. **Raw commands** - Use output directly
    ```yaml
    - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1"
-     parse_version: false  # Use raw output
+     parse_version: false # Use raw output
    ```
 
 </Steps>
@@ -343,6 +332,7 @@ Version sources are checked in order until one succeeds:
 ### Multi-Version Keys
 
 When multiple versions are detected:
+
 ```
 linux-ubuntu22.04-amd64-fullstack-ruby3.3.0-node20.11.0-abc123def
 ```
@@ -357,23 +347,29 @@ Cache keys automatically include architecture information:
     cache: gems
 
 # Generates separate cache keys:
+
 # linux-ubuntu22.04-amd64-gems-ruby3.3.0-abc123def
+
 # linux-ubuntu22.04-arm64-gems-ruby3.3.0-abc123def`} lang="yaml" title="Architecture-specific caches" />
 
 ## Best Practices
 
 <CardGrid>
   <Card title="Use Built-in Types" icon="approve-check">
-    Leverage built-in cache definitions when possible - they handle edge cases and evolve with best practices
+    Leverage built-in cache definitions when possible - they handle edge cases
+    and evolve with best practices
   </Card>
   <Card title="Include Lock Files" icon="document">
-    Always include both manifest files (package.json) and lock files (package-lock.json) in checksum sources
+    Always include both manifest files (package.json) and lock files
+    (package-lock.json) in checksum sources
   </Card>
   <Card title="Version Files in Git" icon="git-branch">
-    Commit version files (.ruby-version, .node-version) to ensure consistent cache keys across environments
+    Commit version files (.ruby-version, .node-version) to ensure consistent
+    cache keys across environments
   </Card>
   <Card title="Descriptive Names" icon="pencil">
-    Use clear, descriptive cache names (gems, node_modules) rather than generic names (cache1, deps)
+    Use clear, descriptive cache names (gems, node_modules) rather than generic
+    names (cache1, deps)
   </Card>
 </CardGrid>
 
@@ -400,9 +396,9 @@ cache_definitions:
     type: gems  # Inherit from gems
     paths: [vendor/production-gems]
 
-  gems_development:
-    type: gems
-    paths: [vendor/development-gems, .bundle]`} lang="yaml" title="Resolving cache conflicts" />
+gems_development:
+type: gems
+paths: [vendor/development-gems, .bundle]`} lang="yaml" title="Resolving cache conflicts" />
 
 ## Implementation Details
 
@@ -421,6 +417,7 @@ cache_definitions:
 ### Backend Selection
 
 Cigen chooses cache backends based on:
+
 - Global cache backend configuration
 - Per-cache backend overrides
 - Runner type (cloud vs self-hosted)

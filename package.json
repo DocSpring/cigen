@@ -5,16 +5,15 @@
   "private": true,
   "scripts": {
     "nx": "nx",
-    "format": "ultracite format && prettier --write '**/*.{yml,yaml,md}'",
-    "format:check": "ultracite check && prettier --check '**/*.{yml,yaml,md}'"
+    "format": "pnpm exec ultracite fix && pnpm exec prettier --write '**/*.{yml,yaml,md}'",
+    "check": "pnpm exec ultracite check && pnpm exec prettier --check '**/*.{yml,yaml,md}'"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.0.6",
     "lefthook": "^1.12.2",
     "nx": "21.2.2",
+    "@biomejs/biome": "2.2.2",
     "prettier": "^3.6.2",
-    "prettier-plugin-astro": "^0.14.1",
-    "ultracite": "5.0.32"
+    "ultracite": "^5.2.10"
   },
   "workspaces": [
     "."

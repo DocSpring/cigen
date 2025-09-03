@@ -85,7 +85,7 @@ Get started with cigen by creating your first universal CI configuration.
    jobs:
      build_image:
        image: cimg/base:stable
-       architectures: [amd64, arm64]  # Creates build_image_amd64 and build_image_arm64
+       architectures: [amd64, arm64] # Creates build_image_amd64 and build_image_arm64
        requires: [test]
        steps:
          - checkout
@@ -103,7 +103,7 @@ Get started with cigen by creating your first universal CI configuration.
    jobs:
      test:
        image: cimg/node:18.0
-       cache: [node_modules]  # Automatically injects cache restore/save
+       cache: [node_modules] # Automatically injects cache restore/save
        steps:
          - checkout
          - run: npm install
@@ -120,12 +120,12 @@ Get started with cigen by creating your first universal CI configuration.
    jobs:
      test_frontend:
        image: cimg/node:18.0
-       source_files: '@frontend'  # Only runs if frontend files changed
+       source_files: '@frontend' # Only runs if frontend files changed
        steps: [...]
 
      test_backend:
        image: cimg/python:3.9
-       source_files: '@backend'   # Only runs if backend files changed
+       source_files: '@backend' # Only runs if backend files changed
        steps: [...]
    ```
 
@@ -174,11 +174,10 @@ workflows:
 ```
 
 <Aside type="tip">
-Notice how cigen automatically:
-- Generated separate jobs for each architecture
-- Set appropriate resource classes (`medium` vs `arm.medium`)
-- Created proper dependency chains in the workflow
-- Injected cache restore/save steps where needed
+  Notice how cigen automatically: - Generated separate jobs for each
+  architecture - Set appropriate resource classes (`medium` vs `arm.medium`) -
+  Created proper dependency chains in the workflow - Injected cache restore/save
+  steps where needed
 </Aside>
 
 ## Next Steps

@@ -53,13 +53,12 @@ export default defineConfig({
           items: [
             { label: 'Overview', slug: 'configuration/overview' },
             { label: 'Cache System', slug: 'configuration/cache' },
+            { label: 'Package Management', slug: 'configuration/packages' },
           ],
         },
         {
           label: 'Providers',
-          items: [
-            { label: 'CircleCI', slug: 'providers/circleci' },
-          ],
+          items: [{ label: 'CircleCI', slug: 'providers/circleci' }],
         },
         {
           label: 'Advanced Features',
@@ -74,9 +73,7 @@ export default defineConfig({
         },
         {
           label: 'Reference',
-          items: [
-            { label: 'Requirements', slug: 'reference/requirements' },
-          ],
+          items: [{ label: 'Requirements', slug: 'reference/requirements' }],
         },
       ],
     }),

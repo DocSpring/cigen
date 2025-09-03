@@ -16,26 +16,31 @@ cigen generate [OPTIONS]
 ## Options
 
 ### `--config <PATH>`
+
 Path to the cigen configuration directory or file.
 
 - **Default**: Current directory (`.`)
 - **Example**: `--config .cigen/` or `--config .cigen/cigen.yml`
 
 ### `--output <PATH>`
+
 Override the output path specified in the configuration.
 
 - **Example**: `--output .github/workflows/`
 
 ### `--provider <PROVIDER>`
+
 Override the provider specified in the configuration.
 
 - **Supported**: `circleci`
 - **Example**: `--provider circleci`
 
 ### `--dry-run`
+
 Show what would be generated without creating files.
 
 ### `--verbose` / `-v`
+
 Enable verbose output showing detailed generation steps.
 
 ## Examples
@@ -81,6 +86,7 @@ The generate command:
 ### Generated Files
 
 For CircleCI (`provider: circleci`):
+
 - Creates `.circleci/config.yml` (or path specified in `output_path`)
 - Includes all jobs, workflows, commands, and executors
 - Applies provider-specific transformations
@@ -94,16 +100,15 @@ jobs:
     image: cimg/base:stable
 
 # Output (generated):
-jobs:
-  build_amd64:
-    docker:
-      - image: cimg/base:stable
-    resource_class: medium
 
-  build_arm64:
-    docker:
-      - image: cimg/base:stable
-    resource_class: arm.medium`} lang="yaml" title="Architecture expansion" />
+jobs:
+build_amd64:
+docker: - image: cimg/base:stable
+resource_class: medium
+
+build_arm64:
+docker: - image: cimg/base:stable
+resource_class: arm.medium`} lang="yaml" title="Architecture expansion" />
 
 ### Cache Injection
 
@@ -115,25 +120,24 @@ jobs:
       - run: npm test
 
 # Output (generated):
+
 jobs:
-  test:
-    steps:
-      - restore_cache:
-          keys:
-            - node-modules-{{ checksum "package.json" }}
-      - run: npm test
-      - save_cache:
-          key: node-modules-{{ checksum "package.json" }}
-          paths: [node_modules/]`} lang="yaml" title="Automatic cache steps" />
+test:
+steps: - restore_cache:
+keys: - node-modules-{{ checksum "package.json" }} - run: npm test - save_cache:
+key: node-modules-{{ checksum "package.json" }}
+paths: [node_modules/]`} lang="yaml" title="Automatic cache steps" />
 
 ## Validation
 
 After generation, cigen automatically validates the output:
 
 ### Schema Validation
+
 All generated configurations are validated against provider schemas.
 
 ### Provider CLI Validation
+
 If the provider's CLI tool is installed (e.g., `circleci`), cigen runs:
 
 ```bash
@@ -147,21 +151,27 @@ This catches syntax errors and configuration issues early.
 Common errors and solutions:
 
 ### Schema Validation Errors
+
 ```
 Error: Invalid job configuration: missing required property 'image'
 ```
+
 **Solution**: Ensure all required fields are specified in your job definitions.
 
 ### Template Errors
+
 ```
 Error: Failed to render template: undefined variable 'app_name'
 ```
+
 **Solution**: Define missing variables in the `vars` section of your config.
 
 ### Provider CLI Errors
+
 ```
 CircleCI config validation failed: workflow 'main' not found
 ```
+
 **Solution**: Ensure workflows reference existing jobs and follow provider requirements.
 
 ## Advanced Features
@@ -196,12 +206,14 @@ Override built-in templates by placing files in your config directory:
 ## Performance
 
 Generation time scales with:
+
 - Number of jobs and workflows
 - Complexity of template processing
 - Amount of cache key calculations
 - Provider validation overhead
 
 Typical generation times:
+
 - Small projects (< 10 jobs): < 1 second
 - Medium projects (10-50 jobs): 1-3 seconds
 - Large projects (50+ jobs): 3-10 seconds

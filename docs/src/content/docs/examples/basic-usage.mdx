@@ -3,7 +3,13 @@ title: Basic Usage Examples
 description: Common patterns and examples for getting started with cigen
 ---
 
-import { Code, CardGrid, Card, Tabs, TabItem } from '@astrojs/starlight/components';
+import {
+  Code,
+  CardGrid,
+  Card,
+  Tabs,
+  TabItem,
+} from '@astrojs/starlight/components';
 
 Here are common patterns and examples to help you get started with cigen.
 
@@ -17,21 +23,17 @@ provider: circleci
 output_path: .circleci
 
 jobs:
-  test:
-    image: cimg/node:18.0
-    steps:
-      - checkout
-      - run:
-          name: Install dependencies
-          command: npm install
-      - run:
-          name: Run tests
-          command: npm test
+test:
+image: cimg/node:18.0
+steps: - checkout - run:
+name: Install dependencies
+command: npm install - run:
+name: Run tests
+command: npm test
 
 workflows:
-  main:
-    jobs:
-      - test`} lang="yaml" title=".cigen/cigen.yml" />
+main:
+jobs: - test`} lang="yaml" title=".cigen/cigen.yml" />
 
 Generates a complete CircleCI configuration with proper job and workflow structure.
 
@@ -45,40 +47,30 @@ Generates a complete CircleCI configuration with proper job and workflow structu
       - checkout
       - run: npm install
 
-  lint:
-    image: cimg/node:18.0
-    cache: node_modules
-    requires: [install]
-    steps:
-      - checkout
-      - run: npm run lint
+lint:
+image: cimg/node:18.0
+cache: node_modules
+requires: [install]
+steps: - checkout - run: npm run lint
 
-  test:
-    image: cimg/node:18.0
-    cache: node_modules
-    requires: [install]
-    steps:
-      - checkout
-      - run: npm test
+test:
+image: cimg/node:18.0
+cache: node_modules
+requires: [install]
+steps: - checkout - run: npm test
 
-  build:
-    image: cimg/node:18.0
-    cache: node_modules
-    requires: [lint, test]
-    steps:
-      - checkout
-      - run: npm run build
+build:
+image: cimg/node:18.0
+cache: node_modules
+requires: [lint, test]
+steps: - checkout - run: npm run build
 
 workflows:
-  main:
-    jobs:
-      - install
-      - lint:
-          requires: [install]
-      - test:
-          requires: [install]
-      - build:
-          requires: [lint, test]`} lang="yaml" title="Multi-job pipeline" />
+main:
+jobs: - install - lint:
+requires: [install] - test:
+requires: [install] - build:
+requires: [lint, test]`} lang="yaml" title="Multi-job pipeline" />
 
 ## Service Dependencies
 
@@ -90,22 +82,18 @@ workflows:
       POSTGRES_PASSWORD: testpass
       POSTGRES_DB: testdb
 
-  redis:
-    image: redis:7
+redis:
+image: redis:7
 
 jobs:
-  integration_test:
-    image: cimg/ruby:3.3
-    services: [postgres, redis]
-    steps:
-      - checkout
-      - run: bundle install
-      - run:
-          name: Setup database
-          command: |
-            bundle exec rails db:create
-            bundle exec rails db:migrate
-      - run: bundle exec rspec spec/integration/`} lang="yaml" title="Using service containers" />
+integration_test:
+image: cimg/ruby:3.3
+services: [postgres, redis]
+steps: - checkout - run: bundle install - run:
+name: Setup database
+command: |
+bundle exec rails db:create
+bundle exec rails db:migrate - run: bundle exec rspec spec/integration/`} lang="yaml" title="Using service containers" />
 
 ## Multi-Architecture Builds
 
@@ -122,12 +110,13 @@ jobs:
             docker push myapp:latest-$\{CIRCLE_JOB##*_}
 
 workflows:
-  build:
-    jobs:
-      - build_image
+build:
+jobs: - build_image
 
 # Generates:
+
 # - build_image_amd64 (resource_class: medium)
+
 # - build_image_arm64 (resource_class: arm.medium)`} lang="yaml" title="Multi-architecture Docker builds" />
 
 ## Intelligent Job Skipping
@@ -138,29 +127,20 @@ workflows:
   docs: ['docs/**/*.md', 'mkdocs.yml']
 
 jobs:
-  test_backend:
-    image: cimg/python:3.11
-    source_files: '@backend'
-    steps:
-      - checkout
-      - run: pip install -r requirements.txt
-      - run: pytest
+test_backend:
+image: cimg/python:3.11
+source_files: '@backend'
+steps: - checkout - run: pip install -r requirements.txt - run: pytest
 
-  test_frontend:
-    image: cimg/node:18.0
-    source_files: '@frontend'
-    steps:
-      - checkout
-      - run: npm install
-      - run: npm test
+test_frontend:
+image: cimg/node:18.0
+source_files: '@frontend'
+steps: - checkout - run: npm install - run: npm test
 
-  build_docs:
-    image: cimg/python:3.11
-    source_files: '@docs'
-    steps:
-      - checkout
-      - run: pip install mkdocs
-      - run: mkdocs build`} lang="yaml" title="Skip jobs when files haven't changed" />
+build_docs:
+image: cimg/python:3.11
+source_files: '@docs'
+steps: - checkout - run: pip install mkdocs - run: mkdocs build`} lang="yaml" title="Skip jobs when files haven't changed" />
 
 ## Approval Workflows
 
@@ -171,24 +151,20 @@ jobs:
       - checkout
       - run: npm test
 
-  approve_deploy:
-    type: approval
-    requires: [test]
+approve_deploy:
+type: approval
+requires: [test]
 
-  deploy_staging:
-    image: cimg/base:stable
-    requires: [approve_deploy]
-    steps:
-      - checkout
-      - run: ./deploy.sh staging
+deploy_staging:
+image: cimg/base:stable
+requires: [approve_deploy]
+steps: - checkout - run: ./deploy.sh staging
 
-  deploy_production:
-    image: cimg/base:stable
-    requires: [approve_deploy]
-    context: [production-secrets]
-    steps:
-      - checkout
-      - run: ./deploy.sh production`} lang="yaml" title="Manual approval gates" />
+deploy_production:
+image: cimg/base:stable
+requires: [approve_deploy]
+context: [production-secrets]
+steps: - checkout - run: ./deploy.sh production`} lang="yaml" title="Manual approval gates" />
 
 ## OR Dependencies
 
@@ -202,14 +178,12 @@ jobs:
     steps:
       - run: ./build.sh
 
-  manual_approval:
-    type: approval
+manual_approval:
+type: approval
 
-  scheduled_trigger:
-    image: cimg/base:stable
-    # Could be triggered by schedule or other conditions
-    steps:
-      - run: echo "Scheduled build trigger"
+scheduled_trigger:
+image: cimg/base:stable # Could be triggered by schedule or other conditions
+steps: - run: echo "Scheduled build trigger"
 
 # Cigen automatically creates shim jobs to make OR logic work`} lang="yaml" title="OR dependency logic" />
 
@@ -224,34 +198,35 @@ parameters:
     default: staging
 
 steps:
-  - run:
-      name: Deploy to << parameters.environment >>
-      command: |
-        echo "Deploying to << parameters.environment >>"
-        ./scripts/deploy.sh << parameters.environment >>
 
-  - run:
-      name: Verify deployment
-      command: |
-        curl -f https://api-<< parameters.environment >>.example.com/health`} lang="yaml" title="commands/deploy.yml" />
-  </TabItem>
+- run:
+  name: Deploy to << parameters.environment >>
+  command: |
+  echo "Deploying to << parameters.environment >>"
+  ./scripts/deploy.sh << parameters.environment >>
 
-  <TabItem label="Using Command">
-    <Code code={`jobs:
+- run:
+  name: Verify deployment
+  command: |
+  curl -f https://api-<< parameters.environment >>.example.com/health`} lang="yaml" title="commands/deploy.yml" />
+
+        </TabItem>
+
+        <TabItem label="Using Command">
+
+      <Code code={`jobs:
+
   deploy_staging:
-    image: cimg/base:stable
-    steps:
-      - checkout
-      - deploy:
-          environment: staging
+  image: cimg/base:stable
+  steps: - checkout - deploy:
+  environment: staging
 
-  deploy_production:
-    image: cimg/base:stable
-    context: [production-secrets]
-    steps:
-      - checkout
-      - deploy:
-          environment: production`} lang="yaml" title="Using custom command" />
+deploy_production:
+image: cimg/base:stable
+context: [production-secrets]
+steps: - checkout - deploy:
+environment: production`} lang="yaml" title="Using custom command" />
+
   </TabItem>
 </Tabs>
 
@@ -263,24 +238,23 @@ vars:
   version: "1.0.0"
 
 # Environment-specific jobs
-jobs:
-  deploy_staging:
-    image: cimg/base:stable
-    context: [staging-secrets]
-    environment:
-      ENVIRONMENT: staging
-      API_URL: https://api-staging.example.com
-    steps:
-      - run: ./deploy.sh
 
-  deploy_production:
-    image: cimg/base:stable
-    context: [production-secrets]
-    environment:
-      ENVIRONMENT: production
-      API_URL: https://api.example.com
-    steps:
-      - run: ./deploy.sh`} lang="yaml" title="Environment-specific deployments" />
+jobs:
+deploy_staging:
+image: cimg/base:stable
+context: [staging-secrets]
+environment:
+ENVIRONMENT: staging
+API_URL: https://api-staging.example.com
+steps: - run: ./deploy.sh
+
+deploy_production:
+image: cimg/base:stable
+context: [production-secrets]
+environment:
+ENVIRONMENT: production
+API_URL: https://api.example.com
+steps: - run: ./deploy.sh`} lang="yaml" title="Environment-specific deployments" />
 
 ## Complex Cache Configuration
 
@@ -295,23 +269,17 @@ jobs:
       - ~/.cache/torch
 
 jobs:
-  train_model:
-    image: cimg/python:3.11
-    resource_class: gpu.large
-    cache:
-      - pip
-      - ml_models
-    steps:
-      - checkout
-      - run: pip install -r requirements-ml.txt
-      - run: python train.py
+train_model:
+image: cimg/python:3.11
+resource_class: gpu.large
+cache: - pip - ml_models
+steps: - checkout - run: pip install -r requirements-ml.txt - run: python train.py
 
-  inference_test:
-    image: cimg/python:3.11
-    cache: [ml_models]  # Reuse cached models
-    requires: [train_model]
-    steps:
-      - run: python test_inference.py`} lang="yaml" title="ML pipeline with model caching" />
+inference_test:
+image: cimg/python:3.11
+cache: [ml_models] # Reuse cached models
+requires: [train_model]
+steps: - run: python test_inference.py`} lang="yaml" title="ML pipeline with model caching" />
 
 ## Full-Stack Application
 
@@ -324,52 +292,41 @@ jobs:
     image: redis:7
 
 source_file_groups:
-  backend: ['api/**/*.py', 'requirements.txt']
-  frontend: ['web/**/*', 'package.json', 'webpack.config.js']
-  shared: ['shared/**/*', 'docker-compose.yml']
+backend: ['api/**/*.py', 'requirements.txt']
+frontend: ['web/**/*', 'package.json', 'webpack.config.js']
+shared: ['shared/**/*', 'docker-compose.yml']
 
 jobs:
-  test_backend:
-    image: cimg/python:3.11
-    services: [postgres, redis]
-    source_files: ['@backend', '@shared']
-    cache: pip
-    steps:
-      - checkout
-      - run: pip install -r requirements.txt
-      - run: pytest api/
+test_backend:
+image: cimg/python:3.11
+services: [postgres, redis]
+source_files: ['@backend', '@shared']
+cache: pip
+steps: - checkout - run: pip install -r requirements.txt - run: pytest api/
 
-  test_frontend:
-    image: cimg/node:18.0
-    source_files: ['@frontend', '@shared']
-    cache: node_modules
-    steps:
-      - checkout
-      - run: npm install
-      - run: npm test
+test_frontend:
+image: cimg/node:18.0
+source_files: ['@frontend', '@shared']
+cache: node_modules
+steps: - checkout - run: npm install - run: npm test
 
-  build_images:
-    image: cimg/base:stable
-    architectures: [amd64, arm64]
-    requires: [test_backend, test_frontend]
-    steps:
-      - checkout
-      - run: docker build -t myapp:backend-latest .
-      - run: docker build -f Dockerfile.frontend -t myapp:frontend-latest .
+build_images:
+image: cimg/base:stable
+architectures: [amd64, arm64]
+requires: [test_backend, test_frontend]
+steps: - checkout - run: docker build -t myapp:backend-latest . - run: docker build -f Dockerfile.frontend -t myapp:frontend-latest .
 
 workflows:
-  full_pipeline:
-    jobs:
-      - test_backend
-      - test_frontend
-      - build_images:
-          requires: [test_backend, test_frontend]`} lang="yaml" title="Complete full-stack application" />
+full_pipeline:
+jobs: - test_backend - test_frontend - build_images:
+requires: [test_backend, test_frontend]`} lang="yaml" title="Complete full-stack application" />
 
 ## Tips for Getting Started
 
 <CardGrid>
   <Card title="Start Simple" icon="rocket">
-    Begin with a single job, then gradually add complexity as you understand the patterns.
+    Begin with a single job, then gradually add complexity as you understand the
+    patterns.
   </Card>
   <Card title="Use Built-in Caches" icon="approve-check">
     Leverage `cache: gems`, `cache: node_modules` instead of manual cache steps.

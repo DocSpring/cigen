@@ -53,6 +53,9 @@ pub struct Job {
     pub services: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub packages: Option<Vec<String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<Step>>,
 }
 

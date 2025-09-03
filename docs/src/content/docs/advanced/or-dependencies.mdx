@@ -3,17 +3,25 @@ title: OR Dependencies
 description: How cigen implements OR dependencies on platforms that only support AND logic
 ---
 
-import { Code, Aside, Steps, CardGrid, Card } from '@astrojs/starlight/components';
+import {
+  Code,
+  Aside,
+  Steps,
+  CardGrid,
+  Card,
+} from '@astrojs/starlight/components';
 
 Most CI platforms only support AND dependencies (all requirements must complete). Cigen provides universal OR dependency support through platform-specific workarounds.
 
 ## The Problem
 
 <Aside type="caution">
-**CircleCI Limitation**: Only supports AND dependencies. A job can't run until ALL of its required jobs complete.
+  **CircleCI Limitation**: Only supports AND dependencies. A job can't run until
+  ALL of its required jobs complete.
 </Aside>
 
 Consider this common scenario:
+
 - A build job should run when someone manually approves it, OR
 - A build job should automatically run when any deployment is triggered
 
@@ -25,32 +33,39 @@ Cigen automatically generates "shim jobs" that convert OR logic into AND logic u
 
 ### Basic OR Dependencies
 
-<Code code={`jobs:
+<Code
+  code={`jobs:
   build_app_image:
     requires_any:
       - approve_build_manually
       - deploy_staging
       - deploy_production
     steps:
-      - run: docker build -t app:latest .`} lang="yaml" title="OR dependencies in cigen" />
+      - run: docker build -t app:latest .`}
+  lang="yaml"
+  title="OR dependencies in cigen"
+/>
 
 ### Generated CircleCI Implementation
 
 <Steps>
 
 1. **Creates the main approval job**
+
    ```yaml
    approve_build_manually:
      type: approval
    ```
 
 2. **Modifies the target job** to only require the approval
+
    ```yaml
    build_app_image:
      requires: [approve_build_manually]
    ```
 
 3. **Generates automated shim jobs** for each OR condition
+
    ```yaml
    approve_build_manually_from_deploy_staging:
      requires: [deploy_staging]
@@ -78,7 +93,8 @@ Cigen automatically generates "shim jobs" that convert OR logic into AND logic u
 
 The shim jobs use CircleCI's API to programmatically approve the main approval job:
 
-<Code code={`# Built-in automated_approval command
+<Code
+  code={`# Built-in automated_approval command
 steps:
   - run:
       name: Auto-approve build_app_image
@@ -87,14 +103,18 @@ steps:
         curl -X POST \\
           "https://circleci.com/api/v2/workflow/\${CIRCLE_WORKFLOW_ID}/approve/\${JOB_ID}" \\
           -H "Circle-Token: \${CIRCLE_TOKEN}" \\
-          -H "Content-Type: application/json"`} lang="bash" title="API-based approval" />
+          -H "Content-Type: application/json"`}
+  lang="bash"
+  title="API-based approval"
+/>
 
 ## Configuration
 
 ### Environment Variables
 
 <Aside type="note">
-**Required**: `CIRCLE_TOKEN` environment variable with workflow approval permissions must be configured in your CircleCI project.
+  **Required**: `CIRCLE_TOKEN` environment variable with workflow approval
+  permissions must be configured in your CircleCI project.
 </Aside>
 
 ### Advanced OR Patterns
@@ -108,13 +128,11 @@ steps:
       - scheduled_maintenance
     context: [production-secrets]
 
-  # OR with multiple approval gates
-  release_artifacts:
-    requires_any:
-      - qa_approval
-      - hotfix_approval
-    steps:
-      - run: ./release.sh`} lang="yaml" title="Advanced OR patterns" />
+# OR with multiple approval gates
+
+release_artifacts:
+requires_any: - qa_approval - hotfix_approval
+steps: - run: ./release.sh`} lang="yaml" title="Advanced OR patterns" />
 
 ## Real-World Example
 
@@ -133,16 +151,18 @@ Here's how DocSpring uses OR dependencies for their build process:
       - run: docker build -t docspring/app:\${CIRCLE_SHA1} .
       - run: docker push docspring/app:\${CIRCLE_SHA1}
 
-  # Deployment jobs that should trigger builds
-  deploy_staging:
-    requires: [approve_deploy_staging]
-    steps: [...]
+# Deployment jobs that should trigger builds
 
-  deploy_eu:
-    requires: [approve_deploy_eu]
-    steps: [...]`} lang="yaml" title="DocSpring build orchestration" />
+deploy_staging:
+requires: [approve_deploy_staging]
+steps: [...]
+
+deploy_eu:
+requires: [approve_deploy_eu]
+steps: [...]`} lang="yaml" title="DocSpring build orchestration" />
 
 This allows the app image to be built when:
+
 1. Someone manually approves the build, OR
 2. Any deployment is approved (which then needs the fresh image)
 
@@ -150,16 +170,15 @@ This allows the app image to be built when:
 
 <CardGrid>
   <Card title="CircleCI" icon="seti:config">
-    **Implementation**: API-based approval shim jobs
-    **Status**: Full support with `CIRCLE_TOKEN`
+    **Implementation**: API-based approval shim jobs **Status**: Full support
+    with `CIRCLE_TOKEN`
   </Card>
   <Card title="GitHub Actions" icon="github">
     **Implementation**: Conditional workflows with `workflow_dispatch`
     **Status**: Planned
   </Card>
   <Card title="GitLab CI" icon="seti:gitlab">
-    **Implementation**: Pipeline triggers and API calls
-    **Status**: Planned
+    **Implementation**: Pipeline triggers and API calls **Status**: Planned
   </Card>
 </CardGrid>
 
@@ -172,33 +191,37 @@ This allows the app image to be built when:
   approve_security_review:    # Good
     type: approval
 
-  approve_1:                 # Bad - unclear purpose
-    type: approval
+approve_1: # Bad - unclear purpose
+type: approval
 
-  # Target job names should indicate the OR relationship
-  deploy_after_any_approval: # Good - clear intent
-    requires_any: [approve_security_review, approve_emergency]`} lang="yaml" title="Clear naming" />
+# Target job names should indicate the OR relationship
+
+deploy_after_any_approval: # Good - clear intent
+requires_any: [approve_security_review, approve_emergency]`} lang="yaml" title="Clear naming" />
 
 ### Error Handling
 
-<Code code={`# Shim jobs include error handling
+<Code
+  code={`# Shim jobs include error handling
 steps:
   - automated_approval: target_job
   - run:
       name: Verify approval succeeded
       command: |
         # Check that the approval actually worked
-        # Fail the shim job if API call failed`} lang="yaml" title="Robust shim implementation" />
+        # Fail the shim job if API call failed`}
+  lang="yaml"
+  title="Robust shim implementation"
+/>
 
 ### Monitoring
 
 Since OR dependencies involve API calls, monitoring is important:
 
 <Steps>
-1. **Check shim job logs** for API call failures
-2. **Monitor approval delays** - API calls take a few seconds
-3. **Set up alerts** for repeated approval failures
-4. **Verify permissions** if jobs get stuck waiting
+  1. **Check shim job logs** for API call failures 2. **Monitor approval
+  delays** - API calls take a few seconds 3. **Set up alerts** for repeated
+  approval failures 4. **Verify permissions** if jobs get stuck waiting
 </Steps>
 
 ## Troubleshooting
@@ -206,19 +229,21 @@ Since OR dependencies involve API calls, monitoring is important:
 ### Common Issues
 
 <Aside type="tip">
-Most OR dependency issues stem from missing or incorrect `CIRCLE_TOKEN` configuration.
+  Most OR dependency issues stem from missing or incorrect `CIRCLE_TOKEN`
+  configuration.
 </Aside>
 
-| Problem | Solution |
-|---------|----------|
+| Problem                         | Solution                                      |
+| ------------------------------- | --------------------------------------------- |
 | Jobs stuck waiting for approval | Check `CIRCLE_TOKEN` has workflow permissions |
-| Shim jobs failing | Verify API endpoint and token format |
-| Approvals not triggering | Confirm job names match in API calls |
-| Slow approval response | Normal - API calls add ~10-30 seconds |
+| Shim jobs failing               | Verify API endpoint and token format          |
+| Approvals not triggering        | Confirm job names match in API calls          |
+| Slow approval response          | Normal - API calls add ~10-30 seconds         |
 
 ### Debug Mode
 
-<Code code={`steps:
+<Code
+  code={`steps:
   - run:
       name: Debug approval API call
       command: |
@@ -226,7 +251,10 @@ Most OR dependency issues stem from missing or incorrect `CIRCLE_TOKEN` configur
         echo "Job ID: \${CIRCLE_JOB}"
         echo "Target approval: approve_build_manually"
         # Make API call with verbose output
-  - automated_approval: approve_build_manually`} lang="bash" title="Debug approval issues" />
+  - automated_approval: approve_build_manually`}
+  lang="bash"
+  title="Debug approval issues"
+/>
 
 ## Migration Guide
 
@@ -238,12 +266,10 @@ jobs:
     requires: [approve_deploy]
 
 # After: OR with automated triggers
+
 jobs:
-  deploy:
-    requires_any:
-      - approve_deploy        # Keep manual option
-      - scheduled_deployment  # Add automated option
-      - hotfix_trigger       # Add emergency option`} lang="yaml" title="Adding OR options" />
+deploy:
+requires_any: - approve_deploy # Keep manual option - scheduled_deployment # Add automated option - hotfix_trigger # Add emergency option`} lang="yaml" title="Adding OR options" />
 
 ### From Complex Workflows
 
@@ -253,15 +279,15 @@ workflows:
     when: << pipeline.parameters.manual >>
     jobs: [approve, deploy]
 
-  automated_path:
-    when: << pipeline.parameters.automated >>
-    jobs: [trigger, deploy]
+automated_path:
+when: << pipeline.parameters.automated >>
+jobs: [trigger, deploy]
 
 # After: Single workflow with OR
+
 workflows:
-  unified:
-    jobs:
-      - deploy:
-          requires_any: [approve, trigger]`} lang="yaml" title="Simplifying workflows" />
+unified:
+jobs: - deploy:
+requires_any: [approve, trigger]`} lang="yaml" title="Simplifying workflows" />
 
 OR dependencies significantly simplify complex approval workflows while maintaining all the flexibility of manual controls.

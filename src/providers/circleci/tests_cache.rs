@@ -24,6 +24,7 @@ fn test_cache_restoration() {
             },
         ]),
         services: None,
+        packages: None,
         steps: None,
     };
 
@@ -83,6 +84,7 @@ fn test_job_with_cache_and_steps() {
         cache: None,
         restore_cache: Some(vec![CacheRestore::Simple("node_modules".to_string())]),
         services: None,
+        packages: None,
         steps: Some(vec![
             crate::models::job::Step(
                 serde_yaml::from_str(

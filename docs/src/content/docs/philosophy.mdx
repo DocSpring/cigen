@@ -8,7 +8,7 @@ import { Card, CardGrid, Aside } from '@astrojs/starlight/components';
 ## Core Principle
 
 <Aside type="note">
-**If a CI platform doesn't support a feature we need, we build it ourselves.**
+  **If a CI platform doesn't support a feature we need, we build it ourselves.**
 </Aside>
 
 Cigen is not just a configuration generator - it's a universal CI abstraction layer that allows you to write your CI configuration once and run it on ANY CI platform, regardless of that platform's limitations or quirks.
@@ -23,7 +23,8 @@ Cigen is not just a configuration generator - it's a universal CI abstraction la
 
 <CardGrid>
   <Card title="CircleCI" icon="seti:config">
-    Uses setup workflows with dynamic config to completely skip jobs before they start
+    Uses setup workflows with dynamic config to completely skip jobs before they
+    start
   </Card>
   <Card title="GitHub Actions" icon="github">
     Injects early-exit steps that check SHA256 hashes and abort if unchanged
@@ -34,6 +35,7 @@ Cigen is not just a configuration generator - it's a universal CI abstraction la
 </CardGrid>
 
 Our approach uses a **top-down SHA256 hash** of actual file contents, which is far more reliable than GitHub's brittle `paths` filter that:
+
 - Misses changes in dependencies outside specified paths
 - Prevents re-runs when external issues are fixed
 - Can't handle intermittent failures that need retries
@@ -43,6 +45,7 @@ Our approach uses a **top-down SHA256 hash** of actual file contents, which is f
 **What you write:** "Run this job when approval_A OR approval_B happens"
 
 **How cigen implements it:**
+
 - **CircleCI**: Automatically generates "shim" jobs using the CircleCI API to programmatically approve jobs, converting OR logic into AND logic
 - **GitHub Actions**: Uses workflow_dispatch events or conditional logic
 - **Other platforms**: Platform-specific workarounds
@@ -50,6 +53,7 @@ Our approach uses a **top-down SHA256 hash** of actual file contents, which is f
 #### Example Use Case
 
 In DocSpring's workflow, `build_app_image` should run when:
+
 - Someone manually approves `approve_build_app_image`, OR
 - Someone approves any deployment (staging/EU/US)
 
@@ -60,6 +64,7 @@ Since CircleCI only supports AND dependencies, cigen automatically creates `appr
 **What you write:** "Run this job on architectures: [amd64, arm64]"
 
 **How cigen implements it:**
+
 - **CircleCI**: Generates separate jobs with architecture suffixes (`job_amd64`, `job_arm64`)
 - **GitHub Actions**: Uses native matrix strategies
 - **Other platforms**: Best available approach for parallel execution
@@ -72,15 +77,16 @@ Cigen provides built-in commands for common workarounds:
 
 ```yaml
 steps:
-  - automated_approval: target_job_name    # Approve jobs via API
-  - skip_if_unchanged: '@ruby'             # Check file hashes
-  - wait_for_any: [job_a, job_b]          # OR dependencies
-  - matrix_job: [amd64, arm64]            # Multi-arch builds
+  - automated_approval: target_job_name # Approve jobs via API
+  - skip_if_unchanged: '@ruby' # Check file hashes
+  - wait_for_any: [job_a, job_b] # OR dependencies
+  - matrix_job: [amd64, arm64] # Multi-arch builds
 ```
 
 ### Platform Detection
 
 Cigen detects platform capabilities and automatically:
+
 1. Uses native features when available
 2. Implements workarounds when features are missing
 3. Warns about limitations that can't be worked around
@@ -93,7 +99,7 @@ Cigen detects platform capabilities and automatically:
 # What you write:
 jobs:
   test:
-    source_files: '@ruby'  # Only run if Ruby files changed
+    source_files: '@ruby' # Only run if Ruby files changed
     steps:
       - run: bundle exec rspec
 ```
@@ -164,18 +170,21 @@ jobs:
     Write what you want to happen, not how to achieve it on each platform
   </Card>
   <Card title="Evolution" icon="forward">
-    As platforms add features, cigen switches from workarounds to native implementations
+    As platforms add features, cigen switches from workarounds to native
+    implementations
   </Card>
 </CardGrid>
 
 ## Future Vision
 
 As cigen evolves, it will:
+
 1. Build a comprehensive library of platform-specific workarounds
 2. Enable community sharing of workarounds and best practices
 3. Influence CI platforms to add missing features natively
 4. Provide performance metrics comparing native vs workaround implementations
 
 <Aside type="tip">
-**The ultimate goal:** You describe WHAT you want your CI to do, and cigen figures out HOW to make it happen on any platform.
+  **The ultimate goal:** You describe WHAT you want your CI to do, and cigen
+  figures out HOW to make it happen on any platform.
 </Aside>

@@ -13,7 +13,8 @@ Our configuration format follows these core principles:
 
 <CardGrid>
   <Card title="Intuitive over Provider-Specific" icon="open-book">
-    Use concepts that make sense to developers rather than platform-specific jargon
+    Use concepts that make sense to developers rather than platform-specific
+    jargon
   </Card>
   <Card title="DRY (Don't Repeat Yourself)" icon="puzzle">
     Reduce duplication through better abstractions and smart defaults
@@ -31,48 +32,52 @@ Our configuration format follows these core principles:
 <Code code={`$schema: https://cigen.dev/schemas/v1/config-schema.json
 
 # Provider configuration
+
 provider: circleci
 output_path: .circleci
 output_filename: config.yml
 
 # Global variables
+
 vars:
-  app_name: myapp
-  version: "1.0.0"
+app_name: myapp
+version: "1.0.0"
 
 # Service definitions
+
 services:
-  postgres:
-    image: postgres:15
-    environment:
-      POSTGRES_PASSWORD: test
+postgres:
+image: postgres:15
+environment:
+POSTGRES_PASSWORD: test
 
 # Job definitions
+
 jobs:
-  test:
-    image: cimg/ruby:3.3
-    services: [postgres]
-    steps:
-      - checkout
-      - run: bundle exec rspec
+test:
+image: cimg/ruby:3.3
+services: [postgres]
+steps: - checkout - run: bundle exec rspec
 
 # Workflow definitions
+
 workflows:
-  main:
-    jobs:
-      - test`} lang="yaml" title="Basic cigen.yml" />
+main:
+jobs: - test`} lang="yaml" title="Basic cigen.yml" />
 
 ## Directory Structure
 
 Cigen supports both single-file and multi-file configurations:
 
 ### Single File (Simple)
+
 ```
 .cigen/
 └── cigen.yml
 ```
 
 ### Multi-File (Complex Projects)
+
 ```
 .cigen/
 ├── cigen.yml              # Main configuration
@@ -97,7 +102,8 @@ Cigen supports both single-file and multi-file configurations:
 ### Cleaner Step Syntax
 
 <Aside type="tip">
-Notice how cigen uses `name` and `run` at the same level, reducing nesting and improving readability.
+  Notice how cigen uses `name` and `run` at the same level, reducing nesting and
+  improving readability.
 </Aside>
 
 <Code code={`# Cigen format (clean and readable)
@@ -109,14 +115,16 @@ steps:
     run: coverage-reporter upload
 
 # CircleCI format (more nested)
+
 steps:
-  - run:
-      name: Run tests
-      command: |
-        bundle exec rspec
-  - run:
-      name: Upload coverage
-      command: coverage-reporter upload`} lang="yaml" title="Step syntax comparison" />
+
+- run:
+  name: Run tests
+  command: |
+  bundle exec rspec
+- run:
+  name: Upload coverage
+  command: coverage-reporter upload`} lang="yaml" title="Step syntax comparison" />
 
 ### Unified Service Containers
 
@@ -128,17 +136,19 @@ services:
       POSTGRES_PASSWORD: test
 
 jobs:
-  test:
-    image: cimg/ruby:3.3
-    services: [postgres, redis]
+test:
+image: cimg/ruby:3.3
+services: [postgres, redis]
 
 # CircleCI format (mixed primary + services)
+
 docker:
-  - image: cimg/ruby:3.3    # Primary container
-  - image: postgres:15      # Service container
-    environment:
-      POSTGRES_PASSWORD: test
-  - image: redis:7          # Another service`} lang="yaml" title="Service container comparison" />
+
+- image: cimg/ruby:3.3 # Primary container
+- image: postgres:15 # Service container
+  environment:
+  POSTGRES_PASSWORD: test
+- image: redis:7 # Another service`} lang="yaml" title="Service container comparison" />
 
 ### Centralized Docker Authentication
 
@@ -154,11 +164,13 @@ docker:
       password: $GITHUB_TOKEN
 
 # CircleCI format (repeated for every image)
+
 docker:
-  - image: myimage:latest
-    auth:
-      username: $DOCKERHUB_USERNAME
-      password: $DOCKERHUB_TOKEN`} lang="yaml" title="Docker auth comparison" />
+
+- image: myimage:latest
+  auth:
+  username: $DOCKERHUB_USERNAME
+  password: $DOCKERHUB_TOKEN`} lang="yaml" title="Docker auth comparison" />
 
 ### Intelligent Cache Management
 
@@ -168,32 +180,38 @@ cache:
   - node_modules  # Automatically detects Node version, package-lock.json
 
 # Or with customization
+
 cache:
-  gems:
-    paths: [vendor/bundle, .bundle]
-    key_files: [Gemfile.lock, .ruby-version]
+gems:
+paths: [vendor/bundle, .bundle]
+key_files: [Gemfile.lock, .ruby-version]
 
 # CircleCI format (verbose and manual)
+
 steps:
-  - restore_cache:
-      keys:
-        - v1-gems-{{ checksum "Gemfile.lock" }}-{{ checksum ".ruby-version" }}
-  - run: bundle install
-  - save_cache:
-      key: v1-gems-{{ checksum "Gemfile.lock" }}-{{ checksum ".ruby-version" }}
-      paths: [vendor/bundle]`} lang="yaml" title="Cache management comparison" />
+
+- restore_cache:
+  keys: - v1-gems-{{ checksum "Gemfile.lock" }}-{{ checksum ".ruby-version" }}
+- run: bundle install
+- save_cache:
+  key: v1-gems-{{ checksum "Gemfile.lock" }}-{{ checksum ".ruby-version" }}
+  paths: [vendor/bundle]`} lang="yaml" title="Cache management comparison" />
 
 ## Advanced Features
 
 ### Multi-Architecture Support
 
-<Code code={`jobs:
+<Code
+  code={`jobs:
   build_image:
     image: cimg/base:stable
     architectures: [amd64, arm64]  # Creates build_image_amd64 and build_image_arm64
     resource_class: medium         # Automatically maps to correct provider classes
     steps:
-      - run: docker build -t myapp:latest .`} lang="yaml" title="Multi-architecture builds" />
+      - run: docker build -t myapp:latest .`}
+  lang="yaml"
+  title="Multi-architecture builds"
+/>
 
 ### Template Support
 
@@ -203,19 +221,19 @@ vars:
   environment: production
 
 jobs:
-  test:
-    image: cimg/postgres:{{ postgres_version }}
-    environment:
-      NODE_ENV: {{ environment }}
-    steps:
-      - name: Setup hosts
-        run: |
-          echo "{{ read('etc-hosts.txt') | trim }}" >> /etc/hosts`} lang="yaml" title="Template variables" />
+test:
+image: cimg/postgres:{{ postgres_version }}
+environment:
+NODE_ENV: {{ environment }}
+steps: - name: Setup hosts
+run: |
+echo "{{ read('etc-hosts.txt') | trim }}" >> /etc/hosts`} lang="yaml" title="Template variables" />
 
 ### Workflow Discovery
 
 <Aside type="note">
-Workflows are automatically discovered from directory structure - no need to maintain separate workflow definitions.
+  Workflows are automatically discovered from directory structure - no need to
+  maintain separate workflow definitions.
 </Aside>
 
 <Code code={`# Directory structure
@@ -229,11 +247,12 @@ workflows/
         └── production.yml
 
 # Automatically creates these workflows:
+
 workflows:
-  test:
-    jobs: [rspec, lint]
-  deploy:
-    jobs: [production]`} lang="yaml" title="Automatic workflow discovery" />
+test:
+jobs: [rspec, lint]
+deploy:
+jobs: [production]`} lang="yaml" title="Automatic workflow discovery" />
 
 ## Schema Validation
 
@@ -242,8 +261,11 @@ All cigen configurations are validated against JSON schemas:
 <Code code={`$schema: https://cigen.dev/schemas/v1/config-schema.json
 
 # This enables:
+
 # - Real-time validation in VS Code, Cursor, etc.
+
 # - Autocomplete and documentation
+
 # - Immediate error feedback`} lang="yaml" title="Schema validation" />
 
 ## Next Steps

@@ -195,6 +195,7 @@ mod tests {
             cache: None,
             restore_cache: None,
             services: None,
+            packages: None,
             steps: None,
         }
     }

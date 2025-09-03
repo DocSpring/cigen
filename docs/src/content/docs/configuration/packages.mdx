@@ -1,0 +1,381 @@
+---
+title: Package Management
+description: Intelligent package installation with automatic caching and deduplication
+---
+
+import {
+  Code,
+  Aside,
+  Steps,
+  CardGrid,
+  Card,
+} from '@astrojs/starlight/components';
+
+The `packages` feature provides a high-level abstraction for package management that combines intelligent caching with automatic installation commands.
+
+## What Are Packages?
+
+<Aside type="tip">
+  **Packages = Installation + Caching**: The `packages` field automatically
+  handles both installing dependencies and caching them efficiently.
+</Aside>
+
+While the `cache` field handles storage and retrieval, `packages` goes further by:
+
+1. **Restoring** the package cache if it exists
+2. **Running** the appropriate install command
+3. **Saving** the updated cache for future runs
+4. **Optimizing** workflows through smart deduplication
+
+## Supported Package Managers
+
+<CardGrid>
+  <Card title="Node.js" icon="seti:javascript">
+    npm, yarn, pnpm, bun - auto-detected from lock files
+  </Card>
+  <Card title="Ruby" icon="seti:ruby">
+    Bundler with automatic Gemfile.lock detection
+  </Card>
+  <Card title="Python" icon="seti:python">
+    pip, pipenv, poetry with virtual environment support
+  </Card>
+  <Card title="Go" icon="seti:go">
+    Go modules with automatic go.mod detection
+  </Card>
+</CardGrid>
+
+## Basic Usage
+
+### Simple Package Installation
+
+<Code
+  code={`jobs:
+  test:
+    image: cimg/node:18.0
+    packages: [node]  # Handles npm install + caching
+    steps:
+      - run: npm test`}
+  lang="yaml"
+  title="Simple package usage"
+/>
+
+This automatically:
+1. Restores node_modules cache
+2. Runs `npm install` (or yarn/pnpm/bun based on lock file)
+3. Saves the cache for future runs
+
+### Multiple Package Types
+
+<Code
+  code={`jobs:
+  full_stack_test:
+    image: cimg/ruby:3.3
+    packages: [ruby, node]  # Multiple package managers
+    services: [postgres]
+    steps:
+      - run: bundle exec rspec
+      - run: npm test`}
+  lang="yaml"
+  title="Multiple package types"
+/>
+
+## Smart Job Deduplication
+
+<Aside type="note">
+  **Automatic Optimization**: Cigen detects when multiple jobs use the same
+  packages and automatically creates a shared installation job.
+</Aside>
+
+### Single Job (Inline Installation)
+
+When only one job uses a package manager, installation runs inline:
+
+<Code
+  code={`jobs:
+  test:
+    packages: [node]
+    steps:
+      - run: npm test
+
+# Generated structure:
+jobs:
+  test:
+    steps:
+      - restore_cache: node_modules
+      - run: npm install
+      - save_cache: node_modules
+      - run: npm test`}
+  lang="yaml"
+  title="Single job - inline installation"
+/>
+
+### Multiple Jobs (Dedicated Installation Job)
+
+When multiple jobs use the same packages, cigen creates a dedicated job:
+
+<Code
+  code={`jobs:
+  test:
+    packages: [node]
+    steps:
+      - run: npm test
+
+  lint:
+    packages: [node]
+    steps:
+      - run: npm run lint
+
+  build:
+    packages: [node]
+    steps:
+      - run: npm run build
+
+# Generated structure:
+jobs:
+  install_node_packages:
+    packages: [node]
+    # Only handles installation and caching
+
+  test:
+    requires: [install_node_packages]
+    restore_cache: node_modules  # Read-only
+    steps:
+      - run: npm test
+
+  lint:
+    requires: [install_node_packages]
+    restore_cache: node_modules
+    steps:
+      - run: npm run lint
+
+  build:
+    requires: [install_node_packages]
+    restore_cache: node_modules
+    steps:
+      - run: npm run build`}
+  lang="yaml"
+  title="Multiple jobs - dedicated installation"
+/>
+
+## Benefits of Deduplication
+
+The automatic job deduplication provides:
+
+<CardGrid>
+  <Card title="Faster CI" icon="rocket">
+    Install dependencies once, use everywhere
+  </Card>
+  <Card title="Better Parallelization" icon="list-format">
+    Installation runs in parallel with other setup tasks
+  </Card>
+  <Card title="Reduced Redundancy" icon="document">
+    No duplicate installation commands across jobs
+  </Card>
+  <Card title="Cache Efficiency" icon="approve-check">
+    Single cache save operation reduces overhead
+  </Card>
+</CardGrid>
+
+## Package Detection
+
+### Lock File Detection
+
+Cigen automatically detects which package manager to use:
+
+<Steps>
+  1. **Checks for lock files** in the repository root
+  2. **Identifies package manager** from lock file type:
+     - `package-lock.json` → npm
+     - `yarn.lock` → yarn
+     - `pnpm-lock.yaml` → pnpm
+     - `bun.lockb` → bun
+     - `Gemfile.lock` → bundler
+     - `requirements.lock` or `Pipfile.lock` → pip/pipenv
+  3. **Runs appropriate install command**
+  4. **Caches correct directories** for that package manager
+</Steps>
+
+### Install Commands
+
+Based on detection, cigen runs the appropriate command:
+
+| Package Type | Lock File | Install Command |
+|-------------|-----------|-----------------|
+| `node` (npm) | package-lock.json | `npm ci` |
+| `node` (yarn) | yarn.lock | `yarn install --frozen-lockfile` |
+| `node` (pnpm) | pnpm-lock.yaml | `pnpm install --frozen-lockfile` |
+| `node` (bun) | bun.lockb | `bun install --frozen-lockfile` |
+| `ruby` | Gemfile.lock | `bundle install` |
+| `python` | requirements.txt | `pip install -r requirements.txt` |
+| `python` | Pipfile.lock | `pipenv install --deploy` |
+| `go` | go.mod | `go mod download` |
+
+## Advanced Configuration
+
+### Custom Install Commands
+
+Override the default install command when needed:
+
+<Code
+  code={`jobs:
+  test:
+    packages:
+      node:
+        command: npm ci --production  # Custom command
+    steps:
+      - run: npm test`}
+  lang="yaml"
+  title="Custom install command"
+/>
+
+### Package-Specific Paths
+
+Customize cache paths for specific scenarios:
+
+<Code
+  code={`jobs:
+  test:
+    packages:
+      ruby:
+        paths: [vendor/bundle-ci]  # Custom bundle path
+        command: bundle install --path vendor/bundle-ci`}
+  lang="yaml"
+  title="Custom cache paths"
+/>
+
+### Conditional Installation
+
+Control when packages are installed:
+
+<Code
+  code={`jobs:
+  deploy:
+    packages:
+      node:
+        when: << pipeline.parameters.install_deps >>
+    steps:
+      - run: npm run deploy`}
+  lang="yaml"
+  title="Conditional installation"
+/>
+
+## Packages vs Cache
+
+Understanding when to use each:
+
+| Use `packages` when: | Use `cache` when: |
+|---------------------|-------------------|
+| Installing dependencies | Caching build artifacts |
+| Standard package managers | Custom cache scenarios |
+| Want automatic commands | Need fine control |
+| Multiple jobs share deps | Single job optimization |
+
+### Example: Packages for Dependencies, Cache for Artifacts
+
+<Code
+  code={`jobs:
+  build:
+    packages: [node]  # Install dependencies
+    cache:
+      webpack:  # Cache build artifacts
+        paths: [dist/, .webpack-cache]
+        checksum_sources: [webpack.config.js]
+    steps:
+      - run: npm run build`}
+  lang="yaml"
+  title="Combined packages and cache usage"
+/>
+
+## Migration Guide
+
+### From Manual Installation
+
+Before (manual):
+```yaml
+jobs:
+  test:
+    steps:
+      - checkout
+      - restore_cache: node_modules
+      - run: npm install
+      - save_cache: node_modules
+      - run: npm test
+```
+
+After (with packages):
+```yaml
+jobs:
+  test:
+    packages: [node]
+    steps:
+      - run: npm test
+```
+
+### From Cache Field
+
+Before (cache only):
+```yaml
+jobs:
+  test:
+    cache: node_modules
+    steps:
+      - run: npm install  # Still needed
+      - run: npm test
+```
+
+After (with packages):
+```yaml
+jobs:
+  test:
+    packages: [node]  # Includes installation
+    steps:
+      - run: npm test
+```
+
+## Best Practices
+
+<CardGrid>
+  <Card title="Use for Dependencies" icon="package">
+    Use `packages` for dependency installation, `cache` for build artifacts
+  </Card>
+  <Card title="Let Detection Work" icon="search">
+    Trust automatic lock file detection rather than specifying commands
+  </Card>
+  <Card title="Share When Possible" icon="git-branch">
+    Let deduplication optimize when multiple jobs use the same packages
+  </Card>
+  <Card title="Version Lock Files" icon="document">
+    Always commit lock files to ensure reproducible builds
+  </Card>
+</CardGrid>
+
+## Troubleshooting
+
+### Package Manager Not Detected
+
+If the wrong package manager is used:
+
+1. **Ensure lock file exists** and is committed
+2. **Check working directory** is correct
+3. **Explicitly specify** if needed:
+   ```yaml
+   packages:
+     node:
+       manager: pnpm  # Force specific manager
+   ```
+
+### Deduplication Not Happening
+
+If jobs aren't sharing installation:
+
+1. **Ensure identical `packages` values** across jobs
+2. **Check job dependencies** don't prevent parallelization
+3. **Verify no custom commands** that differ between jobs
+
+### Cache Misses
+
+If packages are reinstalling unnecessarily:
+
+1. **Check lock files** haven't changed
+2. **Verify version files** (.node-version, etc.) are consistent
+3. **Review cache keys** with `--verbose` flag
