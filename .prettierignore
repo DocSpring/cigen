@@ -1,6 +1,9 @@
 # Exclude YAML template files with intentional formatting issues
 src/providers/circleci/templates/patch_approval_jobs_status.yml
 
+# symlinks
+AGENTS.md
+
 # Standard ignores
 node_modules/
 target/

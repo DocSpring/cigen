@@ -78,28 +78,8 @@ impl Validator {
             );
         }
 
-        // Main config file is required (either cigen.yml in .cigen or config.yml in root)
-        // Check if we're validating a .cigen directory by looking at the base_path
-        let is_cigen_dir = base_path.file_name() == Some(std::ffi::OsStr::new(".cigen"));
-
-        let config_path = if is_cigen_dir {
-            base_path.join("cigen.yml")
-        } else {
-            base_path.join("config.yml")
-        };
-
-        if !config_path.exists() {
-            let expected_name = if is_cigen_dir {
-                "cigen.yml"
-            } else {
-                "config.yml"
-            };
-            anyhow::bail!(
-                "Missing required {} in {}. This file is required for configuration.",
-                expected_name,
-                base_path.display()
-            );
-        }
+        // Find main config file using the same logic as ConfigLoader
+        let config_path = self.find_main_config_path(base_path)?;
 
         // First, validate the main config
         debug!("Validating main config...");
@@ -247,5 +227,41 @@ impl Validator {
     pub fn validate_rendered_files(&self, template_engine: &mut TemplateEngine) -> Result<()> {
         let mut post_validator = PostTemplateValidator::new(self, template_engine);
         post_validator.validate_all()
+    }
+
+    /// Find the main config file in valid locations
+    fn find_main_config_path(&self, base_path: &Path) -> Result<std::path::PathBuf> {
+        // Check the 4 valid locations in order of preference:
+        // 1. .cigen/config.yml (if base_path is project root)
+        // 2. ./cigen.yml (if base_path is project root)
+        // 3. ./.cigen.yml (if base_path is project root)
+        // 4. config.yml (if base_path is .cigen directory)
+
+        let is_cigen_dir = base_path.file_name() == Some(std::ffi::OsStr::new(".cigen"));
+
+        if !is_cigen_dir {
+            // We're in project root, check all locations
+            if base_path.join(".cigen/config.yml").exists() {
+                return Ok(base_path.join(".cigen/config.yml"));
+            }
+
+            if base_path.join("cigen.yml").exists() {
+                return Ok(base_path.join("cigen.yml"));
+            }
+
+            if base_path.join(".cigen.yml").exists() {
+                return Ok(base_path.join(".cigen.yml"));
+            }
+        } else {
+            // We're in .cigen directory
+            if base_path.join("config.yml").exists() {
+                return Ok(base_path.join("config.yml"));
+            }
+        }
+
+        anyhow::bail!(
+            "No config file found in {}. Expected one of: .cigen/config.yml, cigen.yml, .cigen.yml, or config.yml (if in .cigen/ directory)",
+            base_path.display()
+        )
     }
 }

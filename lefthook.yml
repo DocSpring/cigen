@@ -40,6 +40,7 @@ pre-commit:
         - "**/*.css"
       stage_fixed: true
     - run: pnpm exec prettier --write {staged_files}
+      exclude: "^AGENTS\\.md$"
       glob:
         - "*.yml"
         - "*.yaml"

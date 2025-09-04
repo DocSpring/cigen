@@ -11,21 +11,19 @@ import {
   Card,
 } from '@astrojs/starlight/components';
 
-Cigen's job skipping system automatically skips jobs when their source files haven't changed since the last successful run. This is the core efficiency feature that eliminates unnecessary work in CI pipelines while maintaining correctness.
+Cigen contains an initial scaffold for job skipping based on a hash of source files. This is experimental: the current implementation writes a local marker file and is not yet backed by a persistent cache, so it does not skip across separate CI runs.
 
 ## How It Works
 
 <Steps>
-
-1. **Pre-execution**: Calculate SHA-256 hash of all source files
-2. **Skip check**: If cache marker exists for this hash, skip the job entirely
-3. **Post-execution**: On successful completion, record the hash in skip cache
-
+  1. Calculate SHA-256 hash of configured source files
+  2. Check for a local skip marker file for that hash
+  3. If present, halt remaining steps (CircleCI)
+  4. Otherwise, run the job and write the marker file at the end
 </Steps>
 
 <Aside type="tip">
-  Job skipping only occurs after successful completion - failed jobs never
-  create skip markers, ensuring reliability.
+  This is non-persistent. Markers live under `/tmp` in the job container and are not restored across runs yet.
 </Aside>
 
 ## Source File Configuration
@@ -110,12 +108,10 @@ Job skipping is architecture-aware:
   title="Architecture-aware skipping"
 />
 
-Generates separate skip cache entries:
+Writes separate marker files per architecture under `/tmp/cigen_skip_cache/`, for example:
 
 - `/tmp/cigen_skip_cache/job_{hash}_amd64`
 - `/tmp/cigen_skip_cache/job_{hash}_arm64`
-
-Each architecture can skip independently based on completion status.
 
 ## Generated Implementation
 
@@ -171,37 +167,14 @@ Each architecture can skip independently based on completion status.
   title="Success recording"
 />
 
-## Platform Implementations
+## Platform Notes
 
-<CardGrid>
-  <Card title="CircleCI" icon="seti:config">
-    Uses `circleci step halt` to skip remaining steps in job
-  </Card>
-  <Card title="GitHub Actions" icon="github">
-    Uses early `exit 0` with conditional step execution
-  </Card>
-  <Card title="GitLab CI" icon="seti:gitlab">
-    Uses `exit 0` with job result caching
-  </Card>
-</CardGrid>
+- CircleCI: uses `circleci step halt` to skip remaining steps in a job
+- Other providers: not yet implemented
 
-## Benefits
+## Status and Roadmap
 
-<CardGrid>
-  <Card title="Time Savings" icon="rocket">
-    Skip jobs when source files haven't changed - often 50-80% reduction in CI
-    time
-  </Card>
-  <Card title="Cost Efficiency" icon="approve-check">
-    Reduce CI resource usage and costs significantly
-  </Card>
-  <Card title="Faster Feedback" icon="forward">
-    Get results faster for unchanged components and dependencies
-  </Card>
-  <Card title="Reliability" icon="star">
-    Only skips after successful completion - failed jobs always re-run
-  </Card>
-</CardGrid>
+This feature is incomplete without a persistent backend. A job-status cache (to restore skip markers across runs) is planned.
 
 ## Real-World Examples
 

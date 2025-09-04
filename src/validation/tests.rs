@@ -93,30 +93,31 @@ fn test_validate_all_missing_config() {
     // Create a temporary directory without config.yml
     let temp_dir = TempDir::new().unwrap();
 
-    // Validate should fail with missing config.yml error
+    // Validate should fail with no config file found error
     let result = validator.validate_all(temp_dir.path());
     assert!(result.is_err());
     let error_msg = result.unwrap_err().to_string();
-    assert!(error_msg.contains("Missing required config.yml"));
+    assert!(error_msg.contains("No config file found"));
 }
 
 #[test]
 fn test_validate_all_with_split_configs() {
     let validator = Validator::new().unwrap();
 
-    // Create a temporary directory structure
+    // Create a temporary directory structure with proper .cigen layout
     let temp_dir = TempDir::new().unwrap();
-    let config_dir = temp_dir.path().join("config");
-    fs::create_dir(&config_dir).unwrap();
+    let cigen_dir = temp_dir.path().join(".cigen");
+    let config_dir = cigen_dir.join("config");
+    fs::create_dir_all(&config_dir).unwrap();
 
-    // Write main config
+    // Write main config in .cigen/config.yml location
     let main_config = r#"
 provider: circleci
 output_path: ./build
 "#;
-    fs::write(temp_dir.path().join("config.yml"), main_config).unwrap();
+    fs::write(cigen_dir.join("config.yml"), main_config).unwrap();
 
-    // Write split config files
+    // Write split config files in .cigen/config/
     let services_config = r#"
 services:
   postgres:

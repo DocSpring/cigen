@@ -68,6 +68,9 @@ pub struct Config {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub package_managers:
         Option<HashMap<String, super::package_managers::PackageManagerDefinition>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflows: Option<HashMap<String, WorkflowConfig>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,6 +209,7 @@ impl Default for Config {
             outputs: None,
             docker_images: None,
             package_managers: None,
+            workflows: None,
         }
     }
 }
@@ -293,6 +297,12 @@ pub enum VersionSource {
 
 fn default_parse_version() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jobs: Option<HashMap<String, super::job::Job>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

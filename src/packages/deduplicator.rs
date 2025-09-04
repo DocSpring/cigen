@@ -1,9 +1,8 @@
 use super::{DynamicPackageDetector, installer::PackageInstaller};
 use crate::models::{
     Job,
-    job::{CacheRestore, JobRequires, Step},
+    job::{CacheRestore, JobRequires},
 };
-use serde_yaml::Value;
 use std::collections::HashMap;
 
 /// Handles smart deduplication of package installation across jobs
@@ -92,10 +91,9 @@ impl PackageDeduplicator {
             services: None,
         };
 
-        // Add checkout step once
-        let mut steps = vec![Step(Value::String("checkout".to_string()))];
+        // Add installation steps (checkout will be added automatically by CircleCI provider)
+        let mut steps = Vec::new();
 
-        // Add installation steps for each package type
         for package_type in package_types {
             let detected = self.detector.detect_package_manager(package_type)?;
             // Just add the install command, not checkout
@@ -339,5 +337,41 @@ mod tests {
 
         // Packages field should be cleared
         assert!(test_job.packages.is_none());
+    }
+
+    #[test]
+    fn test_installation_job_has_single_install_step() {
+        let dir = tempdir().unwrap();
+        let path = dir.path();
+
+        // Create package-lock.json to enable npm detection
+        fs::write(path.join("package-lock.json"), "{}").unwrap();
+
+        let mut jobs = create_test_jobs_with_multiple_packages();
+        let deduplicator = PackageDeduplicator::new(path.to_str().unwrap());
+
+        deduplicator.process_jobs(&mut jobs).unwrap();
+
+        // Should have created an installation job
+        assert!(jobs.contains_key("install_node_packages"));
+
+        let install_job = jobs.get("install_node_packages").unwrap();
+        let steps = install_job.steps.as_ref().unwrap();
+
+        // Should have exactly 1 step (the install command)
+        // Checkout will be added automatically by CircleCI provider
+        assert_eq!(steps.len(), 1);
+
+        // The single step should be the install command, not checkout
+        let step_value = &steps[0].0;
+        if let serde_yaml::Value::Mapping(step_map) = step_value {
+            // Should have a "run" key for the install command
+            assert!(step_map.contains_key("run"));
+            // Should NOT be a simple "checkout" string
+            assert!(!step_map.contains_key("checkout"));
+        } else if let serde_yaml::Value::String(step_str) = step_value {
+            // If it's a string, it should NOT be "checkout"
+            assert_ne!(step_str, "checkout");
+        }
     }
 }

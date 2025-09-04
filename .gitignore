@@ -4,6 +4,7 @@ circleci_config_reference
 PROJECT_PLAN.md
 
 examples/**/build/
+examples/**/.circleci/
 
 # Nx
 .nx/

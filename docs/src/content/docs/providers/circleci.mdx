@@ -11,55 +11,18 @@ import {
   Card,
 } from '@astrojs/starlight/components';
 
-The CircleCI provider generates CircleCI configuration files from cigen's universal format, including several CircleCI-specific features and workarounds to address platform limitations.
+The CircleCI provider generates native CircleCI configuration from cigen's universal format and validates step references against provider capabilities.
 
 ## Basic Configuration
 
 <Code code={`provider: circleci
 output_path: .circleci
-output_filename: config.yml
+output_filename: config.yml`} lang="yaml" title="Basic CircleCI configuration" />
 
-circleci:
-fix_github_status: true # Auto-inject GitHub status patch job`} lang="yaml" title="Basic CircleCI configuration" />
+## CircleCI Notes
 
-## CircleCI-Specific Features
-
-### GitHub Status Fix
-
-<Aside type="caution">
-  **Required Environment Variable**: `GITHUB_PERSONAL_ACCESS_TOKEN` with
-  `repo:status` permissions must be configured in CircleCI project settings.
-</Aside>
-
-CircleCI has a limitation where approval jobs don't properly update GitHub commit statuses, causing GitHub branch protection rules to fail even when approvals are granted.
-
-When `circleci.fix_github_status: true` is enabled, cigen automatically injects a `patch_approval_jobs_status` job that:
-
-<Steps>
-  1. **Waits** for all test jobs to complete 2. **Uses GitHub API** to manually
-  set approval job statuses to "success" 3. **Allows** GitHub branch protection
-  rules to pass
-</Steps>
-
-<Code code={`circleci:
-  fix_github_status: true
-
-# Automatically injected when workflow contains approval jobs
-
-jobs:
-patch_approval_jobs_status:
-image: cimg/ruby:3.3.5
-resource_class: small
-requires: [all_test_jobs]
-steps: - run:
-name: Set Approval Jobs Status to Success on GitHub
-command: | # Uses GitHub API to update commit statuses # Requires GITHUB_PERSONAL_ACCESS_TOKEN environment variable`} lang="yaml" title="GitHub status fix" />
-
-**Setup Instructions**:
-
-1. Create a GitHub personal access token with `repo:status` scope
-2. Add it to CircleCI project as `GITHUB_PERSONAL_ACCESS_TOKEN`
-3. Enable the feature in your cigen configuration
+- `setup: true` or `dynamic: true` in config enables CircleCI setup workflows.
+- `docker_images` mapping can resolve architecture-specific image variants.
 
 ### Multi-Architecture Jobs
 
@@ -81,55 +44,17 @@ build_image_arm64:
 docker: - image: cimg/base:stable
 resource_class: arm.medium`} lang="yaml" title="Multi-architecture builds" />
 
-Cigen automatically:
-
-- Creates separate jobs for each architecture
-- Maps resource classes appropriately (`medium` vs `arm.medium`)
-- Maintains proper dependency chains in workflows
+Cigen automatically creates separate jobs per architecture and maintains dependencies.
 
 ### Approval Jobs
 
-<Code code={`jobs:
-  approve_deploy:
-    type: approval  # Maps to CircleCI approval type
-
-deploy_production:
-image: cimg/base:stable
-context: [production-secrets]
-requires: [approve_deploy]
-steps: - run: ./deploy.sh`} lang="yaml" title="Approval jobs" />
+You can reference CircleCI approval jobs in your own config, and cigen will pass them through in generated YAML. API-based helpers are planned.
 
 ## Advanced Features
 
-### OR Dependencies Workaround
+### OR Dependencies
 
-<Aside type="tip">
-  CircleCI doesn't natively support OR dependencies. Cigen implements this using
-  automated approval shim jobs with CircleCI API calls.
-</Aside>
-
-<Code code={`jobs:
-  build_app_image:
-    requires_any: [manual_approval, automated_trigger]
-    steps:
-      - run: docker build -t app:latest .
-
-# Cigen automatically creates:
-
-jobs:
-manual_approval_shim:
-type: approval
-requires: [manual_approval]
-steps: - automated_approval: build_app_image
-
-automated_trigger_shim:
-requires: [automated_trigger]
-steps: - automated_approval: build_app_image`} lang="yaml" title="OR dependencies implementation" />
-
-This allows `build_app_image` to run when either:
-
-- Someone manually approves `manual_approval`, OR
-- The `automated_trigger` job completes successfully
+CircleCI does not support OR dependencies. Cigen does not yet synthesize shims for this; it’s on the roadmap.
 
 ### Dynamic Configuration
 
@@ -171,51 +96,13 @@ Maps directly to CircleCI contexts for environment-specific secrets and variable
 
 ## Built-in Template Commands
 
-Cigen includes CircleCI-specific template commands:
+Currently available:
 
-<CardGrid>
-  <Card title="checkout" icon="git-branch">
-    Standard git checkout with CircleCI optimizations
-  </Card>
-  <Card title="restore_cache / save_cache" icon="rocket">
-    Automatic cache key generation with intelligent fallbacks
-  </Card>
-  <Card title="automated_approval" icon="approve-check">
-    API-based job approval for OR dependency workarounds
-  </Card>
-</CardGrid>
-
-### Automated Approval Command
-
-<Code code={`steps:
-  - automated_approval: target_job_name
-
-# Generates CircleCI API calls:
-
-steps:
-
-- run:
-  name: Approve target job via API
-  command: |
-  curl -X POST \\
-  "https://circleci.com/api/v2/workflow/\${CIRCLE_WORKFLOW_ID}/approve/\${JOB_ID}" \\
-  -H "Circle-Token: \${CIRCLE_TOKEN}"`} lang="yaml" title="Automated approval implementation" />
+- `continue_circleci_pipeline` — continue a setup workflow using the CircleCI continuation API
 
 ## Environment Variables
 
-Required for various CircleCI features:
-
-<CardGrid>
-  <Card title="GitHub Status Fix" icon="github">
-    `GITHUB_PERSONAL_ACCESS_TOKEN` - GitHub API access for status updates
-  </Card>
-  <Card title="OR Dependencies" icon="list-format">
-    `CIRCLE_TOKEN` - CircleCI API access for automated approvals
-  </Card>
-  <Card title="Automatic Variables" icon="setting">
-    `CIRCLE_SHA1`, `CIRCLE_BUILD_URL`, etc. - Provided by CircleCI
-  </Card>
-</CardGrid>
+Common CircleCI variables like `CIRCLE_SHA1`, `CIRCLE_BUILD_URL`, etc. are available in jobs, as provided by CircleCI.
 
 ## Validation
 
@@ -228,22 +115,11 @@ The generator automatically validates configurations:
   circular references 4. **Resource class compatibility** checking
 </Steps>
 
-## Limitations & Workarounds
+## Limitations
 
-<CardGrid>
-  <Card title="GitHub Status Updates" icon="github">
-    **Problem**: Approval jobs don't update GitHub statuses **Solution**:
-    Auto-injected API-based status patch job
-  </Card>
-  <Card title="OR Dependencies" icon="list-format">
-    **Problem**: No native "requires any of" support **Solution**: Automated
-    approval shim jobs using API
-  </Card>
-  <Card title="Multi-Architecture" icon="laptop">
-    **Problem**: No built-in matrix builds **Solution**: Generate separate jobs
-    with arch suffixes
-  </Card>
-</CardGrid>
+- OR-dependencies: not supported
+- Approval-status patching: not implemented
+- Resource-class mapping between architectures: not implemented
 
 ## Best Practices
 
@@ -256,25 +132,13 @@ jobs:
   deploy_production:
     context: [production-secrets]
 
-# Enable GitHub status fix when using approvals
-
-circleci:
-fix_github_status: true
-
-# Use dynamic workflows for job skipping
+# Use setup/dynamic config when you need to compute a next-stage config
 
 setup: true`} lang="yaml" title="CircleCI best practices" />
 
 ### Resource Class Mapping
 
-Cigen automatically maps generic resource classes to CircleCI-specific ones:
-
-| Generic  | AMD64    | ARM64        |
-| -------- | -------- | ------------ |
-| `small`  | `small`  | `arm.small`  |
-| `medium` | `medium` | `arm.medium` |
-| `large`  | `large`  | `arm.large`  |
-| `xlarge` | `xlarge` | `arm.xlarge` |
+Currently, resource classes are passed through as provided.
 
 ### Cache Configuration
 
@@ -298,10 +162,10 @@ When migrating existing CircleCI configurations:
 
 <Steps>
   1. **Convert docker arrays** to separate `image` and `services` sections 2.
-  **Replace manual cache steps** with `cache: [type]` definitions 3. **Move
+  **Optionally replace manual cache steps** with `cache: [type]` definitions 3. **Move
   commands** to separate files in `commands/` directory 4. **Convert approval
   jobs** to `type: approval` 5. **Add schema validation** with `$schema`
-  property 6. **Enable automatic features** like `fix_github_status`
+  property
 </Steps>
 
 ## Example Migration

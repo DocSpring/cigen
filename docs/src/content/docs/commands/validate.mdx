@@ -18,7 +18,7 @@ cigen validate [OPTIONS]
 Path to the cigen configuration directory or file.
 
 - **Default**: Current directory (`.`)
-- **Example**: `--config .cigen/` or `--config .cigen/cigen.yml`
+- **Example**: `--config .cigen/` or `--config .cigen/config.yml`
 
 ### `--verbose` / `-v`
 
@@ -192,7 +192,7 @@ For VS Code, add to `.vscode/settings.json`:
 ```json
 {
   "yaml.schemas": {
-    "https://cigen.dev/schemas/v1/config-schema.json": ".cigen/cigen.yml"
+    "https://cigen.dev/schemas/v1/config-schema.json": ".cigen/config.yml"
   }
 }
 ```

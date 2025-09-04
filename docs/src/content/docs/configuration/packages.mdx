@@ -109,11 +109,12 @@ When you use `packages: node`, cigen:
   title="Simple package usage"
 />
 
-This automatically:
-1. **Detects** which package manager based on lock files
-2. **Restores** the appropriate cache (e.g., `node_modules`)
-3. **Runs** the detected install command (e.g., `yarn install --frozen-lockfile`)
-4. **Saves** the cache with proper version and checksum keys
+This does the following:
+1. Detects which package manager based on lock files
+2. Restores the appropriate cache if declared on the job
+3. Runs the detected install command (e.g., `yarn install --frozen-lockfile`)
+
+Note: saving caches occurs when the job declares `cache:`. If you only declare `packages:` without a `cache:` entry, cigen will generate install steps but will not automatically add a save step.
 
 ### Multiple Package Types
 
@@ -161,7 +162,7 @@ jobs:
 
 ### Multiple Jobs (Dedicated Installation Job)
 
-When multiple jobs use the same packages, cigen creates a dedicated job:
+When multiple jobs use the same packages, cigen can create a dedicated job with installation steps. To enable caching in that job, declare the relevant caches in your config.
 
 <Code
   code={`jobs:
@@ -183,13 +184,15 @@ When multiple jobs use the same packages, cigen creates a dedicated job:
 # Generated structure:
 jobs:
   install_node_packages:
-    cache: node_modules
     steps:
       - run: yarn install --frozen-lockfile  # Detected based on yarn.lock
 
+  # Tip: add caching to the install job in your config if desired
+  # cache: node_modules
+
   test:
     requires: [install_node_packages]
-    restore_cache: node_modules  # Read-only cache access
+    restore_cache: node_modules  # Read-only cache access (when install job saves it)
     steps:
       - run: npm test
 
@@ -287,7 +290,7 @@ src/packages/config_templates/
     └── dotnet.yml
 ```
 
-When you define `package_managers` or `version_sources` in your `.cigen/cigen.yml`, your configuration intelligently merges with these defaults:
+When you define `package_managers` or `version_sources` in your `.cigen/config.yml`, your configuration intelligently merges with these defaults:
 
 - **Override**: Completely replace a built-in definition
 - **Extend**: Add new package managers alongside built-ins
@@ -300,7 +303,7 @@ When you define `package_managers` or `version_sources` in your `.cigen/cigen.ym
 You can customize the built-in package manager definitions in your configuration:
 
 <Code
-  code={`# .cigen/cigen.yml
+  code={`# .cigen/config.yml
 package_managers:
   node:
     # Override the npm command
@@ -326,7 +329,7 @@ package_managers:
 You can also customize how versions are detected for cache keys:
 
 <Code
-  code={`# .cigen/cigen.yml
+  code={`# .cigen/config.yml
 version_sources:
   node:
     - file: .nvmrc
@@ -350,7 +353,7 @@ version_sources:
 Define completely new package managers:
 
 <Code
-  code={`# .cigen/cigen.yml
+  code={`# .cigen/config.yml
 package_managers:
   deno:
     versions: [deno]

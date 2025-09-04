@@ -18,34 +18,29 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-Cigen is a universal CI pipeline configuration generator that allows you to write your CI configuration once in a provider-agnostic format, then generate native configurations for any CI platform.
+Cigen generates CircleCI configuration from a concise, provider-agnostic format, with strong validation and sensible conventions. Other providers are planned but not yet supported.
 
 ## Why Cigen?
 
 <CardGrid>
-  <Card title="Universal Configuration" icon="puzzle">
-    Write your CI pipeline once using cigen's universal format. No more
-    maintaining separate configurations for different CI providers.
+  <Card title="Validated Config" icon="puzzle">
+    Write your pipeline in a small, reusable format. Cigen validates it and emits native CircleCI YAML.
   </Card>
   <Card title="Multi-Architecture Support" icon="laptop">
     Automatically generate jobs for multiple architectures (amd64, arm64) from a
     single job definition.
   </Card>
-  <Card title="Intelligent Caching" icon="rocket">
-    Automatic cache key generation and injection based on file dependencies and
-    checksums.
+  <Card title="Cache Helpers" icon="rocket">
+    Injects restore/save steps when caches are declared on a job. Definitions are extensible.
   </Card>
-  <Card title="Advanced Features" icon="star">
-    Built-in workarounds for CI platform limitations like OR dependencies and
-    approval job status fixes.
+  <Card title="Pragmatic Roadmap" icon="star">
+    Advanced features like OR-deps and approval status fixes are planned.
   </Card>
 </CardGrid>
 
 ## Core Philosophy
 
-**If a CI platform doesn't support a feature we need, we build it ourselves.**
-
-Cigen doesn't just translate configurations - it enhances them. When CircleCI lacks OR dependencies, we implement them with automated approval jobs. When GitHub status updates fail for approval jobs, we fix them with API calls.
+**If we need a feature the platform lacks, we'll add safe workarounds—with clear scopes and validation.**
 
 ## Quick Example
 
@@ -63,7 +58,7 @@ Define your pipeline structure:
 │           └── build.yml        # Build job definition
 ```
 
-```yaml title=".cigen/cigen.yml"
+```yaml title=".cigen/config.yml"
 provider: circleci
 ```
 
@@ -93,27 +88,22 @@ steps:
   - run: npm run build
 ```
 
-Generate native CircleCI configuration:
+Generate CircleCI configuration:
 
 ```bash
 cigen generate
 ```
 
-Results in a complete `.circleci/config.yml` with:
+Results in a `.circleci/config.yml` with:
 
 - Git checkout
-- Package installation with caching - automatically detects npm, pnpm, yarn, bun, etc.
-- Job skipping if files haven't changed
-- Separate jobs for each architecture (`build_amd64`, `build_arm64`), or a job matrix on supported providers
+- Optional package installation steps (npm/yarn/pnpm/bun, bundler, etc.)
+- Separate jobs for each architecture (`build_amd64`, `build_arm64`)
 
 ## Current Status
 
-Cigen supports:
-
-- **CircleCI** (full support with advanced features)
-- **GitHub Actions** (planned)
-- **GitLab CI** (planned)
-- **Jenkins** (planned)
+- CircleCI: supported
+- Other providers: planned
 
 ## Getting Started
 

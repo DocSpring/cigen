@@ -8,7 +8,7 @@ pub use command::Command;
 pub use config::{
     Cache, CacheBackend, CacheBackendConfig, CacheDefinition, Config, DefaultCacheConfig,
     DockerAuth, DockerConfig, DockerImageConfig, OutputConfig, ParameterConfig, PathOrDetect,
-    Service, VersionSource,
+    Service, VersionSource, WorkflowConfig,
 };
 pub use job::Job;
 pub use package_managers::{

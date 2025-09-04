@@ -37,34 +37,23 @@ impl<'a> ConfigLoader<'a> {
 
     /// Load configs without templating (for extracting vars)
     fn load_configs_for_vars(&self) -> Result<(JsonValue, Vec<(PathBuf, JsonValue)>)> {
-        // Load main config - check if we're in .cigen directory or need to look for .cigen/cigen.yml
-        let current_dir = std::env::current_dir().unwrap();
-        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
-
-        let config_path = if is_in_cigen_dir {
-            Path::new("cigen.yml")
-        } else if Path::new(".cigen/cigen.yml").exists() {
-            Path::new(".cigen/cigen.yml")
-        } else {
-            Path::new("config.yml")
-        };
-        let content = std::fs::read_to_string(config_path)
+        // Find main config file - check valid locations in order
+        let config_path = self.find_main_config_path()?;
+        let content = std::fs::read_to_string(&config_path)
             .with_context(|| format!("Failed to read {}", config_path.display()))?;
         let main_config: JsonValue = serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
 
-        // Load split configs - only look in .cigen/config or config if we're in .cigen
-        let config_dir = if is_in_cigen_dir {
-            Path::new("config")
-        } else {
-            Path::new(".cigen/config")
-        };
+        // Load split configs from .cigen/config/
+        let config_dir = Path::new(".cigen/config");
         let mut split_configs = Vec::new();
 
-        for path in FileScanner::scan_directory(config_dir)? {
-            let content = std::fs::read_to_string(&path)?;
-            let fragment: JsonValue = serde_yaml::from_str(&content)?;
-            split_configs.push((path, fragment));
+        if config_dir.exists() {
+            for path in FileScanner::scan_directory(config_dir)? {
+                let content = std::fs::read_to_string(&path)?;
+                let fragment: JsonValue = serde_yaml::from_str(&content)?;
+                split_configs.push((path, fragment));
+            }
         }
 
         Ok((main_config, split_configs))
@@ -99,38 +88,22 @@ impl<'a> ConfigLoader<'a> {
     /// Load configs with templating applied
     fn load_configs_with_templating(&mut self) -> Result<(JsonValue, Vec<(PathBuf, JsonValue)>)> {
         // Load main config with templating
-        let current_dir = std::env::current_dir().unwrap();
-        let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
-
-        let config_path = if is_in_cigen_dir {
-            Path::new("cigen.yml")
-        } else if Path::new(".cigen/cigen.yml").exists() {
-            Path::new(".cigen/cigen.yml")
-        } else {
-            Path::new("config.yml")
-        };
-        let content = std::fs::read_to_string(config_path)?;
-        let processed = self.process_file_content(config_path, &content)?;
+        let config_path = self.find_main_config_path()?;
+        let content = std::fs::read_to_string(&config_path)?;
+        let processed = self.process_file_content(&config_path, &content)?;
         let main_config: JsonValue = serde_yaml::from_str(&processed)?;
 
-        // Load split configs with templating - only look in .cigen/config or config if we're in .cigen
-        let config_dir = if is_in_cigen_dir {
-            Path::new("config")
-        } else {
-            Path::new(".cigen/config")
-        };
+        // Load split configs with templating from .cigen/config/
+        let config_dir = Path::new(".cigen/config");
         let mut split_configs = Vec::new();
 
-        // Only process if directory exists
-        if !config_dir.exists() {
-            return Ok((main_config, split_configs));
-        }
-
-        for path in FileScanner::scan_directory(config_dir)? {
-            let content = std::fs::read_to_string(&path)?;
-            let processed = self.process_file_content(&path, &content)?;
-            let fragment: JsonValue = serde_yaml::from_str(&processed)?;
-            split_configs.push((path, fragment));
+        if config_dir.exists() {
+            for path in FileScanner::scan_directory(config_dir)? {
+                let content = std::fs::read_to_string(&path)?;
+                let processed = self.process_file_content(&path, &content)?;
+                let fragment: JsonValue = serde_yaml::from_str(&processed)?;
+                split_configs.push((path, fragment));
+            }
         }
 
         Ok((main_config, split_configs))
@@ -155,6 +128,39 @@ impl<'a> ConfigLoader<'a> {
             let config = crate::defaults::merge_with_defaults(config);
             Ok((config, main_config))
         }
+    }
+
+    /// Find the main config file in valid locations
+    fn find_main_config_path(&self) -> Result<PathBuf> {
+        // Check the 4 valid locations in order of preference:
+        // 1. .cigen/config.yml
+        // 2. ./cigen.yml (root)
+        // 3. ./.cigen.yml (root)
+        // 4. If in .cigen/ directory, look for config.yml
+
+        if Path::new(".cigen/config.yml").exists() {
+            return Ok(PathBuf::from(".cigen/config.yml"));
+        }
+
+        if Path::new("cigen.yml").exists() {
+            return Ok(PathBuf::from("cigen.yml"));
+        }
+
+        if Path::new(".cigen.yml").exists() {
+            return Ok(PathBuf::from(".cigen.yml"));
+        }
+
+        // Check if we're in .cigen directory
+        let current_dir = std::env::current_dir().unwrap();
+        if current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"))
+            && Path::new("config.yml").exists()
+        {
+            return Ok(PathBuf::from("config.yml"));
+        }
+
+        anyhow::bail!(
+            "No config file found. Expected one of: .cigen/config.yml, cigen.yml, .cigen.yml, or config.yml (if in .cigen/ directory)"
+        )
     }
 
     /// Process file content with templating if needed

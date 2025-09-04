@@ -14,14 +14,9 @@ pub fn generate_command(
     let current_dir = std::env::current_dir()?;
 
     // Check if we should use template-based multi-output generation
-    // First check for .cigen/cigen.yml, then cigen.yml in current directory
-    let config_path = if current_dir.join(".cigen/cigen.yml").exists() {
-        current_dir.join(".cigen/cigen.yml")
-    } else {
-        current_dir.join("cigen.yml")
-    };
+    let config_path = find_config_path()?;
 
-    if config_path.exists() {
+    if let Some(config_path) = config_path {
         let config_str = std::fs::read_to_string(&config_path)?;
         let config: cigen::models::Config = serde_yaml::from_str(&config_str)?;
 
@@ -331,4 +326,35 @@ fn generate_with_templates(
     }
 
     Ok(())
+}
+
+/// Find the main config file in valid locations
+fn find_config_path() -> Result<Option<PathBuf>> {
+    // Check the 4 valid locations in order of preference:
+    // 1. .cigen/config.yml
+    // 2. ./cigen.yml (root)
+    // 3. ./.cigen.yml (root)
+    // 4. If in .cigen/ directory, look for config.yml
+
+    if Path::new(".cigen/config.yml").exists() {
+        return Ok(Some(PathBuf::from(".cigen/config.yml")));
+    }
+
+    if Path::new("cigen.yml").exists() {
+        return Ok(Some(PathBuf::from("cigen.yml")));
+    }
+
+    if Path::new(".cigen.yml").exists() {
+        return Ok(Some(PathBuf::from(".cigen.yml")));
+    }
+
+    // Check if we're in .cigen directory
+    let current_dir = std::env::current_dir()?;
+    if current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"))
+        && Path::new("config.yml").exists()
+    {
+        return Ok(Some(PathBuf::from("config.yml")));
+    }
+
+    Ok(None)
 }

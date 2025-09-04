@@ -1,20 +1,26 @@
 # CIGen
 
-CIGen makes your CI configuration files more maintainable and has many built-in power features to make them more efficient. Especially beneficial for monorepos.
+CIGen generates CI configuration from a small set of reusable, provider-agnostic files. It currently targets CircleCI and focuses on correctness, validation, and convention-over-configuration.
 
-This tool can be used to build both static config and [dynamic config for CircleCI](https://circleci.com/docs/dynamic-config/). The CLI includes a file hashing feature that can be used during the initial setup workflow to skip jobs when no files have changed.r
+The tool can generate both static CircleCI configs and setup/dynamic configs. The CLI includes utilities for validation, graph visualization, and template-based multi-output generation.
 
-## Features
+## Features (Current)
 
-- Supports CircleCI and GitHub Actions (soon)
-- Written in Rust for performance and reliability
-- Caching and intelligent job skipping as a core feature with configurable cache backends
-- Built-in defaults for many languages and package managers (completely configurable)
-- First-class support for running jobs on multiple architectures and self-hosted runners
-- Automatic git checkout with extra caching support for self-hosted runners
-- Automatic job dependencies with cache restoration
-- Powerful templating engine ([MiniJinja](https://github.com/mitsuhiko/minijinja))
-- Beautiful and descriptive error messages ([miette](https://docs.rs/miette/latest/miette/))
+- CircleCI provider support (config generation and validation)
+- Rust implementation for reliability and performance
+- Template-based multi-output generation (Jinja-like via MiniJinja)
+- Built-in defaults for package/version detection (extensible via YAML)
+- Package installation step generation and job deduplication
+- Basic automatic cache step injection when `job.cache` is declared
+- Architecture variants per job (e.g., `build_amd64`, `build_arm64`)
+- Descriptive error messages and schema/data validation ([miette], JSON Schema)
+
+## Not Yet Implemented / In Progress
+
+- GitHub Actions and other providers
+- Persistent job-status cache for skipping jobs across runs
+- OR-dependencies and approval-status patching via APIs
+- Self-hosted runner-specific optimizations and resource-class mapping
 
 ## Why did we build this?
 
@@ -29,9 +35,8 @@ We had built our own internal CI config generation system in Ruby, but it had st
 `cigen` simplifies CI/CD configuration management by:
 
 - Generating CI pipeline configurations from reusable templates
-- Integrating with Nx monorepo tooling to understand project dependencies
-- Supporting multiple CI providers (starting with CircleCI)
-- Providing plugin-based architecture for cache backends and CI providers
+- Validating configuration (schema + data-level) with helpful spans
+- Emitting native CircleCI 2.1 YAML, including workflows, jobs, and commands
 
 ## Philosophy
 
@@ -41,9 +46,9 @@ We had built our own internal CI config generation system in Ruby, but it had st
 
 We automatically add a highly-optimized git checkout step to the beginning of each job, which includes caching for remote runners. The git checkout step can be skipped for jobs that don't need it.
 
-#### Jobs should be skipped if nothing has changed
+#### Job skipping
 
-Most CI providers only support caching as a second-class feature - something you add as a "step" during your job. `cigen` makes caching an integral part of your CI config. Every job MUST provide a list of file patterns. If none of those files have changed, the job is skipped and the existing cache is used. We inject all of the caching steps automatically.
+The codebase contains an initial scaffold for job skipping using a source-file hash and a local marker file. This is experimental and not yet wired to a persistent cache backend, so it does not skip across separate runs. A robust, persistent job-status cache is planned.
 
 #### Cross-platform CI config
 
@@ -53,7 +58,7 @@ CI providers often solve the same problem in different ways. e.g. to avoid dupli
 
 #### You can still use native CI provider features
 
-You can still write a step that uses GitHub's "Actions" or CircleCI's "orbs". (We'll just raise a validation error if you try to use an "orb" on GitHub actions.)
+You can still use native CircleCI features (e.g., orbs). Other providers will come later; unsupported features are validated with clear errors.
 
 ---
 
@@ -68,7 +73,7 @@ cd cigen
 
 Prerequisites:
 
-- Rust (will automatically use 1.88.0 via `rust-toolchain.toml`)
+- Rust (uses the version pinned in `rust-toolchain.toml`)
 - Git
 
 1. **Run the setup script** (installs git hooks and checks your environment):
@@ -175,12 +180,7 @@ curl -sSL https://github.com/evilmartians/lefthook/releases/latest/download/left
 chmod +x /usr/local/bin/lefthook
 ```
 
-The git hooks will:
-
-- **pre-commit**: Run `cargo fmt --check`, `cargo clippy`, and `cargo test`
-- **pre-push**: Run full checks including `cargo check`
-
-To skip hooks temporarily: `git commit --no-verify`
+The git hooks will run format, lint, and tests before commit/push. Do not bypass hooks; fix issues they report.
 
 ### Project Structure
 
@@ -193,7 +193,7 @@ cigen/
 │   └── integration_test.rs  # Integration tests
 ├── scripts/
 │   └── setup.sh         # Developer setup script
-├── .cigen/              # Templates and configuration (future)
+├── .cigen/              # Templates and configuration
 ├── Cargo.toml           # Project dependencies
 ├── rust-toolchain.toml  # Rust version specification
 ├── .rustfmt.toml        # Code formatting rules

@@ -18,15 +18,21 @@ impl<'a> JobLoader<'a> {
         Self { template_engine }
     }
 
-    /// Load all jobs from the workflows directory
+    /// Load all jobs from the workflows directory or inline config
     pub fn load_all_jobs(
         &mut self,
-        _config: &Config,
+        config: &Config,
         span_tracker: &mut SpanTracker,
     ) -> Result<HashMap<String, Job>> {
         let mut jobs = HashMap::new();
 
-        // Check if we're in .cigen directory or need to look for .cigen/workflows
+        // First check if workflows are defined inline in the main config
+        if self.has_inline_workflows(config) {
+            // Extract jobs from inline workflow definitions
+            return self.load_jobs_from_inline_config(config, span_tracker);
+        }
+
+        // Otherwise, look for split workflow files in directories
         let current_dir = std::env::current_dir()?;
         let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
 
@@ -129,5 +135,33 @@ impl<'a> JobLoader<'a> {
         self.template_engine
             .render_file_with_path(content, path, is_template)
             .map_err(|e| anyhow::anyhow!("{:?}", e))
+    }
+
+    /// Check if the config has inline workflows defined
+    fn has_inline_workflows(&self, config: &Config) -> bool {
+        config.workflows.is_some()
+    }
+
+    /// Load jobs from inline workflow definitions in the main config
+    fn load_jobs_from_inline_config(
+        &mut self,
+        config: &Config,
+        _span_tracker: &mut SpanTracker,
+    ) -> Result<HashMap<String, Job>> {
+        let mut jobs = HashMap::new();
+
+        if let Some(workflows) = &config.workflows {
+            for (workflow_name, workflow_config) in workflows {
+                if let Some(workflow_jobs) = &workflow_config.jobs {
+                    for (job_name, job) in workflow_jobs {
+                        // Create a path key like "workflow_name/job_name"
+                        let job_path = format!("{}/{}", workflow_name, job_name);
+                        jobs.insert(job_path, job.clone());
+                    }
+                }
+            }
+        }
+
+        Ok(jobs)
     }
 }

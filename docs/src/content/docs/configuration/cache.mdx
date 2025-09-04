@@ -11,7 +11,7 @@ import {
   Card,
 } from '@astrojs/starlight/components';
 
-Cigen provides an intelligent caching system that automatically generates optimal cache keys based on your project's runtime environments and dependencies.
+Cigen can inject restore/save cache steps when a job declares `cache:`. Cache definitions are extensible via YAML; key calculation is simple by default and can be customized.
 
 ## Cache Key Structure
 
@@ -20,28 +20,11 @@ Cigen provides an intelligent caching system that automatically generates optima
   platform compatibility.
 </Aside>
 
-Cache keys use this pattern:
-
-```
-{{ os }}-{{ os_version }}-{{ arch }}-{{ cache_name }}-{{ versions }}-{{ checksum }}
-```
-
-Where:
-
-- **Platform prefix** (`os`, `os_version`, `arch`) - Automatically included for all caches
-- **cache_name** - The name you give to the cache (e.g., `gems`, `node_modules`)
-- **versions** - Runtime versions detected from version files (e.g., `ruby3.3.0`)
-- **checksum** - Combined hash of dependency files (e.g. package lock files)
-
-Example cache key:
-
-```
-linux-ubuntu22.04-amd64-gems-ruby3.3.0-bundler2.5.6-abc123def456
-```
+By default, injected keys include the cache name and the selected architecture, plus a checksum expression. You can override keys via `cache_definitions` if you need a specific pattern.
 
 ## Built-in Cache Types
 
-Cigen includes intelligent cache definitions for common technologies:
+Cigen ships default definitions for common technologies that you can extend or override. These drive detection and provide sensible paths; key templates can be provided if desired.
 
 <CardGrid>
   <Card title="Ruby Gems" icon="seti:ruby">
@@ -65,26 +48,18 @@ Cigen includes intelligent cache definitions for common technologies:
     versions: [ruby, bundler]
     checksum_sources: [Gemfile, Gemfile.lock]
     paths: [vendor/bundle, .bundle]
-
-version_sources:
-ruby: - file: .ruby-version - file: .tool-versions
-pattern: 'ruby (.+)' - command: 'ruby --version'
-bundler: - command: "grep -A1 'BUNDLED WITH' Gemfile.lock | tail -n1 | tr -d ' '"
-parse_version: false`} lang="yaml" title="Built-in Ruby cache definition" />
+`} lang="yaml" title="Ruby cache definition (paths and sources)" />
 
 ### Node.js Modules
 
 <Code code={`cache_definitions:
   node_modules:
-    versions: [node, detect: [npm, yarn, bun, pnpm]]
+    versions: [node]
     checksum_sources:
       - package.json
       - detect: [package-lock.json, yarn.lock, bun.lockb, pnpm-lock.yaml]
     paths: [node_modules]
-
-version_sources:
-node: - file: .node-version - file: .nvmrc - file: .tool-versions
-pattern: 'node (.+)' - command: 'node --version'`} lang="yaml" title="Built-in Node.js cache definition" />
+`} lang="yaml" title="Node.js cache definition" />
 
 ### Python Packages
 
@@ -97,10 +72,7 @@ pattern: 'node (.+)' - command: 'node --version'`} lang="yaml" title="Built-in N
     paths:
       - detect: [.venv, venv]
       - ~/.cache/pip
-
-version_sources:
-python: - file: .python-version - file: .tool-versions
-pattern: 'python (.+)' - file: runtime.txt # Heroku-style - command: 'python --version'`} lang="yaml" title="Built-in Python cache definition" />
+`} lang="yaml" title="Python cache definition" />
 
 ## Using Caches in Jobs
 
@@ -108,8 +80,8 @@ pattern: 'python (.+)' - file: runtime.txt # Heroku-style - command: 'python --v
 
 The `cache` and `restore_cache` fields serve different purposes:
 
-- **`cache`**: Both restores AND saves the cache (read/write)
-- **`restore_cache`**: Only restores the cache (read-only)
+- `cache`: restores before steps and saves after steps for the named caches
+- `restore_cache`: restores only (read-only)
 
 ```yaml
 # Read and write cache
@@ -146,10 +118,7 @@ cache:
   title="Simple cache usage"
 />
 
-This automatically injects:
-
-1. A `restore_cache` step before your steps
-2. A `save_cache` step after your steps
+This injects a `restore_cache` step before, and a `save_cache` step after, when the cache is declared on the job.
 
 ### Multiple Caches
 

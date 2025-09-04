@@ -126,7 +126,7 @@ fn main() -> Result<()> {
             commands::init_command(&cli.config, template)?;
         }
         _ => {
-            // For all other commands, change to config directory
+            // For all other commands, optionally change to config directory if it exists
             let original_dir = std::env::current_dir()?;
             let config_path = std::path::Path::new(&cli.config);
             let config_dir = if config_path.is_absolute() {
@@ -142,10 +142,9 @@ fn main() -> Result<()> {
                 std::env::set_current_dir(&config_dir)?;
                 tracing::debug!("Changed working directory to: {}", config_dir.display());
             } else {
-                return Err(anyhow::anyhow!(
-                    "Config directory does not exist: {}",
-                    config_dir.display()
-                ));
+                // Initialize context for current directory (inline config support)
+                cigen::loader::context::init_context(original_dir.clone(), original_dir);
+                tracing::debug!("Using current directory for inline config");
             }
 
             match cli.command {

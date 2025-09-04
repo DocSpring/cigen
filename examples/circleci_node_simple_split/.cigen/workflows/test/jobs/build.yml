@@ -1,5 +1,6 @@
 image: node
 packages: node
+requires: [lint, test]
 steps:
   - run:
       name: Build application

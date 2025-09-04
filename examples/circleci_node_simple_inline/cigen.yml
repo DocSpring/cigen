@@ -10,14 +10,6 @@ docker_images:
 workflows:
   test:
     jobs:
-      build:
-        image: node
-        packages: node
-        steps:
-          - run:
-              name: Build application
-              command: npm run build
-
       test:
         image: node
         packages: node
@@ -33,3 +25,11 @@ workflows:
           - run:
               name: Run ESLint
               command: npm run lint
+      build:
+        image: node
+        packages: node
+        requires: [lint, test]
+        steps:
+          - run:
+              name: Build application
+              command: npm run build
