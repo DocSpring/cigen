@@ -1,0 +1,62 @@
+node:
+  - file: .nvmrc
+  - file: .node-version
+  - file: package.json
+    pattern: "\"engines\":\\s*{\\s*\"node\":\\s*\"([^\"]+)\""
+  - command: node --version
+    parse_version: true
+
+ruby:
+  - file: .ruby-version
+  - file: Gemfile
+    pattern: "ruby\\s+[\"\\']([^\"\\'])+[\"\\']"
+  - command: ruby --version
+    parse_version: true
+
+bundler:
+  - file: Gemfile.lock
+    pattern: "BUNDLED WITH\\s+([0-9.]+)"
+  - command: bundler --version
+    parse_version: true
+
+python:
+  - file: .python-version
+  - file: runtime.txt
+    pattern: "python-([0-9.]+)"
+  - file: pyproject.toml
+    pattern: "requires-python\\s*=\\s*[\"\\']([^\"\\'])+[\"\\']"
+  - command: python --version
+    parse_version: true
+
+go:
+  - file: go.mod
+    pattern: 'go\s+([0-9.]+)'
+  - file: .go-version
+  - command: go version
+    parse_version: true
+
+rustc:
+  - file: rust-toolchain.toml
+    pattern: "channel\\s*=\\s*[\"\\']([^\"\\'])+[\"\\']"
+  - file: rust-toolchain
+  - command: rustc --version
+    parse_version: true
+
+cargo:
+  - command: cargo --version
+    parse_version: true
+
+java:
+  - file: .java-version
+  - file: pom.xml
+    pattern: "<maven.compiler.target>([^<]+)</maven.compiler.target>"
+  - file: pom.xml
+    pattern: "<java.version>([^<]+)</java.version>"
+  - command: java -version
+    parse_version: true
+
+dotnet:
+  - file: global.json
+    pattern: '"version":\s*"([^"]+)"'
+  - command: dotnet --version
+    parse_version: true

@@ -1,0 +1,35 @@
+version: 1
+provider: circleci
+output_path: .circleci
+output_filename: config.yml
+
+docker_images:
+  node:
+    default: cimg/node:20.11.0
+
+workflows:
+  test:
+    jobs:
+      build:
+        image: node
+        packages: node
+        steps:
+          - run:
+              name: Build application
+              command: npm run build
+
+      test:
+        image: node
+        packages: node
+        steps:
+          - run:
+              name: Run tests
+              command: npm test
+
+      lint:
+        image: node
+        packages: node
+        steps:
+          - run:
+              name: Run ESLint
+              command: npm run lint

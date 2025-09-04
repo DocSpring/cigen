@@ -32,7 +32,7 @@ pub struct Job {
     #[serde(
         skip_serializing_if = "Option::is_none",
         default,
-        deserialize_with = "deserialize_source_files"
+        deserialize_with = "deserialize_string_or_vec"
     )]
     pub source_files: Option<Vec<String>>,
 
@@ -53,6 +53,7 @@ pub struct Job {
     pub services: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
     pub packages: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -219,7 +220,7 @@ where
     }
 }
 
-fn deserialize_source_files<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+fn deserialize_string_or_vec<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -236,16 +237,14 @@ where
                 match item {
                     serde_yaml::Value::String(s) => result.push(s),
                     _ => {
-                        return Err(D::Error::custom(
-                            "source_files array must contain only strings",
-                        ));
+                        return Err(D::Error::custom("Array must contain only strings"));
                     }
                 }
             }
             Ok(Some(result))
         }
         Some(_) => Err(D::Error::custom(
-            "source_files must be a string or array of strings",
+            "Field must be a string or array of strings",
         )),
     }
 }

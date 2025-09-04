@@ -1,6 +1,7 @@
 pub mod command;
 pub mod config;
 pub mod job;
+pub mod package_managers;
 
 // Re-export commonly used types
 pub use command::Command;
@@ -10,6 +11,10 @@ pub use config::{
     Service, VersionSource,
 };
 pub use job::Job;
+pub use package_managers::{
+    CacheConfig, ChecksumSource, DetectedPackageManager, PackageManagerConfig,
+    PackageManagerDefinition, PackageManagerDetection,
+};
 
 // Config loaders for different schema versions
 pub mod loaders;

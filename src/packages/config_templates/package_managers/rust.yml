@@ -1,0 +1,14 @@
+versions:
+  - rustc
+  - cargo
+detect:
+  - name: cargo
+    lockfile: Cargo.lock
+    command: cargo fetch
+checksum_sources:
+  - Cargo.toml
+  - Cargo.lock
+cache_paths:
+  - ~/.cargo/registry
+  - ~/.cargo/git
+  - target

@@ -1,6 +1,6 @@
 ---
 title: Package Management
-description: Intelligent package installation with automatic caching and deduplication
+description: Dynamic package manager detection and installation built on top of the caching system
 ---
 
 import {
@@ -11,38 +11,88 @@ import {
   Card,
 } from '@astrojs/starlight/components';
 
-The `packages` feature provides a high-level abstraction for package management that combines intelligent caching with automatic installation commands.
+The `packages` feature provides intelligent package manager detection, installation, and optimization that builds on top of cigen's [cache system](/configuration/cache). It automatically detects which package manager your project uses and generates the correct installation commands.
 
-## What Are Packages?
+## Architecture Overview
 
-<Aside type="tip">
-  **Packages = Installation + Caching**: The `packages` field automatically
-  handles both installing dependencies and caching them efficiently.
+<Aside type="note">
+  **Packages builds on Cache**: The package system leverages the existing cache system for storage and retrieval, while adding package manager detection and installation logic on top.
 </Aside>
 
-While the `cache` field handles storage and retrieval, `packages` goes further by:
+The package management system provides:
 
-1. **Restoring** the package cache if it exists
-2. **Running** the appropriate install command
-3. **Saving** the updated cache for future runs
-4. **Optimizing** workflows through smart deduplication
+1. **Dynamic package manager detection** - Detects npm vs yarn vs pnpm based on lock files
+2. **Configurable installation commands** - YAML-based definitions for any package manager
+3. **Smart job deduplication** - Optimizes workflows when multiple jobs use the same packages
+4. **Extensible definitions** - Built-in support for common languages, fully customizable
 
-## Supported Package Managers
+## Package Manager Definitions
 
-<CardGrid>
-  <Card title="Node.js" icon="seti:javascript">
-    npm, yarn, pnpm, bun - auto-detected from lock files
-  </Card>
-  <Card title="Ruby" icon="seti:ruby">
-    Bundler with automatic Gemfile.lock detection
-  </Card>
-  <Card title="Python" icon="seti:python">
-    pip, pipenv, poetry with virtual environment support
-  </Card>
-  <Card title="Go" icon="seti:go">
-    Go modules with automatic go.mod detection
-  </Card>
-</CardGrid>
+Package managers are defined in YAML configuration with detection rules and installation commands. Cigen includes built-in definitions that you can extend or override.
+
+### Built-in Package Managers
+
+<Code
+  code={`# Built into cigen's default configuration
+package_managers:
+  node:
+    versions: [node]
+    detect:
+      - npm:
+          lockfile: package-lock.json
+          command: npm ci
+      - yarn:
+          lockfile: yarn.lock
+          command: yarn install --frozen-lockfile
+      - pnpm:
+          lockfile: pnpm-lock.yaml
+          command: pnpm install --frozen-lockfile
+      - bun:
+          lockfile: bun.lockb
+          command: bun install --frozen-lockfile
+    checksum_sources:
+      - package.json
+      - detect: [package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb]
+    cache_paths: [node_modules]
+
+  ruby:
+    versions: [ruby, bundler]
+    detect:
+      - bundler:
+          lockfile: Gemfile.lock
+          command: bundle install
+    checksum_sources: [Gemfile, Gemfile.lock]
+    cache_paths: [vendor/bundle, .bundle]
+
+  python:
+    versions: [python]
+    detect:
+      - pip:
+          lockfile: requirements.txt
+          command: pip install -r requirements.txt
+      - pipenv:
+          lockfile: Pipfile.lock
+          command: pipenv install --deploy
+      - poetry:
+          lockfile: poetry.lock
+          command: poetry install
+    checksum_sources:
+      - detect: [requirements.txt, Pipfile, pyproject.toml]
+      - detect_optional: [requirements.lock, Pipfile.lock, poetry.lock]
+    cache_paths:
+      - detect: [.venv, venv]
+      - ~/.cache/pip`}
+  lang="yaml"
+  title="Built-in package manager definitions"
+/>
+
+### How Detection Works
+
+When you use `packages: node`, cigen:
+
+1. **Detects the specific tool** - Checks for `package-lock.json` (npm), `yarn.lock` (yarn), `pnpm-lock.yaml` (pnpm), or `bun.lockb` (bun)
+2. **Generates the install command** - Uses the appropriate command (`npm ci`, `yarn install --frozen-lockfile`, etc.)
+3. **Creates cache configuration** - Leverages the cache system with proper version detection and checksums
 
 ## Basic Usage
 
@@ -52,7 +102,7 @@ While the `cache` field handles storage and retrieval, `packages` goes further b
   code={`jobs:
   test:
     image: cimg/node:18.0
-    packages: [node]  # Handles npm install + caching
+    packages: node  # Auto-detects npm/yarn/pnpm/bun
     steps:
       - run: npm test`}
   lang="yaml"
@@ -60,9 +110,10 @@ While the `cache` field handles storage and retrieval, `packages` goes further b
 />
 
 This automatically:
-1. Restores node_modules cache
-2. Runs `npm install` (or yarn/pnpm/bun based on lock file)
-3. Saves the cache for future runs
+1. **Detects** which package manager based on lock files
+2. **Restores** the appropriate cache (e.g., `node_modules`)
+3. **Runs** the detected install command (e.g., `yarn install --frozen-lockfile`)
+4. **Saves** the cache with proper version and checksum keys
 
 ### Multiple Package Types
 
@@ -93,17 +144,16 @@ When only one job uses a package manager, installation runs inline:
 <Code
   code={`jobs:
   test:
-    packages: [node]
+    packages: node
     steps:
       - run: npm test
 
 # Generated structure:
 jobs:
   test:
+    cache: node_modules  # Uses cache system with detected package manager
     steps:
-      - restore_cache: node_modules
-      - run: npm install
-      - save_cache: node_modules
+      - run: yarn install --frozen-lockfile  # Detected command
       - run: npm test`}
   lang="yaml"
   title="Single job - inline installation"
@@ -116,29 +166,30 @@ When multiple jobs use the same packages, cigen creates a dedicated job:
 <Code
   code={`jobs:
   test:
-    packages: [node]
+    packages: node
     steps:
       - run: npm test
 
   lint:
-    packages: [node]
+    packages: node
     steps:
       - run: npm run lint
 
   build:
-    packages: [node]
+    packages: node
     steps:
       - run: npm run build
 
 # Generated structure:
 jobs:
   install_node_packages:
-    packages: [node]
-    # Only handles installation and caching
+    cache: node_modules
+    steps:
+      - run: yarn install --frozen-lockfile  # Detected based on yarn.lock
 
   test:
     requires: [install_node_packages]
-    restore_cache: node_modules  # Read-only
+    restore_cache: node_modules  # Read-only cache access
     steps:
       - run: npm test
 
@@ -210,53 +261,77 @@ Based on detection, cigen runs the appropriate command:
 | `python` | Pipfile.lock | `pipenv install --deploy` |
 | `go` | go.mod | `go mod download` |
 
-## Advanced Configuration
+## Customizing Package Managers
 
-### Custom Install Commands
+### Overriding Built-in Definitions
 
-Override the default install command when needed:
+You can customize the built-in package manager definitions in your configuration:
+
+<Code
+  code={`# .cigen/cigen.yml
+package_managers:
+  node:
+    # Override the npm command
+    detect:
+      - npm:
+          lockfile: package-lock.json
+          command: npm ci --production  # Custom flags
+      - yarn:
+          lockfile: yarn.lock
+          command: yarn install --frozen-lockfile --production
+    # Keep other settings from built-in definition
+    versions: [node]
+    checksum_sources:
+      - package.json
+      - detect: [package-lock.json, yarn.lock, pnpm-lock.yaml, bun.lockb]
+    cache_paths: [node_modules]`}
+  lang="yaml"
+  title="Custom package manager commands"
+/>
+
+### Adding New Package Managers
+
+Define completely new package managers:
+
+<Code
+  code={`# .cigen/cigen.yml
+package_managers:
+  deno:
+    versions: [deno]
+    detect:
+      - deno:
+          lockfile: deno.lock
+          command: deno cache deps.ts
+    checksum_sources: [deps.ts, deno.lock]
+    cache_paths: [~/.cache/deno]
+
+  swift:
+    versions: [swift]
+    detect:
+      - spm:
+          lockfile: Package.resolved
+          command: swift package resolve
+    checksum_sources: [Package.swift, Package.resolved]
+    cache_paths: [.build]`}
+  lang="yaml"
+  title="Adding new package managers"
+/>
+
+### Per-Job Customization
+
+Override package behavior for specific jobs:
 
 <Code
   code={`jobs:
   test:
     packages:
       node:
-        command: npm ci --production  # Custom command
+        command: npm ci --ignore-optional  # Job-specific command
+        cache_paths: [node_modules, .npm]   # Additional cache paths
     steps:
       - run: npm test`}
   lang="yaml"
-  title="Custom install command"
-/>
-
-### Package-Specific Paths
-
-Customize cache paths for specific scenarios:
-
-<Code
-  code={`jobs:
-  test:
-    packages:
-      ruby:
-        paths: [vendor/bundle-ci]  # Custom bundle path
-        command: bundle install --path vendor/bundle-ci`}
-  lang="yaml"
-  title="Custom cache paths"
-/>
-
-### Conditional Installation
-
-Control when packages are installed:
-
-<Code
-  code={`jobs:
-  deploy:
-    packages:
-      node:
-        when: << pipeline.parameters.install_deps >>
-    steps:
-      - run: npm run deploy`}
-  lang="yaml"
-  title="Conditional installation"
+  title="Per-job package customization"
 />
 
 ## Packages vs Cache

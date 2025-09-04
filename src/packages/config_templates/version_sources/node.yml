@@ -1,0 +1,6 @@
+- file: .nvmrc
+- file: .node-version
+- file: package.json
+  pattern: "\"engines\":\\s*{\\s*\"node\":\\s*\"([^\"]+)\""
+- command: node --version
+  parse_version: true

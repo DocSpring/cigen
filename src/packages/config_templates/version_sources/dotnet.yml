@@ -1,0 +1,4 @@
+- file: global.json
+  pattern: '"version":\s*"([^"]+)"'
+- command: dotnet --version
+  parse_version: true

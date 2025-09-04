@@ -1,0 +1,6 @@
+image: node
+packages: node
+steps:
+  - run:
+      name: Build application
+      command: npm run build

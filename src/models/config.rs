@@ -64,6 +64,10 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub docker_images: Option<HashMap<String, DockerImageConfig>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_managers:
+        Option<HashMap<String, super::package_managers::PackageManagerDefinition>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,6 +205,7 @@ impl Default for Config {
             orbs: None,
             outputs: None,
             docker_images: None,
+            package_managers: None,
         }
     }
 }

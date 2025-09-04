@@ -1,0 +1,8 @@
+version: 1
+provider: circleci
+output_path: .circleci
+output_filename: config.yml
+
+docker_images:
+  node:
+    default: cimg/node:20.11.0

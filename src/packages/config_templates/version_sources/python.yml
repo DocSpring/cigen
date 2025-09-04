@@ -1,0 +1,7 @@
+- file: .python-version
+- file: runtime.txt
+  pattern: "python-([0-9.]+)"
+- file: pyproject.toml
+  pattern: "requires-python\\s*=\\s*[\"\\']([^\"\\'])+[\"\\']"
+- command: python --version
+  parse_version: true

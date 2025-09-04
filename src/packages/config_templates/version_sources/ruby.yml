@@ -1,0 +1,5 @@
+- file: .ruby-version
+- file: Gemfile
+  pattern: "ruby\\s+[\"\\']([^\"\\'])+[\"\\']"
+- command: ruby --version
+  parse_version: true

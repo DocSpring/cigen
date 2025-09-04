@@ -83,7 +83,7 @@ fn generate_from_jobs(
 
         // Filter jobs for this workflow
         let workflow_prefix = format!("{workflow_name}/");
-        let workflow_jobs: HashMap<String, cigen::models::Job> = loaded_config
+        let mut workflow_jobs: HashMap<String, cigen::models::Job> = loaded_config
             .jobs
             .iter()
             .filter_map(|(path, job)| {
@@ -99,6 +99,22 @@ fn generate_from_jobs(
 
         if workflow_jobs.is_empty() {
             anyhow::bail!("No jobs found for workflow '{}'", workflow_name);
+        }
+
+        // Apply package deduplication if any jobs have packages
+        let has_packages = workflow_jobs.values().any(|job| job.packages.is_some());
+        if has_packages {
+            // If we're in a .cigen dir, look for package files in parent
+            let project_root = if current_dir.ends_with(".cigen") {
+                current_dir.parent().and_then(|p| p.to_str()).unwrap_or(".")
+            } else {
+                current_dir.to_str().unwrap_or(".")
+            };
+            let deduplicator =
+                cigen::packages::deduplicator::PackageDeduplicator::new(project_root);
+            deduplicator
+                .process_jobs(&mut workflow_jobs)
+                .map_err(|e| anyhow::anyhow!("Failed to process package deduplication: {}", e))?;
         }
 
         // Check if this workflow has its own config overrides
@@ -178,6 +194,24 @@ fn generate_from_jobs(
                     .entry(workflow_name.to_string())
                     .or_default()
                     .insert(job_name.to_string(), job);
+            }
+        }
+
+        // Apply package deduplication to each workflow
+        for workflow_jobs in workflows.values_mut() {
+            let has_packages = workflow_jobs.values().any(|job| job.packages.is_some());
+            if has_packages {
+                // If we're in a .cigen dir, look for package files in parent
+                let project_root = if current_dir.ends_with(".cigen") {
+                    current_dir.parent().and_then(|p| p.to_str()).unwrap_or(".")
+                } else {
+                    current_dir.to_str().unwrap_or(".")
+                };
+                let deduplicator =
+                    cigen::packages::deduplicator::PackageDeduplicator::new(project_root);
+                deduplicator.process_jobs(workflow_jobs).map_err(|e| {
+                    anyhow::anyhow!("Failed to process package deduplication: {}", e)
+                })?;
             }
         }
 

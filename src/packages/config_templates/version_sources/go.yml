@@ -1,0 +1,5 @@
+- file: go.mod
+  pattern: 'go\s+([0-9.]+)'
+- file: .go-version
+- command: go version
+  parse_version: true

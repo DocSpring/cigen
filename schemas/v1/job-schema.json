@@ -167,6 +167,24 @@
         "description": "Reference to a service defined in config"
       }
     },
+    "packages": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Single package manager to use",
+          "enum": ["node", "ruby", "python", "go"]
+        },
+        {
+          "type": "array",
+          "description": "Package managers to use for dependency installation",
+          "items": {
+            "type": "string",
+            "enum": ["node", "ruby", "python", "go"]
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
     "environment": {
       "type": "object",
       "description": "Environment variables for the job",

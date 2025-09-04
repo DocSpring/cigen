@@ -1,0 +1,13 @@
+versions:
+  - ruby
+  - bundler
+detect:
+  - name: bundler
+    lockfile: Gemfile.lock
+    command: bundle install --deployment
+checksum_sources:
+  - Gemfile
+  - Gemfile.lock
+cache_paths:
+  - vendor/bundle
+  - .bundle

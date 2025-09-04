@@ -1,0 +1,4 @@
+- file: Gemfile.lock
+  pattern: "BUNDLED WITH\\s+([0-9.]+)"
+- command: bundler --version
+  parse_version: true
