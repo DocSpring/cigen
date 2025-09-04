@@ -111,6 +111,14 @@ pub enum CircleCIParameter {
         #[serde(skip_serializing_if = "Option::is_none")]
         description: Option<String>,
     },
+    Object {
+        #[serde(rename = "type")]
+        param_type: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        default: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        description: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -180,7 +188,10 @@ impl CircleCIStep {
 
     fn detect_step_type(value: &serde_yaml::Value) -> Option<String> {
         match value {
-            serde_yaml::Value::String(_) => Some("run".to_string()),
+            serde_yaml::Value::String(s) => {
+                // Simple strings can be commands like 'checkout', 'shallow_checkout', etc.
+                Some(s.clone())
+            }
             serde_yaml::Value::Mapping(map) => {
                 if map.len() == 1
                     && let Some((key, _)) = map.iter().next()

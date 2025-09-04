@@ -197,6 +197,7 @@ mod tests {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         }
     }
 

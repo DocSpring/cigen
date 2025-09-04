@@ -53,6 +53,7 @@ fn test_simple_job_conversion() {
                     Value::Mapping(run_step)
                 }),
             ]),
+            checkout: None,
         },
     );
 
@@ -134,6 +135,7 @@ fn test_job_with_services() {
                 );
                 Value::Mapping(run_step)
             })]),
+            checkout: None,
         },
     );
 
@@ -183,6 +185,7 @@ fn test_job_dependencies() {
                 );
                 Value::Mapping(run_step)
             })]),
+            checkout: None,
         },
     );
 
@@ -207,6 +210,7 @@ fn test_job_dependencies() {
                 );
                 Value::Mapping(run_step)
             })]),
+            checkout: None,
         },
     );
 
@@ -273,6 +277,7 @@ fn test_docker_image_resolution() {
         services: None,
         packages: None,
         steps: None,
+        checkout: None,
     };
 
     // Convert job and check that the image was resolved
@@ -308,6 +313,7 @@ fn test_docker_image_full_reference_passthrough() {
         services: None,
         packages: None,
         steps: None,
+        checkout: None,
     };
 
     // Convert job
@@ -340,6 +346,7 @@ fn test_architecture_matrix_generation() {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         },
     );
 
@@ -393,6 +400,7 @@ fn test_architecture_matrix_with_dependencies() {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         },
     );
 
@@ -411,6 +419,7 @@ fn test_architecture_matrix_with_dependencies() {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         },
     );
 
@@ -466,6 +475,7 @@ fn test_single_architecture_no_suffix() {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         },
     );
 
@@ -517,6 +527,7 @@ fn test_architecture_environment_variables() {
         services: None,
         packages: None,
         steps: None,
+        checkout: None,
     };
 
     let generator = generator::CircleCIGenerator::new();
@@ -578,6 +589,7 @@ fn test_dynamic_config_with_parameters() {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         },
     );
 
@@ -647,6 +659,7 @@ fn test_dynamic_flag_enables_setup() {
             services: None,
             packages: None,
             steps: None,
+            checkout: None,
         },
     );
 

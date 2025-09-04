@@ -355,8 +355,8 @@ impl CircleCIGenerator {
 
         circleci_job.docker = Some(docker_images);
 
-        // Add checkout step as the first step (standard CircleCI practice)
-        let checkout_step = serde_yaml::Value::String("checkout".to_string());
+        // Add checkout step based on configuration hierarchy
+        let checkout_step = self.resolve_checkout_step(config, None, job)?;
         circleci_job.steps.push(CircleCIStep::new(checkout_step));
 
         // Add skip logic if job has source_files defined (job-status cache)
@@ -1181,5 +1181,120 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
             .push(CircleCIStep::new(serde_yaml::Value::Mapping(step)));
 
         Ok(())
+    }
+
+    /// Resolve checkout configuration based on hierarchy (job > workflow > global > default)
+    fn resolve_checkout_step(
+        &self,
+        config: &Config,
+        workflow_config: Option<&crate::models::config::WorkflowConfig>,
+        job: &Job,
+    ) -> Result<serde_yaml::Value> {
+        use crate::models::config::CheckoutConfig;
+
+        // Resolve checkout config with hierarchy: job > workflow > global > default
+        let checkout_config = job
+            .checkout
+            .as_ref()
+            .or_else(|| workflow_config?.checkout.as_ref())
+            .or(config.checkout.as_ref())
+            .cloned()
+            .unwrap_or(CheckoutConfig {
+                shallow: true, // Default to shallow checkout
+                clone_options: None,
+                fetch_options: None,
+                tag_fetch_options: None,
+                keyscan: None,
+                path: None,
+            });
+
+        if checkout_config.shallow {
+            // Use our vendored shallow checkout command
+            let mut shallow_checkout = serde_yaml::Mapping::new();
+
+            // Add parameters if specified
+            if let Some(clone_options) = &checkout_config.clone_options {
+                shallow_checkout.insert(
+                    serde_yaml::Value::String("clone_options".to_string()),
+                    serde_yaml::Value::String(clone_options.clone()),
+                );
+            }
+            if let Some(fetch_options) = &checkout_config.fetch_options {
+                shallow_checkout.insert(
+                    serde_yaml::Value::String("fetch_options".to_string()),
+                    serde_yaml::Value::String(fetch_options.clone()),
+                );
+            }
+            if let Some(tag_fetch_options) = &checkout_config.tag_fetch_options {
+                shallow_checkout.insert(
+                    serde_yaml::Value::String("tag_fetch_options".to_string()),
+                    serde_yaml::Value::String(tag_fetch_options.clone()),
+                );
+            }
+            if let Some(keyscan) = &checkout_config.keyscan {
+                if keyscan.get("github").unwrap_or(&false) == &true {
+                    shallow_checkout.insert(
+                        serde_yaml::Value::String("keyscan_github".to_string()),
+                        serde_yaml::Value::Bool(true),
+                    );
+                }
+                if keyscan.get("gitlab").unwrap_or(&false) == &true {
+                    shallow_checkout.insert(
+                        serde_yaml::Value::String("keyscan_gitlab".to_string()),
+                        serde_yaml::Value::Bool(true),
+                    );
+                }
+                if keyscan.get("bitbucket").unwrap_or(&false) == &true {
+                    shallow_checkout.insert(
+                        serde_yaml::Value::String("keyscan_bitbucket".to_string()),
+                        serde_yaml::Value::Bool(true),
+                    );
+                }
+            }
+            if let Some(path) = &checkout_config.path {
+                shallow_checkout.insert(
+                    serde_yaml::Value::String("path".to_string()),
+                    serde_yaml::Value::String(path.clone()),
+                );
+            }
+
+            if shallow_checkout.is_empty() {
+                // Simple command with no parameters
+                Ok(serde_yaml::Value::String("shallow_checkout".to_string()))
+            } else {
+                // Command with parameters
+                let mut shallow_step = serde_yaml::Mapping::new();
+                shallow_step.insert(
+                    serde_yaml::Value::String("shallow_checkout".to_string()),
+                    serde_yaml::Value::Mapping(shallow_checkout),
+                );
+                Ok(serde_yaml::Value::Mapping(shallow_step))
+            }
+        } else {
+            // Use standard CircleCI checkout
+            let mut checkout_step = serde_yaml::Mapping::new();
+            let mut checkout_params = serde_yaml::Mapping::new();
+
+            if let Some(path) = &checkout_config.path {
+                checkout_params.insert(
+                    serde_yaml::Value::String("path".to_string()),
+                    serde_yaml::Value::String(path.clone()),
+                );
+            }
+
+            if checkout_params.is_empty() {
+                checkout_step.insert(
+                    serde_yaml::Value::String("checkout".to_string()),
+                    serde_yaml::Value::Null,
+                );
+            } else {
+                checkout_step.insert(
+                    serde_yaml::Value::String("checkout".to_string()),
+                    serde_yaml::Value::Mapping(checkout_params),
+                );
+            }
+
+            Ok(serde_yaml::Value::Mapping(checkout_step))
+        }
     }
 }

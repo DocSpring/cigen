@@ -6,9 +6,9 @@ pub mod package_managers;
 // Re-export commonly used types
 pub use command::Command;
 pub use config::{
-    Cache, CacheBackend, CacheBackendConfig, CacheDefinition, Config, DefaultCacheConfig,
-    DockerAuth, DockerConfig, DockerImageConfig, OutputConfig, ParameterConfig, PathOrDetect,
-    Service, VersionSource, WorkflowConfig,
+    Cache, CacheBackend, CacheBackendConfig, CacheDefinition, CheckoutConfig, Config,
+    DefaultCacheConfig, DockerAuth, DockerConfig, DockerImageConfig, OutputConfig, ParameterConfig,
+    PathOrDetect, Service, VersionSource, WorkflowConfig,
 };
 pub use job::Job;
 pub use package_managers::{

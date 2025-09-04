@@ -89,6 +89,7 @@ impl PackageDeduplicator {
             cache: None,
             restore_cache: None,
             services: None,
+            checkout: None,
         };
 
         // Add installation steps (checkout will be added automatically by CircleCI provider)
@@ -202,6 +203,7 @@ mod tests {
                 cache: None,
                 restore_cache: None,
                 services: None,
+                checkout: None,
             },
         );
 
@@ -219,6 +221,7 @@ mod tests {
                 cache: None,
                 restore_cache: None,
                 services: None,
+                checkout: None,
             },
         );
 
@@ -236,6 +239,7 @@ mod tests {
                 cache: None,
                 restore_cache: None,
                 services: None,
+                checkout: None,
             },
         );
 
@@ -321,6 +325,7 @@ mod tests {
                 cache: None,
                 restore_cache: None,
                 services: None,
+                checkout: None,
             },
         )]);
 

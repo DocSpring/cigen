@@ -57,9 +57,13 @@ steps:
 
     commands.insert("continue_circleci_pipeline".to_string(), continue_pipeline);
 
+    // shallow_checkout command - vendored from git-shallow-clone-orb (MIT license)
+    let shallow_checkout = serde_yaml::from_str(include_str!("templates/shallow_checkout.yml"))
+        .expect("Failed to parse shallow_checkout template");
+    commands.insert("shallow_checkout".to_string(), shallow_checkout);
+
     // Add more template commands here in the future
     // For example:
-    // - optimized_git_checkout
     // - setup_remote_docker_with_cache
     // - etc.
 
@@ -83,6 +87,7 @@ mod tests {
     #[test]
     fn test_template_commands_loaded() {
         assert!(is_template_command("continue_circleci_pipeline"));
+        assert!(is_template_command("shallow_checkout"));
         assert!(!is_template_command("unknown_command"));
     }
 
@@ -95,5 +100,24 @@ mod tests {
         assert!(cmd_value.get("description").is_some());
         assert!(cmd_value.get("parameters").is_some());
         assert!(cmd_value.get("steps").is_some());
+    }
+
+    #[test]
+    fn test_shallow_checkout_command() {
+        let cmd = get_template_command("shallow_checkout");
+        assert!(cmd.is_some());
+
+        let cmd_value = cmd.unwrap();
+        assert!(cmd_value.get("description").is_some());
+        assert!(cmd_value.get("parameters").is_some());
+        assert!(cmd_value.get("steps").is_some());
+
+        // Check that expected parameters exist
+        let params = cmd_value.get("parameters").unwrap();
+        assert!(params.get("clone_options").is_some());
+        assert!(params.get("fetch_options").is_some());
+        assert!(params.get("keyscan_github").is_some());
+        assert!(params.get("keyscan_gitlab").is_some());
+        assert!(params.get("keyscan_bitbucket").is_some());
     }
 }

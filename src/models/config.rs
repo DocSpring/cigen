@@ -71,6 +71,9 @@ pub struct Config {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workflows: Option<HashMap<String, WorkflowConfig>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkout: Option<CheckoutConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +213,7 @@ impl Default for Config {
             docker_images: None,
             package_managers: None,
             workflows: None,
+            checkout: None,
         }
     }
 }
@@ -299,10 +303,38 @@ fn default_parse_version() -> bool {
     true
 }
 
+fn default_shallow_checkout() -> bool {
+    true // Default to shallow checkout for 99% of use cases
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub jobs: Option<HashMap<String, super::job::Job>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub checkout: Option<CheckoutConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CheckoutConfig {
+    #[serde(default = "default_shallow_checkout")]
+    pub shallow: bool,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clone_options: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fetch_options: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_fetch_options: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keyscan: Option<HashMap<String, bool>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
