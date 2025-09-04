@@ -178,10 +178,26 @@
           "type": "array",
           "description": "Package managers to use for dependency installation",
           "items": {
-            "type": "string",
-            "enum": ["node", "ruby", "python", "go"]
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": ["node", "ruby", "python", "go"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "enum": ["node", "ruby", "python", "go"]
+                  },
+                  "path": { "type": "string" }
+                },
+                "required": ["name", "path"],
+                "additionalProperties": false
+              }
+            ]
           },
-          "uniqueItems": true
+          "uniqueItems": false
         }
       ]
     },

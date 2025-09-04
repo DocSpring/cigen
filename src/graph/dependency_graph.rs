@@ -198,6 +198,7 @@ mod tests {
             packages: None,
             steps: None,
             checkout: None,
+            job_type: None,
         }
     }
 

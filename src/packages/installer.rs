@@ -34,6 +34,22 @@ impl PackageInstaller {
         step_map.insert(Value::String("run".to_string()), Value::Mapping(run_config));
         Step(Value::Mapping(step_map))
     }
+
+    /// Create an install step that runs inside a subdirectory
+    pub fn create_install_step_in_path(command: &str, path: &str) -> Step {
+        let mut step_map = Mapping::new();
+        let mut run_config = Mapping::new();
+        run_config.insert(
+            Value::String("name".to_string()),
+            Value::String(format!("Install packages in {path}")),
+        );
+        run_config.insert(
+            Value::String("command".to_string()),
+            Value::String(format!("cd {path} && {command}")),
+        );
+        step_map.insert(Value::String("run".to_string()), Value::Mapping(run_config));
+        Step(Value::Mapping(step_map))
+    }
 }
 
 #[cfg(test)]

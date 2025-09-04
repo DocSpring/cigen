@@ -27,6 +27,7 @@ fn test_cache_restoration() {
         packages: None,
         steps: None,
         checkout: None,
+        job_type: None,
     };
 
     let circleci_job = generator
@@ -109,6 +110,7 @@ fn test_job_with_cache_and_steps() {
             ),
         ]),
         checkout: None,
+        job_type: None,
     };
 
     let circleci_job = generator

@@ -52,15 +52,23 @@ pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub services: Option<Vec<String>>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
-    pub packages: Option<Vec<String>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "deserialize_packages"
+    )]
+    pub packages: Option<Vec<PackageSpec>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<Step>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkout: Option<super::config::CheckoutSetting>,
+
+    /// CircleCI job type (e.g., approval)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "type")]
+    pub job_type: Option<String>,
 }
 
 /// Intermediate parsing structure for cache definitions that handles multiple YAML formats
@@ -202,6 +210,69 @@ impl Job {
             .as_ref()
             .map(|r| r.to_vec())
             .unwrap_or_default()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum PackageSpec {
+    /// Simple shorthand: "node", "ruby", etc.
+    Simple(String),
+    /// Extended form with path scoping (e.g., install under a subdirectory)
+    WithPath { name: String, path: String },
+}
+
+impl PackageSpec {
+    pub fn name(&self) -> &str {
+        match self {
+            PackageSpec::Simple(s) => s.as_str(),
+            PackageSpec::WithPath { name, .. } => name.as_str(),
+        }
+    }
+
+    pub fn path(&self) -> Option<&str> {
+        match self {
+            PackageSpec::Simple(_) => None,
+            PackageSpec::WithPath { path, .. } => Some(path.as_str()),
+        }
+    }
+}
+
+fn deserialize_packages<'de, D>(deserializer: D) -> Result<Option<Vec<PackageSpec>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    let value: Option<serde_yaml::Value> = Option::deserialize(deserializer)?;
+
+    match value {
+        None => Ok(None),
+        Some(serde_yaml::Value::String(s)) => Ok(Some(vec![PackageSpec::Simple(s)])),
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            let mut out: Vec<PackageSpec> = Vec::new();
+            for item in seq {
+                match item {
+                    serde_yaml::Value::String(s) => out.push(PackageSpec::Simple(s)),
+                    serde_yaml::Value::Mapping(_) => {
+                        let spec: PackageSpec =
+                            serde_yaml::from_value(item).map_err(D::Error::custom)?;
+                        out.push(spec);
+                    }
+                    _ => return Err(D::Error::custom("Invalid packages entry")),
+                }
+            }
+            Ok(Some(out))
+        }
+        Some(serde_yaml::Value::Mapping(map)) => {
+            // Support single object form: packages: { name: node, path: docs }
+            let spec: PackageSpec = serde_yaml::from_value(serde_yaml::Value::Mapping(map))
+                .map_err(D::Error::custom)?;
+            Ok(Some(vec![spec]))
+        }
+        Some(_) => Err(D::Error::custom(
+            "packages must be a string, array, or object",
+        )),
     }
 }
 

@@ -19,6 +19,13 @@ impl DynamicPackageDetector {
         }
     }
 
+    pub fn project_root(&self) -> &str {
+        &self.project_root
+    }
+    pub fn config(&self) -> &PackageManagerConfig {
+        &self.config
+    }
+
     /// Detect package manager for a given family (e.g., "node", "ruby")
     pub fn detect_package_manager(&self, family: &str) -> Result<DetectedPackageManager> {
         let definition = self

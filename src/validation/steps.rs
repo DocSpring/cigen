@@ -169,6 +169,7 @@ mod tests {
             services: None,
             packages: None,
             checkout: None,
+            job_type: None,
         };
 
         jobs.insert("test".to_string(), job);
@@ -201,6 +202,7 @@ mod tests {
             services: None,
             packages: None,
             checkout: None,
+            job_type: None,
         };
 
         jobs.insert("test".to_string(), job);
@@ -242,6 +244,7 @@ mod tests {
             services: None,
             packages: None,
             checkout: None,
+            job_type: None,
         };
 
         jobs.insert("test".to_string(), job);

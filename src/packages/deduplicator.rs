@@ -5,6 +5,10 @@ use crate::models::{
 };
 use std::collections::HashMap;
 
+// Type aliases for readability
+type PkgKey = (String, Option<String>);
+type PkgKeyVec = Vec<PkgKey>;
+
 /// Handles smart deduplication of package installation across jobs
 pub struct PackageDeduplicator {
     detector: DynamicPackageDetector,
@@ -42,18 +46,18 @@ impl PackageDeduplicator {
     fn group_jobs_by_packages(
         &self,
         jobs: &HashMap<String, Job>,
-    ) -> miette::Result<HashMap<Vec<String>, Vec<String>>> {
-        let mut groups: HashMap<Vec<String>, Vec<String>> = HashMap::new();
+    ) -> miette::Result<HashMap<PkgKeyVec, Vec<String>>> {
+        let mut groups: HashMap<PkgKeyVec, Vec<String>> = HashMap::new();
 
         for (job_name, job) in jobs {
             if let Some(packages) = &job.packages {
-                let mut sorted_packages = packages.clone();
-                sorted_packages.sort(); // Sort for consistent grouping
+                let mut keys: PkgKeyVec = packages
+                    .iter()
+                    .map(|spec| (spec.name().to_string(), spec.path().map(|p| p.to_string())))
+                    .collect();
+                keys.sort();
 
-                groups
-                    .entry(sorted_packages)
-                    .or_default()
-                    .push(job_name.clone());
+                groups.entry(keys).or_default().push(job_name.clone());
             }
         }
 
@@ -64,11 +68,18 @@ impl PackageDeduplicator {
     fn create_installation_job(
         &self,
         jobs: &mut HashMap<String, Job>,
-        package_types: &[String],
+        package_specs: &PkgKeyVec,
         job_names: &[String],
     ) -> miette::Result<()> {
         // Generate installation job name
-        let install_job_name = format!("install_{}_packages", package_types.join("_"));
+        let name_parts: Vec<String> = package_specs
+            .iter()
+            .map(|(name, path)| match path {
+                Some(p) => format!("{name}_in_{}", p.replace('/', "_")),
+                None => name.clone(),
+            })
+            .collect();
+        let install_job_name = format!("install_{}_packages", name_parts.join("_"));
 
         // Get the appropriate image from one of the jobs
         let image = job_names
@@ -90,15 +101,31 @@ impl PackageDeduplicator {
             restore_cache: None,
             services: None,
             checkout: None,
+            job_type: None,
         };
 
         // Add installation steps (checkout will be added automatically by CircleCI provider)
         let mut steps = Vec::new();
 
-        for package_type in package_types {
-            let detected = self.detector.detect_package_manager(package_type)?;
-            // Just add the install command, not checkout
-            steps.push(PackageInstaller::create_install_step(&detected.command));
+        for (package_type, path) in package_specs {
+            let detected = if let Some(p) = path {
+                let nested = DynamicPackageDetector::new(
+                    &format!("{}/{}", self.detector.project_root(), p),
+                    self.detector.config().clone(),
+                );
+                nested.detect_package_manager(package_type)?
+            } else {
+                self.detector.detect_package_manager(package_type)?
+            };
+            // Add the install command within path if provided
+            if let Some(p) = path {
+                steps.push(PackageInstaller::create_install_step_in_path(
+                    &detected.command,
+                    p,
+                ));
+            } else {
+                steps.push(PackageInstaller::create_install_step(&detected.command));
+            }
         }
 
         install_job.steps = Some(steps);
@@ -127,9 +154,9 @@ impl PackageDeduplicator {
                 }
 
                 // Add restore_cache for read-only access
-                let cache_names: Vec<CacheRestore> = package_types
+                let cache_names: Vec<CacheRestore> = package_specs
                     .iter()
-                    .filter_map(|pt| self.get_cache_name_for_package(pt).ok())
+                    .filter_map(|(pt, _)| self.get_cache_name_for_package(pt).ok())
                     .map(CacheRestore::Simple)
                     .collect();
 
@@ -147,15 +174,30 @@ impl PackageDeduplicator {
         &self,
         jobs: &mut HashMap<String, Job>,
         job_name: &str,
-        package_types: &[String],
+        package_specs: &PkgKeyVec,
     ) -> miette::Result<()> {
         if let Some(job) = jobs.get_mut(job_name) {
             let mut install_steps = Vec::new();
 
             // Generate installation steps for each package type
-            for package_type in package_types {
-                let detected = self.detector.detect_package_manager(package_type)?;
-                install_steps.extend(PackageInstaller::generate_install_steps(&detected));
+            for (package_type, path) in package_specs {
+                let detected = if let Some(p) = path {
+                    let nested = DynamicPackageDetector::new(
+                        &format!("{}/{}", self.detector.project_root(), p),
+                        self.detector.config().clone(),
+                    );
+                    nested.detect_package_manager(package_type)?
+                } else {
+                    self.detector.detect_package_manager(package_type)?
+                };
+                if let Some(p) = path {
+                    install_steps.push(PackageInstaller::create_install_step_in_path(
+                        &detected.command,
+                        p,
+                    ));
+                } else {
+                    install_steps.extend(PackageInstaller::generate_install_steps(&detected));
+                }
             }
 
             // Prepend installation steps to existing steps
@@ -175,8 +217,15 @@ impl PackageDeduplicator {
 
     /// Get the cache name for a package type
     fn get_cache_name_for_package(&self, package_type: &str) -> miette::Result<String> {
-        let detected = self.detector.detect_package_manager(package_type)?;
-        Ok(detected.cache_config.name)
+        // Map families to our default cache definitions names
+        let name = match package_type {
+            "node" => "node_modules",
+            "ruby" => "gems",
+            "python" => "pip",
+            "go" => "go_modules",
+            s => s,
+        };
+        Ok(name.to_string())
     }
 }
 
@@ -193,7 +242,9 @@ mod tests {
             "test".to_string(),
             Job {
                 image: "cimg/node:18".to_string(),
-                packages: Some(vec!["node".to_string()]),
+                packages: Some(vec![crate::models::job::PackageSpec::Simple(
+                    "node".to_string(),
+                )]),
                 steps: None,
                 architectures: None,
                 resource_class: None,
@@ -204,6 +255,7 @@ mod tests {
                 restore_cache: None,
                 services: None,
                 checkout: None,
+                job_type: None,
             },
         );
 
@@ -211,7 +263,9 @@ mod tests {
             "lint".to_string(),
             Job {
                 image: "cimg/node:18".to_string(),
-                packages: Some(vec!["node".to_string()]),
+                packages: Some(vec![crate::models::job::PackageSpec::Simple(
+                    "node".to_string(),
+                )]),
                 steps: None,
                 architectures: None,
                 resource_class: None,
@@ -222,6 +276,7 @@ mod tests {
                 restore_cache: None,
                 services: None,
                 checkout: None,
+                job_type: None,
             },
         );
 
@@ -229,7 +284,9 @@ mod tests {
             "build".to_string(),
             Job {
                 image: "cimg/node:18".to_string(),
-                packages: Some(vec!["node".to_string()]),
+                packages: Some(vec![crate::models::job::PackageSpec::Simple(
+                    "node".to_string(),
+                )]),
                 steps: None,
                 architectures: None,
                 resource_class: None,
@@ -240,6 +297,7 @@ mod tests {
                 restore_cache: None,
                 services: None,
                 checkout: None,
+                job_type: None,
             },
         );
 
@@ -315,7 +373,9 @@ mod tests {
             "test".to_string(),
             Job {
                 image: "cimg/node:18".to_string(),
-                packages: Some(vec!["node".to_string()]),
+                packages: Some(vec![crate::models::job::PackageSpec::Simple(
+                    "node".to_string(),
+                )]),
                 steps: None,
                 architectures: None,
                 resource_class: None,
@@ -326,6 +386,7 @@ mod tests {
                 restore_cache: None,
                 services: None,
                 checkout: None,
+                job_type: None,
             },
         )]);
 

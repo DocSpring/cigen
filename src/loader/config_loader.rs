@@ -44,8 +44,13 @@ impl<'a> ConfigLoader<'a> {
         let main_config: JsonValue = serde_yaml::from_str(&content)
             .with_context(|| format!("Failed to parse {}", config_path.display()))?;
 
-        // Load split configs from .cigen/config/
-        let config_dir = Path::new(".cigen/config");
+        // Load split configs; support running from project root or inside .cigen
+        let cwd = std::env::current_dir().unwrap();
+        let config_dir = if cwd.file_name() == Some(std::ffi::OsStr::new(".cigen")) {
+            Path::new("config")
+        } else {
+            Path::new(".cigen/config")
+        };
         let mut split_configs = Vec::new();
 
         if config_dir.exists() {
@@ -93,8 +98,13 @@ impl<'a> ConfigLoader<'a> {
         let processed = self.process_file_content(&config_path, &content)?;
         let main_config: JsonValue = serde_yaml::from_str(&processed)?;
 
-        // Load split configs with templating from .cigen/config/
-        let config_dir = Path::new(".cigen/config");
+        // Load split configs with templating; support running from project root or inside .cigen
+        let cwd = std::env::current_dir().unwrap();
+        let config_dir = if cwd.file_name() == Some(std::ffi::OsStr::new(".cigen")) {
+            Path::new("config")
+        } else {
+            Path::new(".cigen/config")
+        };
         let mut split_configs = Vec::new();
 
         if config_dir.exists() {

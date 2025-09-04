@@ -60,7 +60,7 @@ steps:
     // shallow_checkout command - vendored from git-shallow-clone-orb (MIT license)
     let shallow_checkout = serde_yaml::from_str(include_str!("templates/shallow_checkout.yml"))
         .expect("Failed to parse shallow_checkout template");
-    commands.insert("shallow_checkout".to_string(), shallow_checkout);
+    commands.insert("cigen_shallow_checkout".to_string(), shallow_checkout);
 
     // Add more template commands here in the future
     // For example:
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn test_template_commands_loaded() {
         assert!(is_template_command("continue_circleci_pipeline"));
-        assert!(is_template_command("shallow_checkout"));
+        assert!(is_template_command("cigen_shallow_checkout"));
         assert!(!is_template_command("unknown_command"));
     }
 
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn test_shallow_checkout_command() {
-        let cmd = get_template_command("shallow_checkout");
+        let cmd = get_template_command("cigen_shallow_checkout");
         assert!(cmd.is_some());
 
         let cmd_value = cmd.unwrap();

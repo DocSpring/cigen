@@ -97,6 +97,10 @@ impl CircleCIGenerator {
 
             // Process all jobs in the workflow with architecture variants
             for (job_name, job_def) in jobs {
+                // Skip approval jobs (they are workflow-level only)
+                if job_def.job_type.as_deref() == Some("approval") {
+                    continue;
+                }
                 let architectures = job_def
                     .architectures
                     .clone()
@@ -186,6 +190,10 @@ impl CircleCIGenerator {
 
         // Convert jobs with architecture variants
         for (job_name, job_def) in jobs {
+            // Skip approval jobs (they are workflow-level only)
+            if job_def.job_type.as_deref() == Some("approval") {
+                continue;
+            }
             let architectures = job_def
                 .architectures
                 .clone()
@@ -256,6 +264,24 @@ impl CircleCIGenerator {
         let mut workflow_jobs = Vec::new();
 
         for (job_name, job_def) in jobs {
+            // Approval jobs are added only at workflow level (no separate job definition)
+            if job_def.job_type.as_deref() == Some("approval") {
+                let details = CircleCIWorkflowJobDetails {
+                    requires: job_def.requires.as_ref().map(|r| r.to_vec()),
+                    context: None,
+                    filters: None,
+                    matrix: None,
+                    name: None,
+                    job_type: Some("approval".to_string()),
+                    pre_steps: None,
+                    post_steps: None,
+                };
+
+                let mut job_map = HashMap::new();
+                job_map.insert(job_name.clone(), details);
+                workflow_jobs.push(CircleCIWorkflowJob::Detailed { job: job_map });
+                continue;
+            }
             // Generate architecture variants if architectures are specified
             let architectures = job_def
                 .architectures
@@ -355,8 +381,10 @@ impl CircleCIGenerator {
 
         circleci_job.docker = Some(docker_images);
 
-        // Add checkout step based on configuration hierarchy
-        if let Some(checkout_step) = self.resolve_checkout_step(config, None, job)? {
+        // Add checkout step based on configuration hierarchy (skip for approval jobs)
+        if (job.steps.is_none() || !Self::is_approval_job(job))
+            && let Some(checkout_step) = self.resolve_checkout_step(config, None, job)?
+        {
             circleci_job.steps.push(CircleCIStep::new(checkout_step));
         }
 
@@ -607,6 +635,20 @@ impl CircleCIGenerator {
         }
 
         Ok(circleci_job)
+    }
+
+    fn is_approval_job(job: &Job) -> bool {
+        // Consider any job with a single step mapping containing type: approval as an approval job
+        if let Some(steps) = &job.steps
+            && steps.len() == 1
+            && let serde_yaml::Value::Mapping(map) = &steps[0].0
+            && map.contains_key(serde_yaml::Value::String("type".to_string()))
+            && let Some(val) = map.get(serde_yaml::Value::String("type".to_string()))
+            && val.as_str() == Some("approval")
+        {
+            return true;
+        }
+        false
     }
 
     fn build_docker_image_with_architecture(
@@ -1291,13 +1333,13 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
             if shallow_checkout.is_empty() {
                 // Simple command with no parameters
                 Ok(Some(serde_yaml::Value::String(
-                    "shallow_checkout".to_string(),
+                    "cigen_shallow_checkout".to_string(),
                 )))
             } else {
                 // Command with parameters
                 let mut shallow_step = serde_yaml::Mapping::new();
                 shallow_step.insert(
-                    serde_yaml::Value::String("shallow_checkout".to_string()),
+                    serde_yaml::Value::String("cigen_shallow_checkout".to_string()),
                     serde_yaml::Value::Mapping(shallow_checkout),
                 );
                 Ok(Some(serde_yaml::Value::Mapping(shallow_step)))
