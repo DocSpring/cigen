@@ -52,6 +52,7 @@ export default defineConfig({
           label: 'Configuration',
           items: [
             { label: 'Overview', slug: 'configuration/overview' },
+            { label: 'Checkout', slug: 'configuration/checkout' },
             { label: 'Cache System', slug: 'configuration/cache' },
             { label: 'Package Management', slug: 'configuration/packages' },
           ],

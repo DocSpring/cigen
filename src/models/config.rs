@@ -73,7 +73,7 @@ pub struct Config {
     pub workflows: Option<HashMap<String, WorkflowConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub checkout: Option<CheckoutConfig>,
+    pub checkout: Option<CheckoutSetting>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -313,7 +313,7 @@ pub struct WorkflowConfig {
     pub jobs: Option<HashMap<String, super::job::Job>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub checkout: Option<CheckoutConfig>,
+    pub checkout: Option<CheckoutSetting>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -335,6 +335,15 @@ pub struct CheckoutConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum CheckoutSetting {
+    /// Boolean form: `false` disables checkout; `true` uses defaults
+    Bool(bool),
+    /// Full configuration
+    Config(CheckoutConfig),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

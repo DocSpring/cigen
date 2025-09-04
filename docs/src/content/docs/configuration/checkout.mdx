@@ -1,0 +1,102 @@
+---
+title: Checkout
+description: Advanced, configurable git checkout with shallow clone by default
+---
+
+import { Code, Aside, Steps, CardGrid, Card } from '@astrojs/starlight/components';
+
+Cigen automatically inserts a checkout step at the start of every job. By default this is a fast, shallow checkout implemented by a built-in `shallow_checkout` command.
+
+## Configuration
+
+Checkout can be configured at multiple levels, with this precedence:
+
+- Job-level `checkout`
+- Workflow-level `checkout`
+- Global `checkout`
+- Defaults (shallow checkout)
+
+### Parameters
+
+- `shallow` (boolean, default: true): when false, use CircleCI’s standard `checkout` step
+- `clone_options` (string): options for the initial clone, e.g. `--depth 1 --verbose`
+- `fetch_options` (string): options for `git fetch`, e.g. `--depth 10`
+- `tag_fetch_options` (string): options for fetching tags (default: `--tags`)
+- `keyscan` (map): add SSH host keys (`github`, `gitlab`, `bitbucket` ⇒ boolean)
+- `path` (string): checkout directory
+
+### Disable Checkout
+
+Set `checkout: false` at the global, workflow, or job level to skip inserting any checkout step for those scopes.
+
+<Code code={`jobs:
+  lint:
+    image: cimg/node:20.11
+    checkout: false  # do not checkout repo for this job
+    steps:
+      - run: npm run lint`} lang="yaml" title="Disable checkout for a job" />
+
+### Global Example
+
+<Code code={`checkout:
+    shallow: true
+    clone_options: "--depth 1"
+    fetch_options: "--depth 10"
+    tag_fetch_options: "--tags"
+    keyscan:
+      github: true
+      gitlab: false
+      bitbucket: false
+    path: "."`} lang="yaml" title="Global checkout configuration" />
+
+### Job Override Example
+
+<Code code={`jobs:
+  build:
+    image: cimg/node:20.11
+    checkout:
+      shallow: true
+      fetch_options: "--depth 50 --no-tags"
+    steps:
+      - run: npm run build`} lang="yaml" title="Job-level checkout override" />
+
+<Aside type="note">
+  Do not add `checkout` or `shallow_checkout` in your job steps — cigen inserts the checkout step automatically.
+  Set `shallow: false` to emit CircleCI's standard `checkout` step (optionally with `path`).
+</Aside>
+
+## Generated Output
+
+<Code code={`steps:
+  - shallow_checkout
+  - run:
+      name: Build application
+      command: npm run build`} lang="yaml" title="Shallow checkout (default)" />
+
+<Code code={`steps:
+  - shallow_checkout:
+      fetch_options: --depth 50 --no-tags
+      keyscan_github: true
+      path: .`} lang="yaml" title="Parameterized shallow checkout" />
+
+<Code code={`steps:
+  - checkout
+  - run:
+      name: Build application
+      command: npm run build`} lang="yaml" title="Standard checkout (shallow: false)" />
+
+## Best Practices
+
+- Prefer shallow checkout for most jobs to reduce time and IO.
+- Increase `fetch_options` depth in jobs that need more history (e.g., changelog tooling).
+- Use `tag_fetch_options` when building from tags; disable tags (`--no-tags`) to reduce noise if unused.
+- Enable `keyscan` only for hosts you actually use (GitHub/GitLab/Bitbucket).
+- Use `path` when checking out into a subdirectory.
+
+## Migration
+
+If your configs include explicit `checkout` steps in job definitions:
+
+- Remove manual `checkout` steps; cigen now inserts checkout automatically.
+- If you required full history, set `checkout.shallow: false` at the appropriate scope.
+- If you used custom clone or fetch options, move them under the `checkout` section.

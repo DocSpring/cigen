@@ -111,7 +111,6 @@ cache:
     image: cimg/ruby:3.3
     cache: gems  # Uses all defaults from gems cache definition
     steps:
-      - checkout
       - run: bundle install
       - run: bundle exec rspec`}
   lang="yaml"
@@ -129,7 +128,6 @@ This injects a `restore_cache` step before, and a `save_cache` step after, when 
     cache: [gems, node_modules]  # Multiple cache types
     services: [postgres]
     steps:
-      - checkout
       - run: bundle install
       - run: npm install
       - run: bundle exec rspec`}
@@ -148,7 +146,6 @@ This injects a `restore_cache` step before, and a `save_cache` step after, when 
         paths: [vendor/rubygems, .bundle]  # Override paths
         # versions and checksum_sources from definition
     steps:
-      - checkout
       - run: bundle install --path vendor/rubygems`}
   lang="yaml"
   title="Customizing cache paths"

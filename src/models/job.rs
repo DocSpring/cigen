@@ -60,7 +60,7 @@ pub struct Job {
     pub steps: Option<Vec<Step>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub checkout: Option<super::config::CheckoutConfig>,
+    pub checkout: Option<super::config::CheckoutSetting>,
 }
 
 /// Intermediate parsing structure for cache definitions that handles multiple YAML formats

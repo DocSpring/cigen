@@ -13,6 +13,7 @@ The tool can generate both static CircleCI configs and setup/dynamic configs. Th
 - Package installation step generation and job deduplication
 - Basic automatic cache step injection when `job.cache` is declared
 - Architecture variants per job (e.g., `build_amd64`, `build_arm64`)
+- Advanced git checkout: shallow clone by default with configurable clone/fetch options, host key scanning, and path overrides
 - Descriptive error messages and schema/data validation ([miette], JSON Schema)
 
 ## Not Yet Implemented / In Progress

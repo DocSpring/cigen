@@ -54,10 +54,10 @@ POSTGRES_PASSWORD: test
 # Job definitions
 
 jobs:
-test:
-image: cimg/ruby:3.3
-services: [postgres]
-steps: - checkout - run: bundle exec rspec
+  test:
+    image: cimg/ruby:3.3
+    services: [postgres]
+    steps: [shallow_checkout, { run: bundle exec rspec }]
 
 # Workflow definitions
 
@@ -98,6 +98,10 @@ Cigen supports both single-file and multi-file configurations:
 ```
 
 ## Key Differences from Native CI Formats
+
+### Checkout Defaults
+
+By default, cigen performs a fast, shallow checkout via a built-in `shallow_checkout` command. You can override behavior globally or per job using the `checkout` section (see CircleCI provider docs for parameters). Set `shallow: false` to use the standard `checkout` step.
 
 ### Cleaner Step Syntax
 

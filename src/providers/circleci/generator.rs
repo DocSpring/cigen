@@ -356,8 +356,9 @@ impl CircleCIGenerator {
         circleci_job.docker = Some(docker_images);
 
         // Add checkout step based on configuration hierarchy
-        let checkout_step = self.resolve_checkout_step(config, None, job)?;
-        circleci_job.steps.push(CircleCIStep::new(checkout_step));
+        if let Some(checkout_step) = self.resolve_checkout_step(config, None, job)? {
+            circleci_job.steps.push(CircleCIStep::new(checkout_step));
+        }
 
         // Add skip logic if job has source_files defined (job-status cache)
         let has_skip_logic = if let Some(source_files) = &job.source_files {
@@ -700,6 +701,17 @@ impl CircleCIGenerator {
     }
 
     fn validate_config(&self, config_file: &Path) -> Result<()> {
+        // Allow skipping CLI validation via env var (useful in offline/test environments)
+        if std::env::var("CIGEN_SKIP_CIRCLECI_CLI")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            println!(
+                "Skipping CircleCI CLI validation due to CIGEN_SKIP_CIRCLECI_CLI environment variable"
+            );
+            return Ok(());
+        }
+
         // Check if CircleCI CLI is installed
         let cli_check = Command::new("circleci").arg("version").output();
 
@@ -1189,24 +1201,42 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
         config: &Config,
         workflow_config: Option<&crate::models::config::WorkflowConfig>,
         job: &Job,
-    ) -> Result<serde_yaml::Value> {
-        use crate::models::config::CheckoutConfig;
+    ) -> Result<Option<serde_yaml::Value>> {
+        use crate::models::config::{CheckoutConfig, CheckoutSetting};
 
         // Resolve checkout config with hierarchy: job > workflow > global > default
-        let checkout_config = job
+        let setting = job
             .checkout
             .as_ref()
             .or_else(|| workflow_config?.checkout.as_ref())
             .or(config.checkout.as_ref())
-            .cloned()
-            .unwrap_or(CheckoutConfig {
-                shallow: true, // Default to shallow checkout
+            .cloned();
+
+        // Interpret setting with defaults
+        let checkout_config = match setting {
+            Some(CheckoutSetting::Bool(b)) => {
+                if !b {
+                    return Ok(None);
+                }
+                CheckoutConfig {
+                    shallow: true,
+                    clone_options: None,
+                    fetch_options: None,
+                    tag_fetch_options: None,
+                    keyscan: None,
+                    path: None,
+                }
+            }
+            Some(CheckoutSetting::Config(cfg)) => cfg,
+            None => CheckoutConfig {
+                shallow: true,
                 clone_options: None,
                 fetch_options: None,
                 tag_fetch_options: None,
                 keyscan: None,
                 path: None,
-            });
+            },
+        };
 
         if checkout_config.shallow {
             // Use our vendored shallow checkout command
@@ -1260,7 +1290,9 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
 
             if shallow_checkout.is_empty() {
                 // Simple command with no parameters
-                Ok(serde_yaml::Value::String("shallow_checkout".to_string()))
+                Ok(Some(serde_yaml::Value::String(
+                    "shallow_checkout".to_string(),
+                )))
             } else {
                 // Command with parameters
                 let mut shallow_step = serde_yaml::Mapping::new();
@@ -1268,7 +1300,7 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
                     serde_yaml::Value::String("shallow_checkout".to_string()),
                     serde_yaml::Value::Mapping(shallow_checkout),
                 );
-                Ok(serde_yaml::Value::Mapping(shallow_step))
+                Ok(Some(serde_yaml::Value::Mapping(shallow_step)))
             }
         } else {
             // Use standard CircleCI checkout
@@ -1294,7 +1326,7 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
                 );
             }
 
-            Ok(serde_yaml::Value::Mapping(checkout_step))
+            Ok(Some(serde_yaml::Value::Mapping(checkout_step)))
         }
     }
 }

@@ -24,6 +24,78 @@ output_filename: config.yml`} lang="yaml" title="Basic CircleCI configuration" /
 - `setup: true` or `dynamic: true` in config enables CircleCI setup workflows.
 - `docker_images` mapping can resolve architecture-specific image variants.
 
+### Advanced Git Checkout
+
+By default, cigen performs a fast, shallow git checkout using a vendored `shallow_checkout` command. Checkout behavior can be configured globally, per workflow, or per job via a `checkout` section.
+
+Config precedence: job > workflow > global > defaults.
+
+<Aside type="note">
+  Cigen automatically inserts the checkout step at the start of every job. Do not add your own
+  `checkout`/`shallow_checkout` step in job definitions.
+</Aside>
+
+Parameters:
+
+- `shallow` (boolean, default: true): when false, use CircleCI’s standard `checkout` step
+- `clone_options` (string): options for initial clone (e.g., `--depth 1 --verbose`)
+- `fetch_options` (string): options for `git fetch` (e.g., `--depth 10`)
+- `tag_fetch_options` (string): options for fetching tags (default `--tags`)
+- `keyscan` (map): booleans to add SSH host keys, keys: `github`, `gitlab`, `bitbucket`
+- `path` (string): checkout directory
+
+Disable checkout entirely by setting `checkout: false` at global/workflow/job scope.
+
+Global example:
+
+```yaml
+checkout:
+    shallow: true
+    clone_options: "--depth 1"
+    fetch_options: "--depth 10"
+    tag_fetch_options: "--tags"
+    keyscan:
+      github: true
+      gitlab: false
+      bitbucket: false
+    path: "."
+```
+
+Job override example:
+
+```yaml
+jobs:
+  build:
+    image: cimg/node:20.11
+    checkout:
+      shallow: true
+      fetch_options: "--depth 50 --no-tags"
+    steps:
+      - run: npm run build
+```
+
+Generated output (simplified):
+
+```yaml
+steps:
+  - shallow_checkout
+  - run:
+      name: Build application
+      command: npm run build
+```
+
+If you specify any parameters, it emits the parameterized form:
+
+```yaml
+steps:
+  - shallow_checkout:
+      fetch_options: --depth 50 --no-tags
+      keyscan_github: true
+      path: .
+```
+
+Set `shallow: false` to use the standard CircleCI `checkout` step, optionally with a `path` parameter.
+
 ### Multi-Architecture Jobs
 
 <Code code={`jobs:
@@ -99,6 +171,7 @@ Maps directly to CircleCI contexts for environment-specific secrets and variable
 Currently available:
 
 - `continue_circleci_pipeline` — continue a setup workflow using the CircleCI continuation API
+- `shallow_checkout` — fast shallow git checkout with configurable options
 
 ## Environment Variables
 
@@ -139,6 +212,12 @@ setup: true`} lang="yaml" title="CircleCI best practices" />
 ### Resource Class Mapping
 
 Currently, resource classes are passed through as provided.
+
+### Checkout Migration
+
+- Remove manual `checkout` steps from job definitions; cigen inserts checkout automatically.
+- If a job requires full history, set `checkout.shallow: false` at the job/workflow/global level.
+- Move any custom clone/fetch/tag options under the `checkout` section rather than custom run steps.
 
 ### Cache Configuration
 
@@ -205,6 +284,6 @@ test:
 image: cimg/ruby:3.3
 services: [postgres]
 cache: gems
-steps: - checkout - run: bundle install`} lang="yaml" title="CircleCI migration example" />
+steps: - run: bundle install`} lang="yaml" title="CircleCI migration example" />
 
 The cigen version is cleaner, more maintainable, and includes automatic optimizations like intelligent cache key generation and service container management.

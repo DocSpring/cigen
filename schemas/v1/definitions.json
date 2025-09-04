@@ -154,6 +154,32 @@
             }
           }
         },
+        "checkout": {
+          "description": "Configure initial git checkout behavior (set to false to skip)",
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "properties": {
+                "shallow": { "type": "boolean", "default": true },
+                "clone_options": { "type": "string" },
+                "fetch_options": { "type": "string" },
+                "tag_fetch_options": { "type": "string" },
+                "keyscan": {
+                  "type": "object",
+                  "properties": {
+                    "github": { "type": "boolean" },
+                    "gitlab": { "type": "boolean" },
+                    "bitbucket": { "type": "boolean" }
+                  },
+                  "additionalProperties": false
+                },
+                "path": { "type": "string" }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
         "services": {
           "type": "object",
           "description": "Service container definitions",
