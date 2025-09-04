@@ -261,6 +261,38 @@ Based on detection, cigen runs the appropriate command:
 | `python` | Pipfile.lock | `pipenv install --deploy` |
 | `go` | go.mod | `go mod download` |
 
+## How Default Configuration Works
+
+Cigen includes production-ready package manager definitions that are compiled into the binary. These defaults are organized as separate YAML files for maintainability:
+
+```
+src/packages/config_templates/
+├── package_managers/
+│   ├── node.yml
+│   ├── ruby.yml
+│   ├── python.yml
+│   ├── go.yml
+│   ├── rust.yml
+│   ├── java.yml
+│   └── dotnet.yml
+└── version_sources/
+    ├── node.yml
+    ├── ruby.yml
+    ├── bundler.yml
+    ├── python.yml
+    ├── go.yml
+    ├── rustc.yml
+    ├── cargo.yml
+    ├── java.yml
+    └── dotnet.yml
+```
+
+When you define `package_managers` or `version_sources` in your `.cigen/cigen.yml`, your configuration intelligently merges with these defaults:
+
+- **Override**: Completely replace a built-in definition
+- **Extend**: Add new package managers alongside built-ins
+- **Inherit**: Use built-in defaults when no custom config is provided
+
 ## Customizing Package Managers
 
 ### Overriding Built-in Definitions
@@ -287,6 +319,30 @@ package_managers:
     cache_paths: [node_modules]`}
   lang="yaml"
   title="Custom package manager commands"
+/>
+
+### Customizing Version Sources
+
+You can also customize how versions are detected for cache keys:
+
+<Code
+  code={`# .cigen/cigen.yml
+version_sources:
+  node:
+    - file: .nvmrc
+    - file: .node-version
+    - file: package.json
+      pattern: '"engines":\\s*{\\s*"node":\\s*"([^"]+)"'
+    - command: node --version
+      parse_version: true
+
+  # Add custom version source
+  custom_tool:
+    - file: .custom-version
+    - command: custom-tool --version
+      parse_version: false  # Don't parse, use raw output`}
+  lang="yaml"
+  title="Custom version sources"
 />
 
 ### Adding New Package Managers
@@ -431,13 +487,27 @@ jobs:
 If the wrong package manager is used:
 
 1. **Ensure lock file exists** and is committed
-2. **Check working directory** is correct
-3. **Explicitly specify** if needed:
+2. **Check detection order** in the built-in definitions - earlier rules take precedence
+3. **Override detection rules** if needed:
    ```yaml
-   packages:
+   package_managers:
      node:
-       manager: pnpm  # Force specific manager
+       detect:
+         - name: pnpm  # Force pnpm to be checked first
+           lockfile: pnpm-lock.yaml
+           command: pnpm install --frozen-lockfile
+         - name: npm
+           lockfile: package-lock.json
+           command: npm ci
    ```
+
+### Custom Package Manager Not Working
+
+If your custom package manager configuration isn't being used:
+
+1. **Check YAML syntax** - invalid YAML will be ignored
+2. **Verify field names** match the schema (`detect`, `checksum_sources`, `cache_paths`, etc.)
+3. **Test with `cigen validate`** to catch configuration errors early
 
 ### Deduplication Not Happening
 
