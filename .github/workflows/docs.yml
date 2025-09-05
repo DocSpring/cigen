@@ -116,10 +116,20 @@ jobs:
               echo "Docs build script not found" >&2
               exit 1
             fi
+            if [ ! -d dist ]; then
+              echo "Docs build output not found at dist/" >&2
+              exit 1
+            fi
           else
-            echo "No docs/package.json found; skipping docs build"
-            mkdir -p build
-            echo '<html><body><h1>No docs found</h1></body></html>' > build/index.html
+            echo "docs/package.json not found; docs site missing" >&2
+            exit 1
+          fi
+
+      - name: Verify docs output exists
+        run: |
+          if [ ! -d docs/dist ]; then
+            echo "Docs build output not found at docs/dist" >&2
+            exit 1
           fi
 
       - name: Configure Pages
@@ -128,7 +138,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs/build
+          path: docs/dist
 
   deploy:
     name: Deploy Docs
