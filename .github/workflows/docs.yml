@@ -18,73 +18,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  test_and_lint:
-    name: CI Gate (tests + lint)
+  ci_gate:
+    name: CI Gate (wait for CI)
     runs-on: ubuntu-latest
-    container:
-      image: rust:1.88.0
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Node.js
-        uses: actions/setup-node@v4
+      - name: Wait for CI checks to complete
+        uses: actions/github-script@v7
         with:
-          node-version: "20"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - name: Install rustfmt and clippy
-        run: |
-          rustup component add rustfmt clippy
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        run: |
-          echo "STORE_PATH=$(pnpm store path)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache pnpm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-
-
-      - name: Cache cargo dependencies and build artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Install pnpm dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Add node_modules/.bin to PATH
-        run: echo "$PWD/node_modules/.bin" >> "$GITHUB_PATH"
-
-      - name: Download cargo dependencies
-        run: cargo fetch --locked
-
-      - name: Check formatting
-        run: cargo fmt -- --check
-
-      - name: Run linting
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run tests
-        run: cargo test --all
+          script: |
+            const wait = require('./.github/wait-for-checks.js');
+            await wait({ github, context, core, checks: ["Test"] });
 
   build:
     name: Build Docs
     runs-on: ubuntu-latest
-    needs: test_and_lint
+    needs: ci_gate
     steps:
       - uses: actions/checkout@v4
 
