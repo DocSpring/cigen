@@ -58,10 +58,10 @@ impl Validator {
     }
 
     pub fn validate_all(&self, base_path: &Path) -> Result<()> {
-        println!(
-            "DEBUG: validate_all called with base_path: {}",
-            base_path.display()
-        );
+        // println!(
+        //     "DEBUG: validate_all called with base_path: {}",
+        //     base_path.display()
+        // );
 
         // First check if the base path exists
         if !base_path.exists() {

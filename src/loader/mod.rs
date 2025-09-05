@@ -69,13 +69,13 @@ impl ConfigLoader {
         let is_in_cigen_dir = current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"));
 
         let config_dir = if is_in_cigen_dir {
-            println!("DEBUG: Already in .cigen directory, using current directory as config_dir");
+            // println!("DEBUG: Already in .cigen directory, using current directory as config_dir");
             current_dir.clone()
         } else if current_dir.join(".cigen").exists() {
-            println!("DEBUG: Found .cigen subdirectory, using .cigen as config_dir");
+            // println!("DEBUG: Found .cigen subdirectory, using .cigen as config_dir");
             current_dir.join(".cigen")
         } else {
-            println!("DEBUG: No .cigen directory found, using current directory as config_dir");
+            // println!("DEBUG: No .cigen directory found, using current directory as config_dir");
             current_dir.clone()
         };
 

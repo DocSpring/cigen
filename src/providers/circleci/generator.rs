@@ -226,6 +226,11 @@ impl CircleCIGenerator {
             circleci_config.parameters = Some(self.convert_parameters(parameters)?);
         }
 
+        // Add orbs if specified (required for commands like slack/notify)
+        if let Some(orbs) = &config.orbs {
+            circleci_config.orbs = Some(orbs.clone());
+        }
+
         // Scan for template command usage and add them to commands section
         let used_template_commands = self.scan_for_template_commands(&circleci_config);
         let used_user_commands = self.scan_for_user_commands(&circleci_config, commands);
@@ -396,6 +401,158 @@ impl CircleCIGenerator {
                 source_files,
                 architecture,
             )?;
+
+            // Decide backend for job-status cache
+            let backend = config
+                .caches
+                .as_ref()
+                .and_then(|c| c.job_status.as_ref())
+                .map(|b| b.backend.as_str())
+                .unwrap_or("native");
+
+            match backend {
+                "redis" => {
+                    // Prepare key env
+                    let mut key_step = serde_yaml::Mapping::new();
+                    let mut key_run = serde_yaml::Mapping::new();
+                    key_run.insert(
+                        serde_yaml::Value::String("name".to_string()),
+                        serde_yaml::Value::String("Prepare job status key".to_string()),
+                    );
+                    key_run.insert(
+                        serde_yaml::Value::String("command".to_string()),
+                        serde_yaml::Value::String(
+                            "export JOB_STATUS_KEY=\"job_status:${CIRCLE_JOB}-${DOCKER_ARCH}-${JOB_HASH}\"".to_string(),
+                        ),
+                    );
+                    key_step.insert(
+                        serde_yaml::Value::String("run".to_string()),
+                        serde_yaml::Value::Mapping(key_run),
+                    );
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
+
+                    // Read redis url/ttl from config if provided
+                    let (redis_url, ttl) = if let Some(cfg) = config
+                        .caches
+                        .as_ref()
+                        .and_then(|c| c.job_status.as_ref())
+                        .and_then(|b| b.config.as_ref())
+                    {
+                        let url = cfg
+                            .get("url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("redis://127.0.0.1:6379");
+                        let ttl = cfg.get("ttl_seconds").and_then(|v| v.as_u64());
+                        (url.to_string(), ttl)
+                    } else {
+                        ("redis://127.0.0.1:6379".to_string(), None)
+                    };
+
+                    // Skip if key exists
+                    let mut check_step = serde_yaml::Mapping::new();
+                    let mut check_run = serde_yaml::Mapping::new();
+                    check_run.insert(
+                        serde_yaml::Value::String("name".to_string()),
+                        serde_yaml::Value::String("Check job status (redis)".to_string()),
+                    );
+                    let check_cmd = format!(
+                        "VAL=$(redis-cli -u {} GET \"$JOB_STATUS_KEY\" 2>/dev/null || true)\nif [ \"$VAL\" = \"done\" ]; then\n  echo 'Job already completed successfully for this file hash. Skipping...';\n  circleci step halt;\nfi",
+                        redis_url
+                    );
+                    check_run.insert(
+                        serde_yaml::Value::String("command".to_string()),
+                        serde_yaml::Value::String(check_cmd),
+                    );
+                    check_step.insert(
+                        serde_yaml::Value::String("run".to_string()),
+                        serde_yaml::Value::Mapping(check_run),
+                    );
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(check_step)));
+
+                    // After steps complete, record completion and optionally set TTL
+                    let mut record_step = serde_yaml::Mapping::new();
+                    let mut record_run = serde_yaml::Mapping::new();
+                    record_run.insert(
+                        serde_yaml::Value::String("name".to_string()),
+                        serde_yaml::Value::String("Record job completion (redis)".to_string()),
+                    );
+                    let set_cmd = if let Some(ttl_secs) = ttl {
+                        format!(
+                            "redis-cli -u {} SET \"$JOB_STATUS_KEY\" done >/dev/null 2>&1 || true\nredis-cli -u {} EXPIRE \"$JOB_STATUS_KEY\" {} >/dev/null 2>&1 || true",
+                            redis_url, redis_url, ttl_secs
+                        )
+                    } else {
+                        format!(
+                            "redis-cli -u {} SET \"$JOB_STATUS_KEY\" done >/dev/null 2>&1 || true",
+                            redis_url
+                        )
+                    };
+                    record_run.insert(
+                        serde_yaml::Value::String("command".to_string()),
+                        serde_yaml::Value::String(set_cmd),
+                    );
+                    record_step.insert(
+                        serde_yaml::Value::String("run".to_string()),
+                        serde_yaml::Value::Mapping(record_run),
+                    );
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(record_step)));
+                }
+                _ => {
+                    // Native CircleCI cache
+                    // 1) Write job-key file (CIRCLE_JOB + arch + hash)
+                    let mut key_step = serde_yaml::Mapping::new();
+                    let mut key_run = serde_yaml::Mapping::new();
+                    key_run.insert(
+                        serde_yaml::Value::String("name".to_string()),
+                        serde_yaml::Value::String("Prepare job status key".to_string()),
+                    );
+                    key_run.insert(
+                        serde_yaml::Value::String("command".to_string()),
+                        serde_yaml::Value::String(
+                            "mkdir -p /tmp/cigen_job_status && echo \"${CIRCLE_JOB}-$(echo $DOCKER_ARCH)-${JOB_HASH}\" > /tmp/cigen_job_status/job-key".to_string(),
+                        ),
+                    );
+                    key_step.insert(
+                        serde_yaml::Value::String("run".to_string()),
+                        serde_yaml::Value::Mapping(key_run),
+                    );
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
+
+                    // 2) Restore job status cache
+                    let mut restore_cfg = serde_yaml::Mapping::new();
+                    restore_cfg.insert(
+                        serde_yaml::Value::String("keys".to_string()),
+                        serde_yaml::Value::Sequence(vec![
+                            serde_yaml::Value::String(
+                                "job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}"
+                                    .to_string(),
+                            ),
+                            serde_yaml::Value::String("job_status-v1-".to_string()),
+                        ]),
+                    );
+                    let mut restore_step = serde_yaml::Mapping::new();
+                    restore_step.insert(
+                        serde_yaml::Value::String("restore_cache".to_string()),
+                        serde_yaml::Value::Mapping(restore_cfg),
+                    );
+                    circleci_job
+                        .steps
+                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(restore_step)));
+
+                    // 3) Check and early exit if restored
+                    let skip_check_step = self.build_skip_check_step(config, architecture)?;
+                    circleci_job.steps.push(CircleCIStep::new(skip_check_step));
+                }
+            }
+
             true
         } else {
             false
@@ -1163,20 +1320,17 @@ fi
     fn build_skip_check_step(
         &self,
         _config: &Config,
-        architecture: &str,
+        _architecture: &str,
     ) -> Result<serde_yaml::Value> {
-        let command = format!(
-            r#"
-if [ -f "/tmp/cigen_skip_cache/job_${{JOB_HASH}}_{}" ]; then
+        let command = r#"
+if [ -f "/tmp/cigen_job_status/done_${JOB_HASH}" ]; then
     echo "Job already completed successfully for this file hash. Skipping..."
     circleci step halt
 else
     echo "No previous successful run found. Proceeding with job..."
-    mkdir -p /tmp/cigen_skip_cache
+    mkdir -p /tmp/cigen_job_status
 fi
-            "#,
-            architecture
-        )
+        "#
         .trim()
         .to_string();
 
@@ -1202,15 +1356,12 @@ fi
     fn add_record_completion_step(
         &self,
         circleci_job: &mut CircleCIJob,
-        architecture: &str,
+        _architecture: &str,
     ) -> Result<()> {
-        let command = format!(
-            r#"
-echo "Recording successful completion for hash ${{JOB_HASH}}"
-echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_HASH}}_{}"
-            "#,
-            architecture
-        )
+        let command = r#"
+echo "Recording successful completion for hash ${JOB_HASH}"
+touch "/tmp/cigen_job_status/done_${JOB_HASH}"
+        "#
         .trim()
         .to_string();
 
@@ -1233,6 +1384,29 @@ echo "$(date): Job completed successfully" > "/tmp/cigen_skip_cache/job_${{JOB_H
         circleci_job
             .steps
             .push(CircleCIStep::new(serde_yaml::Value::Mapping(step)));
+
+        // Save job status cache
+        let mut save_cfg = serde_yaml::Mapping::new();
+        save_cfg.insert(
+            serde_yaml::Value::String("key".to_string()),
+            serde_yaml::Value::String(
+                "job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}".to_string(),
+            ),
+        );
+        save_cfg.insert(
+            serde_yaml::Value::String("paths".to_string()),
+            serde_yaml::Value::Sequence(vec![serde_yaml::Value::String(
+                "/tmp/cigen_job_status".to_string(),
+            )]),
+        );
+        let mut save_step = serde_yaml::Mapping::new();
+        save_step.insert(
+            serde_yaml::Value::String("save_cache".to_string()),
+            serde_yaml::Value::Mapping(save_cfg),
+        );
+        circleci_job
+            .steps
+            .push(CircleCIStep::new(serde_yaml::Value::Mapping(save_step)));
 
         Ok(())
     }
