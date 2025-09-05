@@ -39,10 +39,6 @@ impl Provider for CircleCIProvider {
         "circleci"
     }
 
-    fn default_output_path(&self) -> &'static str {
-        ".circleci"
-    }
-
     fn generate_workflow(
         &self,
         config: &Config,
@@ -64,5 +60,9 @@ impl Provider for CircleCIProvider {
     ) -> Result<()> {
         self.generator
             .generate_all(config, workflows, commands, output_path)
+    }
+
+    fn default_output_path(&self) -> &'static str {
+        ".circleci"
     }
 }

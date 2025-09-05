@@ -316,6 +316,29 @@ fn generate_from_jobs(
                 provider.name(),
                 output_path.display()
             );
+
+            // If dynamic mode is enabled but no explicit setup workflow exists, synthesize one
+            if loaded_config.config.dynamic.unwrap_or(false)
+                && !merged_workflow_configs.keys().any(|k| k == "setup")
+            {
+                println!("Generating synthesized setup workflow");
+                // Setup should go to provider default output path (config.yml) unless overridden
+                let setup_output = if let Some(setup_out) = &loaded_config.config.output_path {
+                    original_dir_path(Path::new(setup_out))
+                } else {
+                    original_dir_path(Path::new(provider.default_output_path()))
+                };
+                // Call provider-specific synthesized setup if available (only CircleCI for now)
+                // Provider-agnostic support: synthesize CircleCI setup when using CircleCI provider
+                if loaded_config.config.provider == "circleci" {
+                    cigen::providers::circleci::CircleCIProvider::new()
+                        .generator
+                        .generate_synthesized_setup(&loaded_config.config, &setup_output)
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to generate synthesized setup: {}", e)
+                        })?;
+                }
+            }
         }
     }
 

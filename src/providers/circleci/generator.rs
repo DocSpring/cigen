@@ -261,6 +261,152 @@ impl CircleCIGenerator {
         Ok(circleci_config)
     }
 
+    /// Synthesize a minimal setup workflow that generates continuation config and continues the pipeline
+    pub fn generate_synthesized_setup(
+        &self,
+        config: &Config,
+        output_path: &std::path::Path,
+    ) -> Result<()> {
+        use crate::providers::circleci::config as cc;
+        use serde_yaml::{Mapping, Value};
+
+        let mut circleci_config = cc::CircleCIConfig {
+            setup: Some(true),
+            ..Default::default()
+        };
+
+        // Include orbs if specified (continuation or others)
+        if let Some(orbs) = &config.orbs {
+            circleci_config.orbs = Some(orbs.clone());
+        }
+
+        // Build setup workflow with a single job
+        let workflow_name = "setup".to_string();
+        let mut workflow = cc::CircleCIWorkflow {
+            when: None,
+            unless: None,
+            jobs: Vec::new(),
+        };
+
+        let job_name = "generate_config".to_string();
+        workflow
+            .jobs
+            .push(cc::CircleCIWorkflowJob::Simple(job_name.clone()));
+        circleci_config.workflows.insert(workflow_name, workflow);
+
+        // Construct the job
+        let mut job = cc::CircleCIJob {
+            executor: None,
+            docker: Some(vec![cc::CircleCIDockerImage {
+                image: "cimg/ruby:3.3.5".to_string(),
+                auth: None,
+                name: None,
+                entrypoint: None,
+                command: None,
+                user: None,
+                environment: None,
+            }]),
+            machine: None,
+            resource_class: Some("small".to_string()),
+            working_directory: None,
+            parallelism: None,
+            environment: None,
+            parameters: None,
+            steps: Vec::new(),
+        };
+
+        // Step: checkout
+        job.steps
+            .push(cc::CircleCIStep::new(Value::String("checkout".to_string())));
+
+        // Optional hook: set_package_versions_hash if present in user commands
+        if let Some(cmds) = &config.parameters {
+            let _ = cmds; // retain for future param-driven hooks
+        }
+        // We can't access user commands here; add a safe reference (CircleCI will error if missing)
+        // To avoid validation errors, only add if config.vars contains a marker (future). Skipping for now.
+
+        // Step: run cigen to generate continuation config (.circleci/main.yml)
+        let mut run_gen = Mapping::new();
+        let mut run_gen_details = Mapping::new();
+        run_gen_details.insert(
+            Value::String("name".to_string()),
+            Value::String("Generate continuation config".to_string()),
+        );
+        run_gen_details.insert(
+            Value::String("command".to_string()),
+            Value::String("cigen generate".to_string()),
+        );
+        run_gen.insert(
+            Value::String("run".to_string()),
+            Value::Mapping(run_gen_details),
+        );
+        job.steps
+            .push(cc::CircleCIStep::new(Value::Mapping(run_gen)));
+
+        // Step: continue pipeline using jq --rawfile
+        let mut run_cont = Mapping::new();
+        let mut run_cont_details = Mapping::new();
+        run_cont_details.insert(
+            Value::String("name".to_string()),
+            Value::String("Continue Pipeline".to_string()),
+        );
+        let cont_cmd = r#"
+if [ -z "${CIRCLE_CONTINUATION_KEY}" ]; then
+  echo "CIRCLE_CONTINUATION_KEY is required. Make sure setup workflows are enabled."
+  exit 1
+fi
+
+CONFIG_PATH=".circleci/main.yml"
+if [ ! -f "$CONFIG_PATH" ]; then
+  echo "Continuation config not found at $CONFIG_PATH" >&2
+  exit 1
+fi
+
+jq -n \
+  --arg continuation "$CIRCLE_CONTINUATION_KEY" \
+  --rawfile config "$CONFIG_PATH" \
+  '{"continuation-key": $continuation, "configuration": $config}' \
+  > /tmp/continuation.json
+
+cat /tmp/continuation.json
+
+[[ $(curl \
+  -o /dev/stderr \
+  -w '%{http_code}' \
+  -XPOST \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  --data "@/tmp/continuation.json" \
+  "https://circleci.com/api/v2/pipeline/continue") -eq 200 ]]
+"#
+        .trim()
+        .to_string();
+        run_cont_details.insert(
+            Value::String("command".to_string()),
+            Value::String(cont_cmd),
+        );
+        run_cont.insert(
+            Value::String("run".to_string()),
+            Value::Mapping(run_cont_details),
+        );
+        job.steps
+            .push(cc::CircleCIStep::new(Value::Mapping(run_cont)));
+
+        circleci_config.jobs.insert(job_name, job);
+
+        // Write YAML
+        let yaml_content = serde_yaml::to_string(&circleci_config).into_diagnostic()?;
+        let output_file = output_path.join("config.yml");
+        std::fs::create_dir_all(output_path).into_diagnostic()?;
+        std::fs::write(&output_file, yaml_content).into_diagnostic()?;
+
+        // Validate setup config
+        self.validate_config(&output_file)?;
+
+        Ok(())
+    }
+
     fn build_workflow(
         &self,
         _workflow_name: &str,
