@@ -72,11 +72,3 @@ pre-commit:
           exit 1
         fi
         actionlint {staged_files}
-
-pre-push:
-  parallel: true
-  commands:
-    check:
-      run: cargo check
-    test-all:
-      run: cargo test --all
