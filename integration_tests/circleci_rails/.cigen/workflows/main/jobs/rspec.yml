@@ -1,0 +1,7 @@
+image: cimg/ruby:3.3.5
+resource_class: medium
+services: ["postgres", "redis", "minio"]
+steps:
+  - run:
+      name: RSpec placeholder
+      command: echo "rspec"

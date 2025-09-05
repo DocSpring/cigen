@@ -1,0 +1,187 @@
+---
+source: tests/snapshot_circleci_rails.rs
+expression: normalized
+---
+commands:
+  cigen_shallow_checkout:
+    description: |
+      Fast shallow git checkout using configurable clone depth and options. 99% faster than full checkout for most CI jobs that don't need git history.
+    parameters:
+      clone_options:
+        default: --depth 1
+        description: |
+          git clone options such as '--depth 1 --verbose' or '--depth 1 --shallow-since "5 days ago"'
+        type: string
+      fetch_options:
+        default: --depth 10
+        description: |
+          git fetch options such as '--depth 1 --verbose' or '--depth 1 --shallow-since "5 days ago"' Note: '--force' is already set by default. For tags, use tag_fetch_options instead.
+        type: string
+      keyscan_bitbucket:
+        default: false
+        description: |
+          Enable SSH keyscan for bitbucket.org
+        type: boolean
+      keyscan_github:
+        default: false
+        description: |
+          Enable SSH keyscan for github.com
+        type: boolean
+      keyscan_gitlab:
+        default: false
+        description: |
+          Enable SSH keyscan for gitlab.com
+        type: boolean
+      path:
+        default: .
+        description: |
+          Checkout directory (default: job working_directory)
+        type: string
+      tag_fetch_options:
+        default: --tags
+        description: |
+          Git fetch options specifically for tag operations. Use fetch_options for PR and other operations. To exclude tags, use '--no-tags' in both this option and tag_fetch_options.
+        type: string
+    steps:
+    - run:
+        command: |
+          # Shallow checkout implementation
+          # Based on git-shallow-clone-orb (MIT license)
+
+          set -e
+
+          # Set parameters
+          CLONE_OPTIONS="<< parameters.clone_options >>"
+          FETCH_OPTIONS="<< parameters.fetch_options >>"
+          TAG_FETCH_OPTIONS="<< parameters.tag_fetch_options >>"
+          KEYSCAN_GITHUB="<< parameters.keyscan_github >>"
+          KEYSCAN_GITLAB="<< parameters.keyscan_gitlab >>"
+          KEYSCAN_BITBUCKET="<< parameters.keyscan_bitbucket >>"
+          CHECKOUT_PATH="<< parameters.path >>"
+
+          # Create SSH directory if not exists
+          if [ ! -d ~/.ssh ]; then
+              mkdir -p ~/.ssh
+              chmod 700 ~/.ssh
+          fi
+
+          # Add SSH host keys based on keyscan parameters
+          if [ "$KEYSCAN_GITHUB" = "true" ]; then
+              echo "Adding GitHub SSH host key..."
+              ssh-keyscan -H github.com >> ~/.ssh/known_hosts 2>/dev/null || true
+          fi
+
+          if [ "$KEYSCAN_GITLAB" = "true" ]; then
+              echo "Adding GitLab SSH host key..."
+              ssh-keyscan -H gitlab.com >> ~/.ssh/known_hosts 2>/dev/null || true
+          fi
+
+          if [ "$KEYSCAN_BITBUCKET" = "true" ]; then
+              echo "Adding Bitbucket SSH host key..."
+              ssh-keyscan -H bitbucket.org >> ~/.ssh/known_hosts 2>/dev/null || true
+          fi
+
+          # Set up repository URL and branch info
+          if [ -n "$CIRCLE_REPOSITORY_URL" ]; then
+              REPO_URL="$CIRCLE_REPOSITORY_URL"
+          else
+              echo "Error: CIRCLE_REPOSITORY_URL not set"
+              exit 1
+          fi
+
+          # Determine checkout target
+          if [ -n "$CIRCLE_TAG" ]; then
+              CHECKOUT_TARGET="$CIRCLE_TAG"
+              FETCH_OPTIONS="$TAG_FETCH_OPTIONS"
+          elif [ -n "$CIRCLE_BRANCH" ]; then
+              CHECKOUT_TARGET="$CIRCLE_BRANCH"
+          else
+              CHECKOUT_TARGET="HEAD"
+          fi
+
+          echo "Repository: $REPO_URL"
+          echo "Target: $CHECKOUT_TARGET"
+          echo "Path: $CHECKOUT_PATH"
+          echo "Clone options: $CLONE_OPTIONS"
+          echo "Fetch options: $FETCH_OPTIONS"
+
+          # Create checkout directory
+          mkdir -p "$CHECKOUT_PATH"
+          cd "$CHECKOUT_PATH"
+
+          # Initialize or update repository
+          if [ ! -d ".git" ]; then
+              echo "Initializing new repository..."
+              git init
+              git remote add origin "$REPO_URL"
+          else
+              echo "Updating existing repository..."
+              # Ensure origin is set correctly
+              if git remote get-url origin >/dev/null 2>&1; then
+                  git remote set-url origin "$REPO_URL"
+              else
+                  git remote add origin "$REPO_URL"
+              fi
+          fi
+
+          # Configure Git for CircleCI
+          git config gc.auto 0
+
+          # Perform shallow fetch
+          echo "Fetching with options: $FETCH_OPTIONS"
+
+          if [ -n "$CIRCLE_TAG" ]; then
+              # For tags, fetch the specific tag
+              git fetch $FETCH_OPTIONS origin "refs/tags/$CIRCLE_TAG:refs/tags/$CIRCLE_TAG" || \
+              git fetch $FETCH_OPTIONS origin "$CIRCLE_TAG"
+              git checkout "refs/tags/$CIRCLE_TAG"
+          elif [ -n "$CIRCLE_SHA1" ]; then
+              # For specific commit
+              git fetch $FETCH_OPTIONS origin "$CIRCLE_SHA1" || \
+              git fetch $FETCH_OPTIONS origin "$CHECKOUT_TARGET"
+              git checkout "$CIRCLE_SHA1" 2>/dev/null || git checkout "$CHECKOUT_TARGET"
+          else
+              # For branch
+              git fetch $FETCH_OPTIONS origin "$CHECKOUT_TARGET:$CHECKOUT_TARGET" || \
+              git fetch $FETCH_OPTIONS origin "$CHECKOUT_TARGET"
+              git checkout "$CHECKOUT_TARGET"
+          fi
+
+          # Show final state
+          echo "Checked out to: $(git rev-parse HEAD)"
+          echo "Current branch/tag: $(git describe --always --tags 2>/dev/null || git rev-parse --abbrev-ref HEAD)"
+
+          # Set CircleCI environment variables for consistency
+          echo "export GIT_COMMIT_SHA=\"$(git rev-parse HEAD)\"" >> $BASH_ENV
+          echo "export GIT_BRANCH=\"$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'HEAD')\"" >> $BASH_ENV
+        name: Shallow Git Checkout
+executors: {}
+jobs:
+  rspec:
+    docker:
+    - auth:
+        password: $DOCKERHUB_TOKEN
+        username: $DOCKERHUB_USERNAME
+      image: cimg/ruby:3.3.5
+    - environment:
+        POSTGRES_DB: docspring_test
+        POSTGRES_USER: docspring
+      image: cimg/postgres:16.1
+    - image: cimg/redis:7.4.0
+    - environment:
+        MINIO_ROOT_PASSWORD: minio123123
+        MINIO_ROOT_USER: docspring-minio
+      image: minio/minio:RELEASE.2025-06-26T18-44-10Z
+    environment:
+      DOCKER_ARCH: amd64
+    resource_class: medium
+    steps:
+    - cigen_shallow_checkout
+    - run:
+        command: echo "rspec"
+        name: RSpec placeholder
+version: 2.1
+workflows:
+  main:
+    jobs:
+    - rspec

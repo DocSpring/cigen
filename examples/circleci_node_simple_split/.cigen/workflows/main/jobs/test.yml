@@ -1,6 +1,0 @@
-image: node
-packages: node
-steps:
-  - run:
-      name: Run tests
-      command: npm test

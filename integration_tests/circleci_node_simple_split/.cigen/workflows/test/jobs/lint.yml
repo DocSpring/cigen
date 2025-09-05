@@ -1,0 +1,8 @@
+image: cimg/node:18.20
+resource_class: small
+steps:
+  - run:
+      name: Echo lint
+      command: |
+        node --version
+        echo "lint ok"

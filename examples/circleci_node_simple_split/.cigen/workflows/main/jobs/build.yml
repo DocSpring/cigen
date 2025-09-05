@@ -1,7 +1,0 @@
-image: node
-packages: node
-requires: [lint, test]
-steps:
-  - run:
-      name: Build application
-      command: npm run build

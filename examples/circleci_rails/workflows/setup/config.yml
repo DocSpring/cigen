@@ -1,3 +1,0 @@
-# This is a setup workflow that generates the dynamic config.
-setup: true
-output_filename: config.yml

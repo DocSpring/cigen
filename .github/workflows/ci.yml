@@ -86,3 +86,6 @@ jobs:
 
       - name: Build
         run: nx run cigen:build
+
+      - name: Run integration tests
+        run: nx run cigen:integration

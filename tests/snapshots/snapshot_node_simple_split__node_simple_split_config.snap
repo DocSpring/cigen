@@ -1,0 +1,7 @@
+---
+source: tests/snapshot_node_simple_split.rs
+expression: normalized
+---
+jobs: {}
+version: 2.1
+workflows: {}

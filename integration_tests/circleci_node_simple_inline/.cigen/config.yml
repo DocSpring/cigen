@@ -1,0 +1,7 @@
+$schema: https://raw.githubusercontent.com/DocSpring/cigen/main/schemas/v1/config-schema.json
+
+provider: circleci
+output_path: .circleci
+
+workflows:
+  test: {}

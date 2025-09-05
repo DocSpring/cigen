@@ -1,0 +1,3 @@
+source_file_groups:
+  js:
+    - "**/*.js"

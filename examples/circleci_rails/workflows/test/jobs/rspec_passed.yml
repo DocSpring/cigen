@@ -1,9 +1,0 @@
-image: cimg/ruby:3.3.5
-architectures: ["amd64", "arm64"]
-resource_class: small
-requires: ["rspec"]
-
-steps:
-  - run:
-      name: Mark RSpec as passed
-      command: echo "RSpec tests completed successfully for architecture"

@@ -58,6 +58,13 @@
         "command": "cargo clean",
         "cwd": "."
       }
+    },
+    "integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "scripts/run_integration_tests.sh",
+        "cwd": "."
+      }
     }
   },
   "namedInputs": {

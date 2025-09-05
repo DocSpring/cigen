@@ -5,6 +5,11 @@ PROJECT_PLAN.md
 
 examples/**/build/
 examples/**/.circleci/
+integration_tests/**/.circleci/
+integration_tests/**/build/
+
+/.circleci/
+/build/
 
 # Nx
 .nx/

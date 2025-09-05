@@ -210,86 +210,98 @@ fn generate_from_jobs(
             }
         }
 
-        // If any workflow has a specific output filename, generate each workflow separately
-        let mut any_per_workflow = false;
-        for (workflow_name, workflow_jobs) in workflows.iter() {
+        // Build merged per-workflow configs
+        let mut merged_workflow_configs: HashMap<String, cigen::models::Config> = HashMap::new();
+        for workflow_name in workflows.keys() {
             let workflow_config_path =
                 PathBuf::from(format!("workflows/{workflow_name}/config.yml"));
-            if workflow_config_path.exists() {
-                let workflow_config_str = std::fs::read_to_string(&workflow_config_path)?;
-                let workflow_overrides: serde_yaml::Value =
-                    serde_yaml::from_str(&workflow_config_str)?;
-                let merged_config = loaded_config.config.clone();
-                let workflow_config: cigen::models::Config =
-                    if let Some(obj) = workflow_overrides.as_mapping() {
-                        let mut base_value = serde_json::to_value(&merged_config)?;
-                        let override_value = serde_json::to_value(obj)?;
-                        if let (Some(base_obj), Some(override_obj)) =
-                            (base_value.as_object_mut(), override_value.as_object())
-                        {
-                            for (key, value) in override_obj {
-                                if !value.is_null() {
-                                    base_obj.insert(key.clone(), value.clone());
-                                }
+            let base_conf = loaded_config.config.clone();
+            let merged = if workflow_config_path.exists() {
+                let s = std::fs::read_to_string(&workflow_config_path)?;
+                let overrides: serde_yaml::Value = serde_yaml::from_str(&s)?;
+                if let Some(obj) = overrides.as_mapping() {
+                    let mut base_value = serde_json::to_value(&base_conf)?;
+                    let override_value = serde_json::to_value(obj)?;
+                    if let (Some(base_obj), Some(override_obj)) =
+                        (base_value.as_object_mut(), override_value.as_object())
+                    {
+                        for (k, v) in override_obj {
+                            if !v.is_null() {
+                                base_obj.insert(k.clone(), v.clone());
                             }
                         }
-                        serde_json::from_value(base_value)?
-                    } else {
-                        merged_config
-                    };
-
-                if workflow_config.output_filename.is_some() {
-                    any_per_workflow = true;
-                    // Determine workflow-specific output path
-                    let workflow_output_path =
-                        if let Some(workflow_output) = &workflow_config.output_path {
-                            original_dir_path(Path::new(workflow_output))
-                        } else {
-                            output_path.clone()
-                        };
-
-                    // Apply package deduplication for this workflow
-                    let mut jobs_copy = workflow_jobs.clone();
-                    if jobs_copy.values().any(|job| job.packages.is_some()) {
-                        let project_root = if current_dir.ends_with(".cigen") {
-                            current_dir.parent().and_then(|p| p.to_str()).unwrap_or(".")
-                        } else {
-                            current_dir.to_str().unwrap_or(".")
-                        };
-                        let deduplicator =
-                            cigen::packages::deduplicator::PackageDeduplicator::new(project_root);
-                        deduplicator.process_jobs(&mut jobs_copy).map_err(|e| {
-                            anyhow::anyhow!("Failed to process package deduplication: {}", e)
-                        })?;
                     }
-
-                    provider
-                        .generate_workflow(
-                            &workflow_config,
-                            workflow_name,
-                            &jobs_copy,
-                            &loaded_config.commands,
-                            &workflow_output_path,
-                        )
-                        .map_err(|e| {
-                            anyhow::anyhow!(
-                                "Failed to generate workflow '{}': {}",
-                                workflow_name,
-                                e
-                            )
-                        })?;
-
-                    println!(
-                        "✅ Generated {} workflow '{}' to {}",
-                        provider.name(),
-                        workflow_name,
-                        workflow_output_path.display()
-                    );
+                    serde_json::from_value(base_value)?
+                } else {
+                    base_conf
                 }
-            }
+            } else {
+                base_conf
+            };
+            merged_workflow_configs.insert(workflow_name.clone(), merged);
         }
 
-        if !any_per_workflow {
+        let has_setup = merged_workflow_configs
+            .values()
+            .any(|c| c.setup.unwrap_or(false));
+
+        if has_setup {
+            // Split outputs with inferred filenames
+            for (workflow_name, mut jobs_copy) in workflows.clone() {
+                if jobs_copy.values().any(|job| job.packages.is_some()) {
+                    let project_root = if current_dir.ends_with(".cigen") {
+                        current_dir.parent().and_then(|p| p.to_str()).unwrap_or(".")
+                    } else {
+                        current_dir.to_str().unwrap_or(".")
+                    };
+                    let deduplicator =
+                        cigen::packages::deduplicator::PackageDeduplicator::new(project_root);
+                    deduplicator.process_jobs(&mut jobs_copy).map_err(|e| {
+                        anyhow::anyhow!("Failed to process package deduplication: {}", e)
+                    })?;
+                }
+
+                let mut wf_conf = merged_workflow_configs.remove(&workflow_name).unwrap();
+
+                // Infer default filename if not explicitly set
+                let filename = wf_conf.output_filename.clone().unwrap_or_else(|| {
+                    if wf_conf.setup.unwrap_or(false) || workflow_name == "setup" {
+                        "config.yml".to_string()
+                    } else if workflow_name == "main" {
+                        "main.yml".to_string()
+                    } else {
+                        format!("{}_config.yml", workflow_name)
+                    }
+                });
+                wf_conf.output_filename = Some(filename);
+
+                let wf_output_path = if let Some(wf_path) = &wf_conf.output_path {
+                    original_dir_path(Path::new(wf_path))
+                } else {
+                    output_path.clone()
+                };
+
+                provider
+                    .generate_workflow(
+                        &wf_conf,
+                        &workflow_name,
+                        &jobs_copy,
+                        &loaded_config.commands,
+                        &wf_output_path,
+                    )
+                    .map_err(|e| {
+                        anyhow::anyhow!("Failed to generate workflow '{}': {}", workflow_name, e)
+                    })?;
+
+                println!(
+                    "✅ Generated {} workflow '{}' to {}",
+                    provider.name(),
+                    workflow_name,
+                    wf_output_path.display()
+                );
+            }
+        } else {
+            // Single combined file
             provider
                 .generate_all(
                     &loaded_config.config,
