@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*" # Version tags like v1.2.3
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release_build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS builds
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            name: cigen-macos-amd64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            name: cigen-macos-arm64
+
+          # Linux builds
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: cigen-linux-amd64
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            name: cigen-linux-arm64
+            use-cross: true
+
+          # Windows builds
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: cigen-windows-amd64
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            name: cigen-windows-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Wait for required checks
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const script = require('./.github/wait-for-checks.js');
+            await script({ github, context, core });
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Add rust target (conditional)
+        if: (matrix.target == 'x86_64-apple-darwin' && matrix.os == 'macos-latest') || (matrix.target == 'aarch64-pc-windows-msvc' && matrix.os == 'windows-latest')
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install cross (for cross-compilation)
+        if: matrix.use-cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build binary
+        shell: bash
+        run: |
+          set -e
+          if [ "${{ matrix.use-cross }}" = "true" ]; then
+            cross build --release --target ${{ matrix.target }} --bin cigen
+          else
+            cargo build --release --target ${{ matrix.target }} --bin cigen
+          fi
+
+      - name: Create archive
+        shell: bash
+        run: |
+          set -e
+          cd "target/${{ matrix.target }}/release"
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "../../../${{ matrix.name }}.zip" cigen.exe
+            cd ../../../
+            echo "ASSET_PATH=${{ matrix.name }}.zip" >> "$GITHUB_ENV"
+          else
+            tar czf "../../../${{ matrix.name }}.tar.gz" cigen
+            cd ../../../
+            echo "ASSET_PATH=${{ matrix.name }}.tar.gz" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.ASSET_PATH }}
+
+  release_create:
+    name: Create Release
+    needs: release_build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Get version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          {
+            echo "version=$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            EXPECTED_TAG="v$VERSION"
+            if [ "$TAG" != "$EXPECTED_TAG" ]; then
+              echo "Error: Tag $TAG doesn't match expected $EXPECTED_TAG from Cargo.toml" >&2
+              exit 1
+            fi
+            {
+              echo "tag=$TAG"
+            } >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "tag=v$VERSION"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -e
+          cd artifacts
+          for dir in */; do
+            cd "$dir"
+            for file in *; do
+              case "$file" in
+                *.tar.gz|*.zip)
+                  if [ -f "$file" ]; then
+                    sha256sum "$file" > "${file}.sha256" || shasum -a 256 "$file" | awk '{print $1}' > "${file}.sha256"
+                  fi
+                  ;;
+              esac
+            done
+            cd ..
+          done
+          cd ..
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          cat > changelog.md <<EOF
+          ## Installation
+
+          ### One-liner (Linux/macOS)
+              curl -fsSL https://docspring.github.io/cigen/install.sh | sh
+
+          ### Direct downloads
+          - macOS (Intel): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-amd64.tar.gz
+          - macOS (Apple Silicon): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-arm64.tar.gz
+          - Linux (x86_64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-amd64.tar.gz
+          - Linux (ARM64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-arm64.tar.gz
+          - Windows (x86_64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-windows-amd64.zip
+          - Windows (ARM64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-windows-arm64.zip
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: CIGen v${{ steps.version.outputs.version }}
+          body_path: changelog.md
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/*.sha256

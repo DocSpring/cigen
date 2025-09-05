@@ -3,12 +3,12 @@ title: Cigen - Universal CI Configuration Generator
 description: Write your CI pipeline configuration once and deploy it anywhere. Cigen generates provider-specific configurations from universal templates.
 template: splash
 hero:
-  tagline: Write once, run anywhere
+  tagline: Declarative CI that compiles to native YAML
   image:
-    file: ../../assets/houston.webp
+    file: ../../assets/splash-image.jpeg
   actions:
-    - text: Get started
-      link: /installation/
+    - text: Quick Start
+      link: /cigen/quick-start/
       icon: right-arrow
       variant: primary
     - text: View on GitHub
@@ -16,34 +16,61 @@ hero:
       icon: external
 ---
 
-import { Card, CardGrid } from '@astrojs/starlight/components';
+import { CardGrid } from '@astrojs/starlight/components';
+import CardWithIcon from '../../components/CardWithIcon.astro';
+import {
+  Package,
+  Layers,
+  Rocket,
+  Puzzle,
+  Laptop,
+  ShieldCheck,
+} from 'lucide-astro';
 
-Cigen generates CircleCI configuration from a concise, provider-agnostic format, with strong validation and sensible conventions. Other providers are planned but not yet supported.
+Define your pipeline once in a concise, provider‑agnostic format.
+CIGen validates it with rich error spans and emits provider‑native configuration
+(CircleCI today; others next).
 
 ## Why Cigen?
 
 <CardGrid>
-  <Card title="Validated Config" icon="puzzle">
-    Write your pipeline in a small, reusable format. Cigen validates it and emits native CircleCI YAML.
-  </Card>
-  <Card title="Multi-Architecture Support" icon="laptop">
-    Automatically generate jobs for multiple architectures (amd64, arm64) from a
-    single job definition.
-  </Card>
-  <Card title="Cache Helpers" icon="rocket">
-    Injects restore/save steps when caches are declared on a job. Definitions are extensible.
-  </Card>
-  <Card title="Advanced Checkout" icon="git-branch">
-    Shallow git checkout by default with configurable clone/fetch options, host key scanning, and path.
-  </Card>
-  <Card title="Pragmatic Roadmap" icon="star">
-    Advanced features like OR-deps and approval status fixes are planned.
-  </Card>
+  <CardWithIcon title="Provider‑native output" iconComponent={Puzzle}>
+    Author once; ship native configs. CIGen compiles your universal spec into
+    production‑ready CircleCI YAML without leaking abstractions.
+  </CardWithIcon>
+  <CardWithIcon title="Strong validation" iconComponent={ShieldCheck}>
+    Schema + data‑level checks with precise error spans. Unknown fields are
+    preserved; invalid states fail fast with actionable messages.
+  </CardWithIcon>
+  <CardWithIcon
+    title="Zero‑boilerplate checkout & cache"
+    iconComponent={Rocket}
+  >
+    Git checkout is optimized (shallow fetch, tag/branch controls, host key
+    scanning). Cache steps are injected automatically when you declare them.
+  </CardWithIcon>
+  <CardWithIcon title="Package install detection" iconComponent={Package}>
+    Detects pnpm/yarn/npm/bun, bundler, and pip/pipenv; adds the right install
+    steps with provider‑compatible flags and de‑duplicated execution.
+  </CardWithIcon>
+  <CardWithIcon title="Multi‑arch variants" iconComponent={Laptop}>
+    Generate amd64/arm64 job variants from a single job definition.
+  </CardWithIcon>
+  <CardWithIcon title="Split config at scale" iconComponent={Layers}>
+    Keep large configs maintainable. Merge files from{' '}
+    <code>.cigen/config/*</code>
+    automatically and reuse file groups, jobs, and templates. Split your
+    workflows and jobs into multiple files — CIGen merges them seamlessly.
+  </CardWithIcon>
 </CardGrid>
 
-## Core Philosophy
+## Principles
 
-**If we need a feature the platform lacks, we'll add safe workarounds—with clear scopes and validation.**
+- Validate early: schema + semantics with rich spans
+- Fail fast: explicit, actionable errors; no silent defaults
+- Preserve unknowns: never drop user‑provided data
+- Native first: emit provider‑idiomatic configuration
+- Minimal boilerplate: declare intent; CIGen injects mechanics
 
 ## Quick Example
 
@@ -103,6 +130,12 @@ Results in a `.circleci/config.yml` with:
 - Optional package installation steps (npm/yarn/pnpm/bun, bundler, etc.)
 - Separate jobs for each architecture (`build_amd64`, `build_arm64`)
 
+## How It Works
+
+1. Describe workflows, jobs, packages, and caches in `.cigen/`
+2. CIGen validates and compiles to provider‑native YAML
+3. Your CI runs faster and cleaner with less duplication
+
 ## Current Status
 
 - CircleCI: supported
@@ -110,7 +143,7 @@ Results in a `.circleci/config.yml` with:
 
 ## Getting Started
 
-1. [Install cigen](/installation/)
-2. Follow the [Quick Start guide](/quick-start/)
-3. Read about cigen's [philosophy](/philosophy/)
-4. Explore [configuration options](/configuration/overview/)
+1. [Install cigen](/cigen/installation/)
+2. Follow the [Quick Start guide](/cigen/quick-start/)
+3. Read about cigen's [philosophy](/cigen/philosophy/)
+4. Explore [configuration options](/cigen/configuration/overview/)

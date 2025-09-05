@@ -7,7 +7,9 @@ use crate::providers::circleci::config::{
 use crate::providers::circleci::docker_images;
 use crate::providers::circleci::template_commands;
 use crate::validation::steps::StepValidator;
+use globwalk::GlobWalkerBuilder;
 use miette::{IntoDiagnostic, Result};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -176,20 +178,30 @@ impl CircleCIGenerator {
         jobs: &HashMap<String, Job>,
         commands: &HashMap<String, crate::models::Command>,
     ) -> Result<CircleCIConfig> {
+        // Prepare a local, augmentable copy of jobs (for docker_build injection)
+        let mut jobs_augmented: HashMap<String, Job> = jobs.clone();
+
         // First validate that all step references are valid
         let validator = StepValidator::new();
-        validator.validate_step_references(jobs, commands, "circleci")?;
+        validator.validate_step_references(&jobs_augmented, commands, "circleci")?;
 
         let mut circleci_config = CircleCIConfig::default();
 
+        // Inject docker_build jobs and requires if enabled
+        if let Some(db) = &config.docker_build
+            && db.enabled
+        {
+            self.augment_with_docker_build(config, &mut jobs_augmented)?;
+        }
+
         // Build workflow
-        let workflow = self.build_workflow(workflow_name, jobs)?;
+        let workflow = self.build_workflow(workflow_name, &jobs_augmented)?;
         circleci_config
             .workflows
             .insert(workflow_name.to_string(), workflow);
 
         // Convert jobs with architecture variants
-        for (job_name, job_def) in jobs {
+        for (job_name, job_def) in &jobs_augmented {
             // Skip approval jobs (they are workflow-level only)
             if job_def.job_type.as_deref() == Some("approval") {
                 continue;
@@ -259,6 +271,508 @@ impl CircleCIGenerator {
         }
 
         Ok(circleci_config)
+    }
+
+    /// Compute a single base hash for docker_build from declared hash_sources across all images
+    fn compute_docker_base_hash(&self, config: &Config) -> Result<Option<String>> {
+        let db = match &config.docker_build {
+            Some(db) if db.enabled => db,
+            _ => return Ok(None),
+        };
+
+        // Determine project root (one level up if running in .cigen)
+        let current_dir = std::env::current_dir().into_diagnostic()?;
+        let base_dir = if current_dir.file_name() == Some(std::ffi::OsStr::new(".cigen")) {
+            current_dir.parent().unwrap_or(&current_dir).to_path_buf()
+        } else {
+            current_dir
+        };
+
+        let mut files: HashSet<std::path::PathBuf> = HashSet::new();
+        for img in &db.images {
+            for pattern in &img.hash_sources {
+                // Try to glob; if fails (e.g., plain file), just add directly if exists
+                if let Ok(walker) = GlobWalkerBuilder::from_patterns(&base_dir, &[pattern.as_str()])
+                    .follow_links(true)
+                    .case_insensitive(false)
+                    .build()
+                {
+                    for entry in walker.filter_map(Result::ok) {
+                        let p = entry.path().to_path_buf();
+                        if p.is_file() {
+                            files.insert(p);
+                        }
+                    }
+                } else {
+                    let p = base_dir.join(pattern);
+                    if p.is_file() {
+                        files.insert(p);
+                    } else if p.is_dir() {
+                        // Collect all files recursively
+                        for e in walkdir::WalkDir::new(&p).into_iter().filter_map(|e| e.ok()) {
+                            let fp = e.path().to_path_buf();
+                            if fp.is_file() {
+                                files.insert(fp);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut files_vec: Vec<_> = files.into_iter().collect();
+        files_vec.sort();
+
+        let mut hasher = Sha256::new();
+        for fp in files_vec {
+            // include relative path for stability
+            if let Ok(rel) = fp.strip_prefix(&base_dir) {
+                hasher.update(rel.to_string_lossy().as_bytes());
+            }
+            if let Ok(bytes) = std::fs::read(&fp) {
+                hasher.update(&bytes);
+            }
+        }
+        let hash = format!("{:x}", hasher.finalize());
+        Ok(Some(hash))
+    }
+
+    /// Augment workflow jobs to include docker build jobs and inject requires edges
+    fn augment_with_docker_build(
+        &self,
+        config: &Config,
+        jobs: &mut HashMap<String, Job>,
+    ) -> Result<()> {
+        let db = match &config.docker_build {
+            Some(db) if db.enabled => db,
+            _ => return Ok(()),
+        };
+
+        // Map images by name for quick lookup
+        let mut images_by_name: HashMap<String, &crate::models::config::DockerBuildImage> =
+            HashMap::new();
+        for img in &db.images {
+            images_by_name.insert(img.name.clone(), img);
+        }
+
+        // Collect required images and architectures across all jobs
+        let mut required: HashMap<String, HashSet<String>> = HashMap::new();
+        for (_job_name, job) in jobs.iter() {
+            let image_ref = job.image.as_str();
+            if image_ref.contains('/') || image_ref.contains(':') {
+                continue; // already full reference
+            }
+            if images_by_name.contains_key(image_ref) {
+                let archs = job
+                    .architectures
+                    .clone()
+                    .unwrap_or_else(|| vec!["amd64".to_string()]);
+                let entry = required.entry(image_ref.to_string()).or_default();
+                for a in archs {
+                    entry.insert(a);
+                }
+            }
+        }
+
+        if required.is_empty() {
+            return Ok(());
+        }
+
+        // Ensure dependency chain images are included
+        fn add_deps(
+            img_name: &str,
+            images: &HashMap<String, &crate::models::config::DockerBuildImage>,
+            required: &mut HashMap<String, HashSet<String>>,
+        ) {
+            if let Some(img) = images.get(img_name) {
+                for dep in &img.depends_on {
+                    // Inherit required arch set; default to amd64 if none yet
+                    let archs = required
+                        .get(img_name)
+                        .cloned()
+                        .unwrap_or_else(|| HashSet::from(["amd64".to_string()]));
+                    let entry = required.entry(dep.clone()).or_default();
+                    for a in archs.iter() {
+                        entry.insert(a.clone());
+                    }
+                    add_deps(dep, images, required);
+                }
+            }
+        }
+
+        let keys: Vec<String> = required.keys().cloned().collect();
+        for k in keys {
+            add_deps(&k, &images_by_name, &mut required);
+        }
+
+        // Precompute base hash once for all build jobs
+        let base_hash = self
+            .compute_docker_base_hash(config)?
+            .ok_or_else(|| miette::miette!("Failed to compute docker base hash"))?;
+
+        // Inject build jobs and requires
+        for (img_name, archs) in required.iter() {
+            // Create/merge a build job definition
+            let build_job_name = format!("build_{}", img_name);
+            let mut build_job = Job {
+                image: "cimg/base:current".to_string(),
+                architectures: Some(archs.iter().cloned().collect()),
+                resource_class: None,
+                source_files: None,
+                parallelism: None,
+                requires: None,
+                cache: None,
+                restore_cache: None,
+                services: None,
+                packages: None,
+                steps: Some(vec![]),
+                checkout: None,
+                job_type: None,
+            };
+
+            // Add DAG dependencies (as build jobs)
+            if let Some(img) = images_by_name.get(img_name)
+                && !img.depends_on.is_empty()
+            {
+                let reqs = img
+                    .depends_on
+                    .iter()
+                    .map(|d| format!("build_{}", d))
+                    .collect::<Vec<_>>();
+                build_job.requires = Some(crate::models::job::JobRequires::Multiple(reqs));
+            }
+
+            // Build/push steps and job-status cache
+            let mut raw_steps: Vec<serde_yaml::Value> = Vec::new();
+
+            // Determine backend for job-status
+            let backend = config
+                .caches
+                .as_ref()
+                .and_then(|c| c.job_status.as_ref())
+                .map(|b| b.backend.as_str())
+                .unwrap_or("native");
+
+            match backend {
+                "redis" => {
+                    let (redis_url, _ttl) = if let Some(cfg) = config
+                        .caches
+                        .as_ref()
+                        .and_then(|c| c.job_status.as_ref())
+                        .and_then(|b| b.config.as_ref())
+                    {
+                        let url = cfg
+                            .get("url")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("redis://127.0.0.1:6379");
+                        let ttl = cfg.get("ttl_seconds").and_then(|v| v.as_u64());
+                        (url.to_string(), ttl)
+                    } else {
+                        ("redis://127.0.0.1:6379".to_string(), None)
+                    };
+
+                    // Prepare key env
+                    raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                        (
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                (
+                                    serde_yaml::Value::String("name".to_string()),
+                                    serde_yaml::Value::String("Prepare job status key".to_string()),
+                                ),
+                                (
+                                    serde_yaml::Value::String("command".to_string()),
+                                    serde_yaml::Value::String(format!(
+                                        "export JOB_STATUS_KEY=\"job_status:${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\"",
+                                        base_hash
+                                    )),
+                                ),
+                            ])),
+                        ),
+                    ])).unwrap());
+
+                    // Check and skip
+                    raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                        (
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                (
+                                    serde_yaml::Value::String("name".to_string()),
+                                    serde_yaml::Value::String("Check job status (redis)".to_string()),
+                                ),
+                                (
+                                    serde_yaml::Value::String("command".to_string()),
+                                    serde_yaml::Value::String(format!(
+                                        "VAL=$(redis-cli -u {} GET \"$JOB_STATUS_KEY\" 2>/dev/null || true)\nif [ \"$VAL\" = \"done\" ]; then\n  echo 'Job already completed successfully for this base hash. Skipping...';\n  circleci step halt;\nfi",
+                                        redis_url
+                                    )),
+                                ),
+                            ])),
+                        ),
+                    ])).unwrap());
+
+                    // setup_remote_docker
+                    raw_steps.push(serde_yaml::Value::String("setup_remote_docker".to_string()));
+
+                    // docker login if pushing with auth
+                    let push_enabled = images_by_name
+                        .get(img_name)
+                        .and_then(|i| i.push)
+                        .unwrap_or(db.registry.push);
+                    if push_enabled
+                        && let Some(d) = &config.docker
+                        && let Some(default_auth) = &d.default_auth
+                        && let Some(auths) = &d.auth
+                        && let Some(auth) = auths.get(default_auth)
+                    {
+                        raw_steps.push(
+                            serde_yaml::to_value(serde_yaml::Mapping::from_iter([(
+                                serde_yaml::Value::String("run".to_string()),
+                                serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                    (
+                                        serde_yaml::Value::String("name".to_string()),
+                                        serde_yaml::Value::String("Docker login".to_string()),
+                                    ),
+                                    (
+                                        serde_yaml::Value::String("command".to_string()),
+                                        serde_yaml::Value::String(format!(
+                                            "echo '{}' | docker login -u '{}' --password-stdin",
+                                            auth.password, auth.username
+                                        )),
+                                    ),
+                                ])),
+                            )]))
+                            .unwrap(),
+                        );
+                    }
+                }
+                _ => {
+                    // Native cache: write job-key, restore cache, skip if done
+                    raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                        (
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                (
+                                    serde_yaml::Value::String("name".to_string()),
+                                    serde_yaml::Value::String("Prepare job status key".to_string()),
+                                ),
+                                (
+                                    serde_yaml::Value::String("command".to_string()),
+                                    serde_yaml::Value::String(format!(
+                                        "mkdir -p /tmp/cigen_job_status && echo \"${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\" > /tmp/cigen_job_status/job-key",
+                                        base_hash
+                                    )),
+                                ),
+                            ])),
+                        ),
+                    ])).unwrap());
+
+                    raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                        (
+                            serde_yaml::Value::String("restore_cache".to_string()),
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                (
+                                    serde_yaml::Value::String("keys".to_string()),
+                                    serde_yaml::Value::Sequence(vec![
+                                        serde_yaml::Value::String("job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}".to_string()),
+                                        serde_yaml::Value::String("job_status-v1-".to_string()),
+                                    ]),
+                                ),
+                            ])),
+                        ),
+                    ])).unwrap());
+
+                    raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                        (
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                (
+                                    serde_yaml::Value::String("name".to_string()),
+                                    serde_yaml::Value::String("Check if build should be skipped".to_string()),
+                                ),
+                                (
+                                    serde_yaml::Value::String("command".to_string()),
+                                    serde_yaml::Value::String(format!(
+                                        "if [ -f '/tmp/cigen_job_status/done_{}' ]; then\n  echo 'Build already done for this base hash. Skipping...';\n  circleci step halt;\nfi",
+                                        base_hash
+                                    )),
+                                ),
+                            ])),
+                        ),
+                    ])).unwrap());
+
+                    // setup_remote_docker
+                    raw_steps.push(serde_yaml::Value::String("setup_remote_docker".to_string()));
+                }
+            }
+
+            // Build and push
+            if let Some(img) = images_by_name.get(img_name) {
+                let mut build_cmd = format!(
+                    "docker build -f {} -t {}/{}:{}-${{DOCKER_ARCH}} {}",
+                    img.dockerfile, db.registry.repo, img_name, base_hash, img.context
+                );
+                if let Some(args) = &img.build_args {
+                    for (k, v) in args.iter() {
+                        build_cmd.push_str(&format!(" --build-arg {}={} ", k, v));
+                    }
+                }
+
+                raw_steps.push(
+                    serde_yaml::to_value(serde_yaml::Mapping::from_iter([(
+                        serde_yaml::Value::String("run".to_string()),
+                        serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                            (
+                                serde_yaml::Value::String("name".to_string()),
+                                serde_yaml::Value::String("Build docker image".to_string()),
+                            ),
+                            (
+                                serde_yaml::Value::String("command".to_string()),
+                                serde_yaml::Value::String(build_cmd),
+                            ),
+                        ])),
+                    )]))
+                    .unwrap(),
+                );
+
+                let push_enabled = img.push.unwrap_or(db.registry.push);
+                if push_enabled {
+                    raw_steps.push(
+                        serde_yaml::to_value(serde_yaml::Mapping::from_iter([(
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                (
+                                    serde_yaml::Value::String("name".to_string()),
+                                    serde_yaml::Value::String("Push docker image".to_string()),
+                                ),
+                                (
+                                    serde_yaml::Value::String("command".to_string()),
+                                    serde_yaml::Value::String(format!(
+                                        "docker push {}/{}:{}-${{DOCKER_ARCH}}",
+                                        db.registry.repo, img_name, base_hash
+                                    )),
+                                ),
+                            ])),
+                        )]))
+                        .unwrap(),
+                    );
+                }
+
+                // Record completion
+                match backend {
+                    "redis" => {
+                        let (redis_url, ttl) = if let Some(cfg) = config
+                            .caches
+                            .as_ref()
+                            .and_then(|c| c.job_status.as_ref())
+                            .and_then(|b| b.config.as_ref())
+                        {
+                            let url = cfg
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("redis://127.0.0.1:6379");
+                            let ttl = cfg.get("ttl_seconds").and_then(|v| v.as_u64());
+                            (url.to_string(), ttl)
+                        } else {
+                            ("redis://127.0.0.1:6379".to_string(), None)
+                        };
+
+                        let set_cmd = if let Some(ttl_secs) = ttl {
+                            format!(
+                                "redis-cli -u {} SET \"job_status:${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\" done >/dev/null 2>&1 || true\nredis-cli -u {} EXPIRE \"job_status:${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\" {} >/dev/null 2>&1 || true",
+                                redis_url, base_hash, redis_url, base_hash, ttl_secs
+                            )
+                        } else {
+                            format!(
+                                "redis-cli -u {} SET \"job_status:${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\" done >/dev/null 2>&1 || true",
+                                redis_url, base_hash
+                            )
+                        };
+
+                        raw_steps.push(
+                            serde_yaml::to_value(serde_yaml::Mapping::from_iter([(
+                                serde_yaml::Value::String("run".to_string()),
+                                serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                    (
+                                        serde_yaml::Value::String("name".to_string()),
+                                        serde_yaml::Value::String(
+                                            "Record job completion (redis)".to_string(),
+                                        ),
+                                    ),
+                                    (
+                                        serde_yaml::Value::String("command".to_string()),
+                                        serde_yaml::Value::String(set_cmd),
+                                    ),
+                                ])),
+                            )]))
+                            .unwrap(),
+                        );
+                    }
+                    _ => {
+                        raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                            (
+                                serde_yaml::Value::String("run".to_string()),
+                                serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                    (
+                                        serde_yaml::Value::String("name".to_string()),
+                                        serde_yaml::Value::String("Record job completion".to_string()),
+                                    ),
+                                    (
+                                        serde_yaml::Value::String("command".to_string()),
+                                        serde_yaml::Value::String(format!(
+                                            "mkdir -p /tmp/cigen_job_status && touch '/tmp/cigen_job_status/done_{}'",
+                                            base_hash
+                                        )),
+                                    ),
+                                ])),
+                            ),
+                        ])).unwrap());
+
+                        raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
+                            (
+                                serde_yaml::Value::String("save_cache".to_string()),
+                                serde_yaml::Value::Mapping(serde_yaml::Mapping::from_iter([
+                                    (
+                                        serde_yaml::Value::String("key".to_string()),
+                                        serde_yaml::Value::String("job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}".to_string()),
+                                    ),
+                                    (
+                                        serde_yaml::Value::String("paths".to_string()),
+                                        serde_yaml::Value::Sequence(vec![serde_yaml::Value::String("/tmp/cigen_job_status".to_string())]),
+                                    ),
+                                ])),
+                            ),
+                        ])).unwrap());
+                    }
+                }
+            }
+
+            // Attach raw steps
+            if let Some(steps_vec) = &mut build_job.steps {
+                for s in raw_steps {
+                    steps_vec.push(crate::models::job::Step(s));
+                }
+            }
+            jobs.insert(build_job_name.clone(), build_job);
+        }
+
+        // Inject requires into jobs that reference these images
+        for (_name, job) in jobs.iter_mut() {
+            let image_ref = job.image.clone();
+            if image_ref.contains('/') || image_ref.contains(':') {
+                continue;
+            }
+            if required.contains_key(&image_ref) {
+                let build_name = format!("build_{}", image_ref);
+                let mut reqs = job.required_jobs();
+                if !reqs.contains(&build_name) {
+                    reqs.push(build_name);
+                }
+                job.requires = Some(crate::models::job::JobRequires::Multiple(reqs));
+            }
+        }
+
+        Ok(())
     }
 
     /// Synthesize a minimal setup workflow that generates continuation config and continues the pipeline
@@ -358,6 +872,12 @@ if [ -z "${CIRCLE_CONTINUATION_KEY}" ]; then
 fi
 
 CONFIG_PATH=".circleci/main.yml"
+# Branch to specific continuation config based on pipeline parameters
+if [ "${CIRCLE_PIPELINE_PARAMETERS_check_package_versions}" = "true" ]; then
+  CONFIG_PATH=".circleci/package_updates_config.yml"
+elif [ "${CIRCLE_PIPELINE_PARAMETERS_run_staging_postman_tests}" = "true" ]; then
+  CONFIG_PATH=".circleci/staging_postman_tests_config.yml"
+fi
 if [ ! -f "$CONFIG_PATH" ]; then
   echo "Continuation config not found at $CONFIG_PATH" >&2
   exit 1
@@ -960,9 +1480,30 @@ cat /tmp/continuation.json
         image: &str,
         architecture: &str,
     ) -> Result<CircleCIDockerImage> {
-        // Resolve docker image reference with architecture awareness
-        let resolved_image = docker_images::resolve_docker_image(image, Some(architecture), config)
-            .map_err(|e| miette::miette!("Failed to resolve docker image: {}", e))?;
+        // Resolve docker image reference, optionally to built tag
+        let resolved_image = if let Some(db) = &config.docker_build {
+            if db.enabled {
+                let names: HashSet<_> = db.images.iter().map(|i| i.name.as_str()).collect();
+                if !image.contains('/') && !image.contains(':') && names.contains(image) {
+                    let base_hash = self
+                        .compute_docker_base_hash(config)?
+                        .ok_or_else(|| miette::miette!("Failed to compute docker base hash"))?;
+                    format!(
+                        "{}/{}:{}-{}",
+                        db.registry.repo, image, base_hash, architecture
+                    )
+                } else {
+                    docker_images::resolve_docker_image(image, Some(architecture), config)
+                        .map_err(|e| miette::miette!("Failed to resolve docker image: {}", e))?
+                }
+            } else {
+                docker_images::resolve_docker_image(image, Some(architecture), config)
+                    .map_err(|e| miette::miette!("Failed to resolve docker image: {}", e))?
+            }
+        } else {
+            docker_images::resolve_docker_image(image, Some(architecture), config)
+                .map_err(|e| miette::miette!("Failed to resolve docker image: {}", e))?
+        };
 
         let mut docker_image = CircleCIDockerImage {
             image: resolved_image,

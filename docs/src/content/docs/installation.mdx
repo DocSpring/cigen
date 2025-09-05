@@ -8,9 +8,17 @@ description: How to install cigen on your system
 - Rust 1.80 or later (if building from source)
 - Git (for cloning repositories)
 
-## Install from Source
+## Install via Script (Recommended)
 
-Currently, cigen must be built from source:
+Install the latest release (Linux/macOS):
+
+```bash
+curl -fsSL https://docspring.github.io/cigen/install.sh | sh
+```
+
+This installs `cigen` into `~/.local/bin` by default. Use `--system` for `/usr/local/bin` or `--prefix <dir>` for a custom directory. Uninstall with `--uninstall`.
+
+## Install from Source
 
 ```bash
 # Clone the repository
@@ -88,6 +96,6 @@ source ~/.bashrc
 
 ## Next Steps
 
-- Follow the [Quick Start guide](/quick-start/)
-- Learn about cigen's [philosophy](/philosophy/)
-- Explore [configuration options](/configuration/overview/)
+- Follow the [Quick Start guide](/cigen/quick-start/)
+- Learn about cigen's [philosophy](/cigen/philosophy/)
+- Explore [configuration options](/cigen/configuration/overview/)

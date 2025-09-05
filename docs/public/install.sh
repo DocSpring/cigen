@@ -177,12 +177,11 @@ install_cigen() {
         fi
     fi
 
-    # Get the latest CLI release (not vscode or mcp releases)
-    # Use GitHub API to find the latest release with 'cli-v' tag
-    if command -v curl &> /dev/null; then
-        LATEST_CLI_TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" | grep '"tag_name":' | grep 'cli-v' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
-    elif command -v wget &> /dev/null; then
-        LATEST_CLI_TAG=$(wget -qO- "https://api.github.com/repos/${REPO}/releases" | grep '"tag_name":' | grep 'cli-v' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    # Get the latest release tag (v*) via GitHub API
+    if command -v curl > /dev/null 2>&1; then
+        LATEST_CLI_TAG=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases" | grep '"tag_name":' | grep '"v' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+    elif command -v wget > /dev/null 2>&1; then
+        LATEST_CLI_TAG=$(wget -qO- "https://api.github.com/repos/${REPO}/releases" | grep '"tag_name":' | grep '"v' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
     fi
 
     if [ -z "$LATEST_CLI_TAG" ]; then

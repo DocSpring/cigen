@@ -66,6 +66,9 @@ pub struct Config {
     pub docker_images: Option<HashMap<String, DockerImageConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub docker_build: Option<DockerBuild>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub package_managers:
         Option<HashMap<String, super::package_managers::PackageManagerDefinition>>,
 
@@ -106,6 +109,49 @@ pub struct DockerImageConfig {
     /// Architecture-specific image variants
     #[serde(skip_serializing_if = "Option::is_none")]
     pub architectures: Option<HashMap<String, String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockerBuild {
+    #[serde(default)]
+    pub enabled: bool,
+
+    pub registry: DockerRegistry,
+
+    pub images: Vec<DockerBuildImage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockerRegistry {
+    pub repo: String,
+
+    #[serde(default = "default_registry_push")]
+    pub push: bool,
+}
+
+fn default_registry_push() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DockerBuildImage {
+    pub name: String,
+    pub dockerfile: String,
+    pub context: String,
+
+    #[serde(default)]
+    pub arch: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_args: Option<HashMap<String, String>>,
+
+    pub hash_sources: Vec<String>,
+
+    #[serde(default)]
+    pub depends_on: Vec<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub push: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,6 +257,7 @@ impl Default for Config {
             orbs: None,
             outputs: None,
             docker_images: None,
+            docker_build: None,
             package_managers: None,
             workflows: None,
             checkout: None,

@@ -63,6 +63,22 @@ You can still use native CircleCI features (e.g., orbs). Other providers will co
 
 ---
 
+## Installation
+
+- One-liner (Linux/macOS):
+
+  ```bash
+  curl -fsSL https://docspring.github.io/cigen/install.sh | sh
+  ```
+
+- From source:
+
+  ```bash
+  git clone https://github.com/DocSpring/cigen.git
+  cd cigen
+  cargo install --path .
+  ```
+
 ## Development Setup
 
 Clone the repository:
@@ -167,6 +183,18 @@ cargo check
 ```bash
 RUST_LOG=debug cargo run
 ```
+
+### Releasing
+
+- Create and push a version tag from `Cargo.toml`:
+
+  ```bash
+  ./scripts/create-release-tag.sh
+  # or without pushing automatically
+  ./scripts/create-release-tag.sh --no-push
+  ```
+
+- When the `vX.Y.Z` tag is pushed, GitHub Actions builds binaries for Linux, macOS, and Windows, generates checksums, and creates a GitHub Release with assets.
 
 ### Git Hooks with Lefthook
 

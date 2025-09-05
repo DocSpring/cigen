@@ -10,9 +10,15 @@ importers:
       '@astrojs/starlight':
         specifier: ^0.35.2
         version: 0.35.2(astro@5.12.9(@types/node@24.2.1)(rollup@4.46.2)(typescript@5.9.2)(yaml@2.8.1))
+      '@iconify-json/lucide':
+        specifier: ^1.2.66
+        version: 1.2.66
       astro:
         specifier: ^5.6.1
         version: 5.12.9(@types/node@24.2.1)(rollup@4.46.2)(typescript@5.9.2)(yaml@2.8.1)
+      lucide-astro:
+        specifier: ^0.536.0
+        version: 0.536.0(astro@5.12.9(@types/node@24.2.1)(rollup@4.46.2)(typescript@5.9.2)(yaml@2.8.1))
       sharp:
         specifier: ^0.34.2
         version: 0.34.3
@@ -492,6 +498,18 @@ packages:
     resolution:
       {
         integrity: sha512-SN8tkIzDpA0HLAscEYD2IVrfLiid6qEdE9QLlGVSxO1KEw7qYvjpbNBQjUjMr5/jvTJ7ys6zysU2vLPHE0sb2g==,
+      }
+
+  '@iconify-json/lucide@1.2.66':
+    resolution:
+      {
+        integrity: sha512-TrhmfThWY2FHJIckjz7g34gUx3+cmja61DcHNdmu0rVDBQHIjPMYO1O8mMjoDSqIXEllz9wDZxCqT3lFuI+f/A==,
+      }
+
+  '@iconify/types@2.0.0':
+    resolution:
+      {
+        integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==,
       }
 
   '@img/sharp-darwin-arm64@0.33.5':
@@ -2280,6 +2298,14 @@ packages:
       {
         integrity: sha512-JNAzZcXrCt42VGLuYz0zfAzDfAvJWW6AfYlDBQyDV5DClI2m5sAmK+OIO7s59XfsRsWHp02jAJrRadPRGTt6SQ==,
       }
+
+  lucide-astro@0.536.0:
+    resolution:
+      {
+        integrity: sha512-IwXWlXXI4hfChRN2L3x4TyYD7axkktoljLp5Ej4m8HC3DiWh2QVdhfxwn4IUuaVYMRENoWFiDVdjKaDyyOfSdQ==,
+      }
+    peerDependencies:
+      astro: '>=2.7.1'
 
   magic-string@0.30.17:
     resolution:
@@ -4086,6 +4112,12 @@ snapshots:
     dependencies:
       '@expressive-code/core': 0.41.3
 
+  '@iconify-json/lucide@1.2.66':
+    dependencies:
+      '@iconify/types': 2.0.0
+
+  '@iconify/types@2.0.0': {}
+
   '@img/sharp-darwin-arm64@0.33.5':
     optionalDependencies:
       '@img/sharp-libvips-darwin-arm64': 1.0.4
@@ -5212,6 +5244,10 @@ snapshots:
   loupe@3.2.1: {}
 
   lru-cache@10.4.3: {}
+
+  lucide-astro@0.536.0(astro@5.12.9(@types/node@24.2.1)(rollup@4.46.2)(typescript@5.9.2)(yaml@2.8.1)):
+    dependencies:
+      astro: 5.12.9(@types/node@24.2.1)(rollup@4.46.2)(typescript@5.9.2)(yaml@2.8.1)
 
   magic-string@0.30.17:
     dependencies:
