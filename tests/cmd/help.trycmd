@@ -1,0 +1,4 @@
+$ cigen --help
+? status = 0
+A CLI tool that generates CI pipeline configurations from templates
+Usage: cigen [OPTIONS] [COMMAND]

@@ -1,0 +1,7 @@
+$ cd integration_tests/circleci_node_simple_inline
+$ cigen generate
+? status = 0
+Generating CI configuration from:
+Generating all workflows
+Skipping CircleCI CLI validation due to CIGEN_SKIP_CIRCLECI_CLI environment variable
+✅ Generated circleci configuration for all workflows to

@@ -1,0 +1,6 @@
+$ cigen generate --config does-not-exist
+? status = 1
+Generating CI configuration from:
+DEBUG: No .cigen directory found, using current directory as config_dir
+DEBUG: validate_all called with base_path:
+Error: Failed to load configuration

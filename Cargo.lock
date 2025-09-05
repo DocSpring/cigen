@@ -273,6 +273,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "snapbox",
  "tempfile",
  "thiserror",
  "tokio",
