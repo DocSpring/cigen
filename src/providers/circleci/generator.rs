@@ -766,6 +766,10 @@ impl CircleCIGenerator {
 
         // Inject requires into jobs that reference these images
         for (_name, job) in jobs.iter_mut() {
+            // Skip approval jobs; they don't run a container and shouldn't depend on build jobs
+            if job.job_type.as_deref() == Some("approval") {
+                continue;
+            }
             let image_ref = job.image.clone();
             if image_ref.contains('/') || image_ref.contains(':') {
                 continue;
