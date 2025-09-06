@@ -15,6 +15,7 @@ The tool can generate both static CircleCI configs and setup/dynamic configs. Th
 - Architecture variants per job (e.g., `build_amd64`, `build_arm64`)
 - Advanced git checkout: shallow clone by default with configurable clone/fetch options, host key scanning, and path overrides
 - Descriptive error messages and schema/data validation ([miette], JSON Schema)
+- Opt-in Docker builds with a single BASE_HASH and image DAG
 
 ## Not Yet Implemented / In Progress
 
@@ -249,3 +250,54 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Support
 
 For issues and feature requests, please use the [GitHub issue tracker](https://github.com/DocSpring/cigen/issues).
+
+### Docker Builds (opt-in)
+
+CIGen can build and tag your CI Docker images as first-class jobs. Enable it with split config under `.cigen/config/docker_build.yml` or inline in your config:
+
+```yaml
+docker_build:
+  enabled: true
+  # Optional on CircleCI cloud
+  layer_caching: true
+
+  registry:
+    repo: yourorg/ci
+    # Default push behavior (true recommended on cloud)
+    push: true
+
+  images:
+    - name: ci_base
+      dockerfile: docker/ci/base.Dockerfile
+      context: .
+      arch: [amd64]
+      build_args:
+        BASE_IMAGE: cimg/base:current
+      # Sources for the canonical BASE_HASH (one hash across images)
+      hash_sources:
+        - scripts/package_versions_env.sh
+        - .tool-versions
+        - .ruby-version
+        - docker/**/*.erb
+        - scripts/docker/**
+      depends_on: []
+      # Optional per-image push override
+      # push: false
+```
+
+What happens:
+
+- CIGen computes one `BASE_HASH` by hashing all declared `hash_sources` (path + content) across images.
+- For each image+arch, a `build_<image>` job builds `registry/<name>:<BASE_HASH>-<arch>` and (optionally) pushes it.
+- Downstream jobs that specify `image: <name>` are resolved to `registry/<name>:<BASE_HASH>-<arch>` and automatically `require` `build_<image>`.
+- Build jobs include job-status skip logic (native CircleCI cache or Redis) so unchanged images skip quickly.
+- On CircleCI cloud, `layer_caching: true` emits `setup_remote_docker: { docker_layer_caching: true }` for faster rebuilds.
+
+Notes:
+
+- If a job `image` contains `/` or `:`, it is treated as a full reference and not rewritten.
+- Per-image `push` overrides the registry default.
+
+```]
+
+```

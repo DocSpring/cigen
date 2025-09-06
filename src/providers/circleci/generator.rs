@@ -92,13 +92,21 @@ impl CircleCIGenerator {
 
         // Process all workflows
         for (workflow_name, jobs) in workflows {
-            let workflow_config = self.build_workflow(workflow_name, jobs)?;
+            // Augment jobs with docker_build if enabled
+            let mut jobs_augmented = jobs.clone();
+            if let Some(db) = &config.docker_build
+                && db.enabled
+            {
+                self.augment_with_docker_build(config, &mut jobs_augmented)?;
+            }
+
+            let workflow_config = self.build_workflow(workflow_name, &jobs_augmented)?;
             circleci_config
                 .workflows
                 .insert(workflow_name.clone(), workflow_config);
 
             // Process all jobs in the workflow with architecture variants
-            for (job_name, job_def) in jobs {
+            for (job_name, job_def) in &jobs_augmented {
                 // Skip approval jobs (they are workflow-level only)
                 if job_def.job_type.as_deref() == Some("approval") {
                     continue;
@@ -511,8 +519,8 @@ impl CircleCIGenerator {
                         ),
                     ])).unwrap());
 
-                    // setup_remote_docker
-                    raw_steps.push(serde_yaml::Value::String("setup_remote_docker".to_string()));
+                    // setup_remote_docker (optionally with layer caching)
+                    raw_steps.push(self.setup_remote_docker_step(config));
 
                     // docker login if pushing with auth
                     let push_enabled = images_by_name
@@ -601,8 +609,8 @@ impl CircleCIGenerator {
                         ),
                     ])).unwrap());
 
-                    // setup_remote_docker
-                    raw_steps.push(serde_yaml::Value::String("setup_remote_docker".to_string()));
+                    // setup_remote_docker (optionally with layer caching)
+                    raw_steps.push(self.setup_remote_docker_step(config));
                 }
             }
 
@@ -1653,6 +1661,25 @@ cat /tmp/continuation.json
             "  curl -fLSs https://raw.githubusercontent.com/CircleCI-Public/circleci-cli/main/install.sh | bash"
         );
         println!("  # or visit: https://circleci.com/docs/local-cli/");
+    }
+
+    fn setup_remote_docker_step(&self, config: &Config) -> serde_yaml::Value {
+        if let Some(db) = &config.docker_build
+            && db.layer_caching.unwrap_or(false)
+        {
+            let mut map = serde_yaml::Mapping::new();
+            let mut inner = serde_yaml::Mapping::new();
+            inner.insert(
+                serde_yaml::Value::String("docker_layer_caching".to_string()),
+                serde_yaml::Value::Bool(true),
+            );
+            map.insert(
+                serde_yaml::Value::String("setup_remote_docker".to_string()),
+                serde_yaml::Value::Mapping(inner),
+            );
+            return serde_yaml::Value::Mapping(map);
+        }
+        serde_yaml::Value::String("setup_remote_docker".to_string())
     }
 
     fn scan_for_template_commands(&self, config: &CircleCIConfig) -> HashSet<String> {

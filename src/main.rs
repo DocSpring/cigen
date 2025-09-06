@@ -136,8 +136,18 @@ fn main() -> Result<()> {
             };
 
             if config_dir.exists() {
+                // If config_dir is a .cigen directory, treat its parent as the project root (original_dir)
+                let project_root = if config_dir.file_name() == Some(std::ffi::OsStr::new(".cigen"))
+                {
+                    config_dir
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or(original_dir.clone())
+                } else {
+                    original_dir.clone()
+                };
                 // Initialize context before changing directory
-                cigen::loader::context::init_context(original_dir, config_dir.clone());
+                cigen::loader::context::init_context(project_root, config_dir.clone());
 
                 std::env::set_current_dir(&config_dir)?;
                 tracing::debug!("Changed working directory to: {}", config_dir.display());

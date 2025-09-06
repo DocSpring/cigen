@@ -119,6 +119,9 @@ pub struct DockerBuild {
     pub registry: DockerRegistry,
 
     pub images: Vec<DockerBuildImage>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_caching: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

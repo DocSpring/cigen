@@ -1,0 +1,25 @@
+provider: circleci
+output_path: .circleci
+workflows:
+  test:
+    jobs:
+      build_and_use:
+        image: ci_base
+        steps:
+          - run: echo "hello"
+
+docker_build:
+  enabled: true
+  layer_caching: true
+  registry:
+    repo: example/repo
+    push: false
+  images:
+    - name: ci_base
+      dockerfile: Dockerfile
+      context: .
+      arch: [amd64]
+      build_args: {}
+      hash_sources:
+        - Dockerfile
+      depends_on: []
