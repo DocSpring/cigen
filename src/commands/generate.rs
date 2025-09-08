@@ -96,6 +96,19 @@ fn generate_from_jobs(
             anyhow::bail!("No jobs found for workflow '{}'", workflow_name);
         }
 
+        // Optional pruning via skip-jobs file (env var for setup use)
+        if let Ok(skip_file) = std::env::var("CIGEN_SKIP_JOBS_FILE")
+            && std::path::Path::new(&skip_file).exists()
+        {
+            let content = std::fs::read_to_string(&skip_file)?;
+            let mut skip: std::collections::HashSet<String> = content
+                .lines()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            prune_skipped_jobs(&mut workflow_jobs, &mut skip);
+        }
+
         // Apply package deduplication if any jobs have packages
         let has_packages = workflow_jobs.values().any(|job| job.packages.is_some());
         if has_packages {
@@ -241,11 +254,35 @@ fn generate_from_jobs(
             merged_workflow_configs.insert(workflow_name.clone(), merged);
         }
 
-        let has_setup = merged_workflow_configs
+        let mut has_setup = merged_workflow_configs
             .values()
             .any(|c| c.setup.unwrap_or(false));
 
-        if has_setup {
+        // If dynamic is enabled, force split outputs and synthesized setup
+        if loaded_config.config.dynamic.unwrap_or(false) {
+            has_setup = true;
+        }
+
+        if loaded_config.config.provider == "circleci"
+            && loaded_config.config.dynamic.unwrap_or(false)
+        {
+            // Generate combined two-file dynamic setup (config.yml + main.yml)
+            provider
+                .generate_all(
+                    &loaded_config.config,
+                    &workflows,
+                    &loaded_config.commands,
+                    &output_path,
+                )
+                .map_err(|e| {
+                    anyhow::anyhow!("Failed to generate dynamic CircleCI config: {}", e)
+                })?;
+
+            println!(
+                "✅ Generated CircleCI dynamic setup (config.yml + main.yml) to {}",
+                output_path.display()
+            );
+        } else if has_setup {
             // Split outputs with inferred filenames
             for (workflow_name, mut jobs_copy) in workflows.clone() {
                 if jobs_copy.values().any(|job| job.packages.is_some()) {
@@ -316,33 +353,42 @@ fn generate_from_jobs(
                 provider.name(),
                 output_path.display()
             );
-
-            // If dynamic mode is enabled but no explicit setup workflow exists, synthesize one
-            if loaded_config.config.dynamic.unwrap_or(false)
-                && !merged_workflow_configs.keys().any(|k| k == "setup")
-            {
-                println!("Generating synthesized setup workflow");
-                // Setup should go to provider default output path (config.yml) unless overridden
-                let setup_output = if let Some(setup_out) = &loaded_config.config.output_path {
-                    original_dir_path(Path::new(setup_out))
-                } else {
-                    original_dir_path(Path::new(provider.default_output_path()))
-                };
-                // Call provider-specific synthesized setup if available (only CircleCI for now)
-                // Provider-agnostic support: synthesize CircleCI setup when using CircleCI provider
-                if loaded_config.config.provider == "circleci" {
-                    cigen::providers::circleci::CircleCIProvider::new()
-                        .generator
-                        .generate_synthesized_setup(&loaded_config.config, &setup_output)
-                        .map_err(|e| {
-                            anyhow::anyhow!("Failed to generate synthesized setup: {}", e)
-                        })?;
-                }
-            }
         }
     }
 
     Ok(())
+}
+
+fn prune_skipped_jobs(
+    jobs: &mut HashMap<String, cigen::models::Job>,
+    skip: &mut std::collections::HashSet<String>,
+) {
+    // Remove explicitly skipped jobs
+    jobs.retain(|name, _| !skip.contains(name));
+
+    // Transitive pruning: drop jobs whose requires include missing jobs
+    loop {
+        let before = jobs.len();
+        let missing: std::collections::HashSet<String> = jobs
+            .iter()
+            .flat_map(|(name, job)| {
+                job.required_jobs()
+                    .into_iter()
+                    .filter(|r| !jobs.contains_key(r))
+                    .map(move |_| name.clone())
+            })
+            .collect();
+        if missing.is_empty() {
+            break;
+        }
+        for m in missing {
+            skip.insert(m.clone());
+            jobs.remove(&m);
+        }
+        if jobs.len() == before {
+            break;
+        }
+    }
 }
 
 fn generate_with_templates(

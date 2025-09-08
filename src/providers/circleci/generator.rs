@@ -14,12 +14,17 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::sync::Mutex;
+use std::time::Instant;
 
 // Embedded template for GitHub status patch job
 #[allow(dead_code)]
 const PATCH_APPROVAL_JOBS_TEMPLATE: &str = include_str!("templates/patch_approval_jobs_status.yml");
 
-pub struct CircleCIGenerator;
+pub struct CircleCIGenerator {
+    base_hash_cache: Mutex<Option<String>>,
+    file_hash_cache: Mutex<HashMap<std::path::PathBuf, String>>, // per-file content hash cache
+}
 
 impl Default for CircleCIGenerator {
     fn default() -> Self {
@@ -27,9 +32,56 @@ impl Default for CircleCIGenerator {
     }
 }
 
+fn run_step(name: &str, command: &str) -> serde_yaml::Value {
+    let mut m = serde_yaml::Mapping::new();
+    let mut inner = serde_yaml::Mapping::new();
+    inner.insert(
+        serde_yaml::Value::String("name".to_string()),
+        serde_yaml::Value::String(name.to_string()),
+    );
+    inner.insert(
+        serde_yaml::Value::String("command".to_string()),
+        serde_yaml::Value::String(command.to_string()),
+    );
+    m.insert(
+        serde_yaml::Value::String("run".to_string()),
+        serde_yaml::Value::Mapping(inner),
+    );
+    serde_yaml::Value::Mapping(m)
+}
+
 impl CircleCIGenerator {
     pub fn new() -> Self {
-        Self
+        Self {
+            base_hash_cache: Mutex::new(None),
+            file_hash_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Split a glob pattern into (root_dir_without_glob, local_glob, has_glob)
+    fn split_pattern_root(pat: &str) -> (std::path::PathBuf, String, bool) {
+        // Find earliest glob metachar
+        let bytes = pat.as_bytes();
+        let mut first_glob = None;
+        for (i, &b) in bytes.iter().enumerate() {
+            if matches!(b as char, '*' | '?' | '[' | '{') {
+                first_glob = Some(i);
+                break;
+            }
+        }
+        if let Some(idx) = first_glob {
+            // Root is up to the last '/' before the glob
+            let root_end = pat[..idx].rfind('/').unwrap_or(0);
+            let (root, rest) = if root_end == 0 {
+                (".".to_string(), pat.to_string())
+            } else {
+                (pat[..root_end].to_string(), pat[root_end + 1..].to_string())
+            };
+            (std::path::PathBuf::from(root), rest, true)
+        } else {
+            // No glob metachar — whole pattern is a literal path
+            (std::path::PathBuf::from(pat), String::new(), false)
+        }
     }
 
     pub fn generate_workflow(
@@ -40,6 +92,10 @@ impl CircleCIGenerator {
         commands: &HashMap<String, crate::models::Command>,
         output_path: &Path,
     ) -> Result<()> {
+        // Reset cache for this generation pass
+        if let Ok(mut guard) = self.base_hash_cache.lock() {
+            *guard = None;
+        }
         let circleci_config = self.build_config(config, workflow_name, jobs, commands)?;
 
         // Write the YAML output
@@ -67,6 +123,17 @@ impl CircleCIGenerator {
         commands: &HashMap<String, crate::models::Command>,
         output_path: &Path,
     ) -> Result<()> {
+        // If dynamic CircleCI: emit combined config.yml (package_updates + staging_postman_tests + setup)
+        // and separate main.yml. This collapses to the two-file architecture.
+        if config.provider == "circleci" && config.dynamic.unwrap_or(false) {
+            self.generate_dynamic_combined_config(config, workflows, commands, output_path)?;
+            return Ok(());
+        }
+
+        // Reset cache for this generation pass
+        if let Ok(mut guard) = self.base_hash_cache.lock() {
+            *guard = None;
+        }
         // First validate all jobs across all workflows
         let validator = StepValidator::new();
         for workflow_jobs in workflows.values() {
@@ -175,6 +242,307 @@ impl CircleCIGenerator {
 
         // Validate the generated config with CircleCI CLI
         self.validate_config(&output_file)?;
+
+        Ok(())
+    }
+
+    fn generate_dynamic_combined_config(
+        &self,
+        config: &Config,
+        workflows: &HashMap<String, HashMap<String, Job>>,
+        _commands: &HashMap<String, crate::models::Command>,
+        output_path: &Path,
+    ) -> Result<()> {
+        use crate::providers::circleci::config as cc;
+        let mut circleci_config = cc::CircleCIConfig {
+            setup: Some(true),
+            ..Default::default()
+        };
+
+        // Add parameters and orbs
+        if let Some(parameters) = &config.parameters {
+            circleci_config.parameters = Some(self.convert_parameters(parameters)?);
+        }
+        if let Some(orbs) = &config.orbs {
+            circleci_config.orbs = Some(orbs.clone());
+        }
+
+        // Helper to add a workflow with a when condition (param == true)
+        let mut add_conditional_workflow = |wf_name: &str, param_name: &str| -> Result<()> {
+            if let Some(jobs_map) = workflows.get(wf_name) {
+                // Build workflow and jobs
+                let wf = self.build_workflow(wf_name, jobs_map)?;
+                let mut wf_cond = wf;
+                wf_cond.when = Some(cc::CircleCIWorkflowWhen::Complex {
+                    and: None,
+                    or: None,
+                    equal: Some(vec![
+                        serde_yaml::Value::String("true".to_string()),
+                        serde_yaml::Value::String(format!(
+                            "<< pipeline.parameters.{} >>",
+                            param_name
+                        )),
+                    ]),
+                    not: None,
+                });
+                circleci_config
+                    .workflows
+                    .insert(wf_name.to_string(), wf_cond);
+
+                // Convert jobs
+                for (job_name, job_def) in jobs_map {
+                    if job_def.job_type.as_deref() == Some("approval") {
+                        continue;
+                    }
+                    let architectures = job_def
+                        .architectures
+                        .clone()
+                        .unwrap_or_else(|| vec!["amd64".to_string()]);
+                    for arch in &architectures {
+                        let variant_job_name = if architectures.len() > 1 {
+                            format!("{}_{}", job_name, arch)
+                        } else {
+                            job_name.clone()
+                        };
+                        let circleci_job =
+                            self.convert_job_with_architecture(config, job_def, arch)?;
+                        circleci_config.jobs.insert(variant_job_name, circleci_job);
+                    }
+                }
+            }
+            Ok(())
+        };
+
+        // Add conditional workflows
+        add_conditional_workflow("package_updates", "check_package_versions")?;
+        add_conditional_workflow("staging_postman_tests", "run_staging_postman_tests")?;
+
+        // Add synthesized setup workflow with skip gating and continuation to main
+        let setup_job_name = "generate_config".to_string();
+        let setup_workflow = cc::CircleCIWorkflow {
+            when: None,
+            unless: None,
+            jobs: vec![cc::CircleCIWorkflowJob::Simple(setup_job_name.clone())],
+        };
+        circleci_config
+            .workflows
+            .insert("setup".to_string(), setup_workflow);
+
+        // Build setup job
+        // Choose setup runtime image: prefer configured one, else default to cimg/base:current
+        let setup_image = config
+            .setup_options
+            .as_ref()
+            .and_then(|o| o.runtime_image.clone())
+            .unwrap_or_else(|| "cimg/base:current".to_string());
+
+        let mut setup_job = cc::CircleCIJob {
+            executor: None,
+            docker: Some(vec![cc::CircleCIDockerImage {
+                image: setup_image,
+                auth: None,
+                name: None,
+                entrypoint: None,
+                command: None,
+                user: None,
+                environment: None,
+            }]),
+            machine: None,
+            resource_class: Some("small".to_string()),
+            working_directory: None,
+            parallelism: None,
+            environment: None,
+            parameters: None,
+            steps: Vec::new(),
+        };
+
+        // Steps: checkout, install cigen fallback, self-check (opt-in), generate main
+        setup_job
+            .steps
+            .push(cc::CircleCIStep::new(serde_yaml::Value::String(
+                "checkout".to_string(),
+            )));
+
+        let install_cmd = r#"if ! command -v cigen >/dev/null 2>&1; then
+  echo "Installing cigen..."
+  curl -fsSL https://docspring.github.io/cigen/install.sh | bash
+fi"#;
+        setup_job.steps.push(cc::CircleCIStep::new(run_step(
+            "Install cigen",
+            install_cmd,
+        )));
+
+        // Optional self-check to ensure entrypoint is up to date
+        if let Some(opts) = &config.setup_options
+            && let Some(sc) = &opts.self_check
+            && sc.enabled
+        {
+            let diff_cmd = if sc.commit_on_diff.unwrap_or(false) {
+                r#"mkdir -p .circleci_check
+cigen generate -o .circleci_check
+if ! diff -q .circleci/config.yml .circleci_check/config.yml >/dev/null 2>&1; then
+  echo "config.yml drift detected. Committing and failing..."
+  git config user.email "ci@docspring.com"
+  git config user.name "docspring-ci"
+  cp .circleci_check/config.yml .circleci/config.yml
+  git add .circleci/config.yml
+  git commit -m "ci: update .circleci/config.yml from cigen"
+  git push || true
+  exit 1
+fi"#
+            } else {
+                r#"mkdir -p .circleci_check
+cigen generate -o .circleci_check
+if ! diff -q .circleci/config.yml .circleci_check/config.yml >/dev/null 2>&1; then
+  echo "config.yml drift detected. Please update .circleci/config.yml via cigen and push." >&2
+  exit 1
+fi"#
+            };
+            setup_job.steps.push(cc::CircleCIStep::new(run_step(
+                "Self-check entrypoint",
+                diff_cmd,
+            )));
+        }
+
+        setup_job.steps.push(cc::CircleCIStep::new(run_step(
+            "Generate main workflow",
+            "cigen generate --workflow main",
+        )));
+
+        // Skip analysis for main
+        if let Some(main_jobs) = workflows.get("main") {
+            setup_job.steps.push(cc::CircleCIStep::new(run_step(
+                "Prepare skip list",
+                "rm -rf /tmp/skip && mkdir -p /tmp/skip /tmp/setup_keys",
+            )));
+            for (job_name, job_def) in main_jobs {
+                if let Some(source_files) = &job_def.source_files {
+                    let architectures = job_def
+                        .architectures
+                        .clone()
+                        .unwrap_or_else(|| vec!["amd64".to_string()]);
+                    for arch in architectures {
+                        let variant = if job_def
+                            .architectures
+                            .as_ref()
+                            .map(|v| v.len() > 1)
+                            .unwrap_or(false)
+                        {
+                            format!("{}_{}", job_name, arch)
+                        } else {
+                            job_name.clone()
+                        };
+                        // Export vars for this variant
+                        setup_job.steps.push(cc::CircleCIStep::new(run_step(
+                            &format!("Set variant env: {}", variant),
+                            &format!(
+                                "export DOCKER_ARCH=\"{}\"\nexport JOB_NAME=\"{}\"",
+                                arch, variant
+                            ),
+                        )));
+                        // Hash calculation (reuse existing function)
+                        let hash_step = self.build_hash_calculation_step(config, source_files)?;
+                        setup_job.steps.push(cc::CircleCIStep::new(hash_step));
+                        // Prepare job-key for exists cache
+                        let prep = run_step(
+                            &format!("Prepare job key (exists): {}", variant),
+                            &format!(
+                                "mkdir -p /tmp/setup_keys/{} && echo \"${{JOB_NAME}}-${{DOCKER_ARCH}}-${{JOB_HASH}}\" > /tmp/setup_keys/{}/job-key",
+                                variant, variant
+                            ),
+                        );
+                        setup_job.steps.push(cc::CircleCIStep::new(prep));
+                        // Restore exists cache
+                        let mut restore_cfg = serde_yaml::Mapping::new();
+                        restore_cfg.insert(
+                            serde_yaml::Value::String("keys".to_string()),
+                            serde_yaml::Value::Sequence(vec![
+                                serde_yaml::Value::String(format!("job_status-exists-v1-{{{{ checksum \"/tmp/setup_keys/{}/job-key\" }}}}", variant)),
+                                serde_yaml::Value::String("job_status-exists-v1-".to_string()),
+                            ]),
+                        );
+                        let mut restore_step = serde_yaml::Mapping::new();
+                        restore_step.insert(
+                            serde_yaml::Value::String("restore_cache".to_string()),
+                            serde_yaml::Value::Mapping(restore_cfg),
+                        );
+                        setup_job
+                            .steps
+                            .push(cc::CircleCIStep::new(serde_yaml::Value::Mapping(
+                                restore_step,
+                            )));
+                        // Check exists and append to skip
+                        let check_cmd = format!(
+                            "if [ -f '/tmp/cigen_job_exists/done_${{JOB_HASH}}' ]; then echo '{}' >> /tmp/skip/main.txt; fi\nrm -rf /tmp/cigen_job_exists",
+                            variant
+                        );
+                        setup_job.steps.push(cc::CircleCIStep::new(run_step(
+                            &format!("Probe exists: {}", variant),
+                            &check_cmd,
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Generate filtered main with skip file and continue
+        setup_job.steps.push(cc::CircleCIStep::new(run_step(
+            "Generate filtered main",
+            "if [ -f /tmp/skip/main.txt ]; then CIGEN_SKIP_JOBS_FILE=/tmp/skip/main.txt cigen generate --workflow main; else echo 'No skip list'; fi",
+        )));
+
+        // Continue pipeline to .circleci/main.yml
+        setup_job.steps.push(cc::CircleCIStep::new(run_step(
+            "Continue Pipeline",
+            r#"
+if [ -z "${CIRCLE_CONTINUATION_KEY}" ]; then
+  echo "CIRCLE_CONTINUATION_KEY is required. Make sure setup workflows are enabled."
+  exit 1
+fi
+
+CONFIG_PATH=".circleci/main.yml"
+if [ ! -f "$CONFIG_PATH" ]; then
+  echo "Continuation config not found at $CONFIG_PATH" >&2
+  exit 1
+fi
+
+jq -n \
+  --arg continuation "$CIRCLE_CONTINUATION_KEY" \
+  --rawfile config "$CONFIG_PATH" \
+  '{"continuation-key": $continuation, "configuration": $config}' \
+  > /tmp/continuation.json
+
+cat /tmp/continuation.json
+
+[[ $(curl \
+  -o /dev/stderr \
+  -w '%{http_code}' \
+  -XPOST \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json" \
+  --data "@/tmp/continuation.json" \
+  "https://circleci.com/api/v2/pipeline/continue") -eq 200 ]]
+"#,
+        )));
+
+        circleci_config.jobs.insert(setup_job_name, setup_job);
+
+        // Write combined config.yml
+        let yaml_content = serde_yaml::to_string(&circleci_config).into_diagnostic()?;
+        let output_file = output_path.join("config.yml");
+        fs::create_dir_all(output_path).into_diagnostic()?;
+        fs::write(&output_file, yaml_content).into_diagnostic()?;
+        self.validate_config(&output_file)?;
+
+        // Generate main.yml separately
+        if let Some(main_jobs) = workflows.get("main") {
+            let mut main_only = HashMap::new();
+            main_only.insert("main".to_string(), main_jobs.clone());
+            // Build a temp map containing only main and write to .circleci/main.yml
+            let mut temp_conf = config.clone();
+            temp_conf.output_filename = Some("main.yml".to_string());
+            self.generate_workflow(&temp_conf, "main", main_jobs, _commands, output_path)?;
+        }
 
         Ok(())
     }
@@ -296,53 +664,153 @@ impl CircleCIGenerator {
             current_dir
         };
 
-        let mut files: HashSet<std::path::PathBuf> = HashSet::new();
+        // Build a unique set of glob patterns across all images to avoid repeating directory walks
+        let mut unique_patterns: HashSet<String> = HashSet::new();
         for img in &db.images {
             for pattern in &img.hash_sources {
-                // Try to glob; if fails (e.g., plain file), just add directly if exists
-                if let Ok(walker) = GlobWalkerBuilder::from_patterns(&base_dir, &[pattern.as_str()])
-                    .follow_links(true)
-                    .case_insensitive(false)
-                    .build()
-                {
-                    for entry in walker.filter_map(Result::ok) {
-                        let p = entry.path().to_path_buf();
-                        if p.is_file() {
-                            files.insert(p);
-                        }
-                    }
-                } else {
-                    let p = base_dir.join(pattern);
-                    if p.is_file() {
-                        files.insert(p);
-                    } else if p.is_dir() {
-                        // Collect all files recursively
-                        for e in walkdir::WalkDir::new(&p).into_iter().filter_map(|e| e.ok()) {
-                            let fp = e.path().to_path_buf();
-                            if fp.is_file() {
-                                files.insert(fp);
+                unique_patterns.insert(pattern.clone());
+            }
+        }
+
+        let start = Instant::now();
+        let mut files: HashSet<std::path::PathBuf> = HashSet::new();
+
+        // Exclude noisy/irrelevant directories from hashing
+        let excludes = [
+            ".git/",
+            "node_modules/",
+            "target/",
+            "tmp/",
+            "log/",
+            ".circleci/",
+            ".cigen/",
+            "docs/dist/",
+            "public/assets/",
+        ];
+
+        // For each pattern, anchor traversal to the smallest root before any glob
+        for pattern in unique_patterns.iter() {
+            let (root_rel, local_glob, has_glob) = Self::split_pattern_root(pattern);
+            let root_path = base_dir.join(&root_rel);
+
+            if !has_glob {
+                // Literal path: include file directly, or walk dir
+                if root_path.is_file() {
+                    files.insert(root_path);
+                    continue;
+                }
+                if root_path.is_dir() {
+                    for e in walkdir::WalkDir::new(&root_path)
+                        .follow_links(false)
+                        .into_iter()
+                        .filter_map(|e| e.ok())
+                    {
+                        let fp = e.path();
+                        if fp.is_file() {
+                            let s = fp.to_string_lossy();
+                            if excludes.iter().any(|ex| s.contains(ex)) {
+                                continue;
                             }
+                            files.insert(fp.to_path_buf());
                         }
                     }
                 }
+                continue;
+            }
+
+            // Globbed pattern: walk only the root and apply the local glob
+            if root_path.is_dir() {
+                if let Ok(walker) =
+                    GlobWalkerBuilder::from_patterns(&root_path, &[local_glob.as_str()])
+                        .follow_links(false)
+                        .case_insensitive(false)
+                        .build()
+                {
+                    for entry in walker.filter_map(Result::ok) {
+                        let p = entry.path();
+                        if p.is_file() {
+                            let s = p.to_string_lossy();
+                            if excludes.iter().any(|ex| s.contains(ex)) {
+                                continue;
+                            }
+                            files.insert(p.to_path_buf());
+                        }
+                    }
+                }
+            } else if root_path.is_file() {
+                files.insert(root_path);
             }
         }
 
-        let mut files_vec: Vec<_> = files.into_iter().collect();
+        let mut files_vec: Vec<_> = files.iter().cloned().collect();
         files_vec.sort();
 
-        let mut hasher = Sha256::new();
-        for fp in files_vec {
-            // include relative path for stability
+        let mut agg = Sha256::new();
+        for fp in &files_vec {
+            // include relative path and file content hash (cached) for stability
             if let Ok(rel) = fp.strip_prefix(&base_dir) {
-                hasher.update(rel.to_string_lossy().as_bytes());
+                agg.update(rel.to_string_lossy().as_bytes());
             }
-            if let Ok(bytes) = std::fs::read(&fp) {
-                hasher.update(&bytes);
-            }
+            let fh = self.cached_file_hash(fp)?;
+            agg.update(fh.as_bytes());
         }
-        let hash = format!("{:x}", hasher.finalize());
+        let hash = format!("{:x}", agg.finalize());
+        if std::env::var("CIGEN_DEBUG").ok().as_deref() == Some("1") {
+            eprintln!(
+                "[cigen] docker_build: matched {} files across {} patterns in {:?}",
+                files_vec.len(),
+                db.images
+                    .iter()
+                    .map(|i| i.hash_sources.len())
+                    .sum::<usize>(),
+                start.elapsed()
+            );
+        }
         Ok(Some(hash))
+    }
+
+    /// Get cached docker base hash for this generation run (compute on first use)
+    fn get_cached_docker_base_hash(&self, config: &Config) -> Result<Option<String>> {
+        if let Ok(mut guard) = self.base_hash_cache.lock() {
+            if let Some(existing) = guard.clone() {
+                return Ok(Some(existing));
+            }
+            let t0 = Instant::now();
+            let h = self.compute_docker_base_hash(config)?;
+            if let Some(ref s) = h {
+                *guard = Some(s.clone());
+            }
+            if std::env::var("CIGEN_DEBUG").ok().as_deref() == Some("1") {
+                eprintln!(
+                    "[cigen] docker_build: cached BASE_HASH in {:?}",
+                    t0.elapsed()
+                );
+            }
+            return Ok(h);
+        }
+        // Fallback if mutex poisoned
+        self.compute_docker_base_hash(config)
+    }
+
+    /// Compute or fetch cached content hash for a file path
+    fn cached_file_hash(&self, path: &std::path::Path) -> Result<String> {
+        // Fast path: lookup existing
+        if let Ok(mut guard) = self.file_hash_cache.lock() {
+            if let Some(existing) = guard.get(path).cloned() {
+                return Ok(existing);
+            }
+            let bytes = std::fs::read(path).into_diagnostic()?;
+            let mut h = Sha256::new();
+            h.update(&bytes);
+            let hex = format!("{:x}", h.finalize());
+            guard.insert(path.to_path_buf(), hex.clone());
+            return Ok(hex);
+        }
+        // Fallback if mutex poisoned
+        let bytes = std::fs::read(path).into_diagnostic()?;
+        let mut h = Sha256::new();
+        h.update(&bytes);
+        Ok(format!("{:x}", h.finalize()))
     }
 
     /// Augment workflow jobs to include docker build jobs and inject requires edges
@@ -1071,167 +1539,174 @@ cat /tmp/continuation.json
             circleci_job.steps.push(CircleCIStep::new(checkout_step));
         }
 
-        // Add skip logic if job has source_files defined (job-status cache)
-        let has_skip_logic = if let Some(source_files) = &job.source_files {
-            self.add_skip_check_initial_steps(
-                &mut circleci_job,
-                config,
-                source_files,
-                architecture,
-            )?;
+        // For CircleCI dynamic setup, do NOT add per-job skip logic; setup workflow will gate execution
+        let is_dynamic = config.dynamic.unwrap_or(false);
 
-            // Decide backend for job-status cache
-            let backend = config
-                .caches
-                .as_ref()
-                .and_then(|c| c.job_status.as_ref())
-                .map(|b| b.backend.as_str())
-                .unwrap_or("native");
+        // Add skip logic if job has source_files defined (job-status cache) unless dynamic is enabled
+        let has_skip_logic = if !is_dynamic {
+            if let Some(source_files) = &job.source_files {
+                self.add_skip_check_initial_steps(
+                    &mut circleci_job,
+                    config,
+                    source_files,
+                    architecture,
+                )?;
 
-            match backend {
-                "redis" => {
-                    // Prepare key env
-                    let mut key_step = serde_yaml::Mapping::new();
-                    let mut key_run = serde_yaml::Mapping::new();
-                    key_run.insert(
-                        serde_yaml::Value::String("name".to_string()),
-                        serde_yaml::Value::String("Prepare job status key".to_string()),
-                    );
-                    key_run.insert(
+                // Decide backend for job-status cache
+                let backend = config
+                    .caches
+                    .as_ref()
+                    .and_then(|c| c.job_status.as_ref())
+                    .map(|b| b.backend.as_str())
+                    .unwrap_or("native");
+
+                match backend {
+                    "redis" => {
+                        // Prepare key env
+                        let mut key_step = serde_yaml::Mapping::new();
+                        let mut key_run = serde_yaml::Mapping::new();
+                        key_run.insert(
+                            serde_yaml::Value::String("name".to_string()),
+                            serde_yaml::Value::String("Prepare job status key".to_string()),
+                        );
+                        key_run.insert(
                         serde_yaml::Value::String("command".to_string()),
                         serde_yaml::Value::String(
                             "export JOB_STATUS_KEY=\"job_status:${CIRCLE_JOB}-${DOCKER_ARCH}-${JOB_HASH}\"".to_string(),
                         ),
                     );
-                    key_step.insert(
-                        serde_yaml::Value::String("run".to_string()),
-                        serde_yaml::Value::Mapping(key_run),
-                    );
-                    circleci_job
-                        .steps
-                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
+                        key_step.insert(
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(key_run),
+                        );
+                        circleci_job
+                            .steps
+                            .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
 
-                    // Read redis url/ttl from config if provided
-                    let (redis_url, ttl) = if let Some(cfg) = config
-                        .caches
-                        .as_ref()
-                        .and_then(|c| c.job_status.as_ref())
-                        .and_then(|b| b.config.as_ref())
-                    {
-                        let url = cfg
-                            .get("url")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("redis://127.0.0.1:6379");
-                        let ttl = cfg.get("ttl_seconds").and_then(|v| v.as_u64());
-                        (url.to_string(), ttl)
-                    } else {
-                        ("redis://127.0.0.1:6379".to_string(), None)
-                    };
+                        // Read redis url/ttl from config if provided
+                        let (redis_url, ttl) = if let Some(cfg) = config
+                            .caches
+                            .as_ref()
+                            .and_then(|c| c.job_status.as_ref())
+                            .and_then(|b| b.config.as_ref())
+                        {
+                            let url = cfg
+                                .get("url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("redis://127.0.0.1:6379");
+                            let ttl = cfg.get("ttl_seconds").and_then(|v| v.as_u64());
+                            (url.to_string(), ttl)
+                        } else {
+                            ("redis://127.0.0.1:6379".to_string(), None)
+                        };
 
-                    // Skip if key exists
-                    let mut check_step = serde_yaml::Mapping::new();
-                    let mut check_run = serde_yaml::Mapping::new();
-                    check_run.insert(
-                        serde_yaml::Value::String("name".to_string()),
-                        serde_yaml::Value::String("Check job status (redis)".to_string()),
-                    );
-                    let check_cmd = format!(
-                        "VAL=$(redis-cli -u {} GET \"$JOB_STATUS_KEY\" 2>/dev/null || true)\nif [ \"$VAL\" = \"done\" ]; then\n  echo 'Job already completed successfully for this file hash. Skipping...';\n  circleci step halt;\nfi",
-                        redis_url
-                    );
-                    check_run.insert(
-                        serde_yaml::Value::String("command".to_string()),
-                        serde_yaml::Value::String(check_cmd),
-                    );
-                    check_step.insert(
-                        serde_yaml::Value::String("run".to_string()),
-                        serde_yaml::Value::Mapping(check_run),
-                    );
-                    circleci_job
-                        .steps
-                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(check_step)));
-
-                    // After steps complete, record completion and optionally set TTL
-                    let mut record_step = serde_yaml::Mapping::new();
-                    let mut record_run = serde_yaml::Mapping::new();
-                    record_run.insert(
-                        serde_yaml::Value::String("name".to_string()),
-                        serde_yaml::Value::String("Record job completion (redis)".to_string()),
-                    );
-                    let set_cmd = if let Some(ttl_secs) = ttl {
-                        format!(
-                            "redis-cli -u {} SET \"$JOB_STATUS_KEY\" done >/dev/null 2>&1 || true\nredis-cli -u {} EXPIRE \"$JOB_STATUS_KEY\" {} >/dev/null 2>&1 || true",
-                            redis_url, redis_url, ttl_secs
-                        )
-                    } else {
-                        format!(
-                            "redis-cli -u {} SET \"$JOB_STATUS_KEY\" done >/dev/null 2>&1 || true",
+                        // Skip if key exists
+                        let mut check_step = serde_yaml::Mapping::new();
+                        let mut check_run = serde_yaml::Mapping::new();
+                        check_run.insert(
+                            serde_yaml::Value::String("name".to_string()),
+                            serde_yaml::Value::String("Check job status (redis)".to_string()),
+                        );
+                        let check_cmd = format!(
+                            "VAL=$(redis-cli -u {} GET \"$JOB_STATUS_KEY\" 2>/dev/null || true)\nif [ \"$VAL\" = \"done\" ]; then\n  echo 'Job already completed successfully for this file hash. Skipping...';\n  circleci step halt;\nfi",
                             redis_url
-                        )
-                    };
-                    record_run.insert(
-                        serde_yaml::Value::String("command".to_string()),
-                        serde_yaml::Value::String(set_cmd),
-                    );
-                    record_step.insert(
-                        serde_yaml::Value::String("run".to_string()),
-                        serde_yaml::Value::Mapping(record_run),
-                    );
-                    circleci_job
-                        .steps
-                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(record_step)));
-                }
-                _ => {
-                    // Native CircleCI cache
-                    // 1) Write job-key file (CIRCLE_JOB + arch + hash)
-                    let mut key_step = serde_yaml::Mapping::new();
-                    let mut key_run = serde_yaml::Mapping::new();
-                    key_run.insert(
-                        serde_yaml::Value::String("name".to_string()),
-                        serde_yaml::Value::String("Prepare job status key".to_string()),
-                    );
-                    key_run.insert(
+                        );
+                        check_run.insert(
+                            serde_yaml::Value::String("command".to_string()),
+                            serde_yaml::Value::String(check_cmd),
+                        );
+                        check_step.insert(
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(check_run),
+                        );
+                        circleci_job
+                            .steps
+                            .push(CircleCIStep::new(serde_yaml::Value::Mapping(check_step)));
+
+                        // After steps complete, record completion and optionally set TTL
+                        let mut record_step = serde_yaml::Mapping::new();
+                        let mut record_run = serde_yaml::Mapping::new();
+                        record_run.insert(
+                            serde_yaml::Value::String("name".to_string()),
+                            serde_yaml::Value::String("Record job completion (redis)".to_string()),
+                        );
+                        let set_cmd = if let Some(ttl_secs) = ttl {
+                            format!(
+                                "redis-cli -u {} SET \"$JOB_STATUS_KEY\" done >/dev/null 2>&1 || true\nredis-cli -u {} EXPIRE \"$JOB_STATUS_KEY\" {} >/dev/null 2>&1 || true",
+                                redis_url, redis_url, ttl_secs
+                            )
+                        } else {
+                            format!(
+                                "redis-cli -u {} SET \"$JOB_STATUS_KEY\" done >/dev/null 2>&1 || true",
+                                redis_url
+                            )
+                        };
+                        record_run.insert(
+                            serde_yaml::Value::String("command".to_string()),
+                            serde_yaml::Value::String(set_cmd),
+                        );
+                        record_step.insert(
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(record_run),
+                        );
+                        circleci_job
+                            .steps
+                            .push(CircleCIStep::new(serde_yaml::Value::Mapping(record_step)));
+                    }
+                    _ => {
+                        // Native CircleCI cache
+                        // 1) Write job-key file (CIRCLE_JOB + arch + hash)
+                        let mut key_step = serde_yaml::Mapping::new();
+                        let mut key_run = serde_yaml::Mapping::new();
+                        key_run.insert(
+                            serde_yaml::Value::String("name".to_string()),
+                            serde_yaml::Value::String("Prepare job status key".to_string()),
+                        );
+                        key_run.insert(
                         serde_yaml::Value::String("command".to_string()),
                         serde_yaml::Value::String(
                             "mkdir -p /tmp/cigen_job_status && echo \"${CIRCLE_JOB}-$(echo $DOCKER_ARCH)-${JOB_HASH}\" > /tmp/cigen_job_status/job-key".to_string(),
                         ),
                     );
-                    key_step.insert(
-                        serde_yaml::Value::String("run".to_string()),
-                        serde_yaml::Value::Mapping(key_run),
-                    );
-                    circleci_job
-                        .steps
-                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
+                        key_step.insert(
+                            serde_yaml::Value::String("run".to_string()),
+                            serde_yaml::Value::Mapping(key_run),
+                        );
+                        circleci_job
+                            .steps
+                            .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
 
-                    // 2) Restore job status cache
-                    let mut restore_cfg = serde_yaml::Mapping::new();
-                    restore_cfg.insert(
-                        serde_yaml::Value::String("keys".to_string()),
-                        serde_yaml::Value::Sequence(vec![
+                        // 2) Restore job status cache
+                        let mut restore_cfg = serde_yaml::Mapping::new();
+                        restore_cfg.insert(
+                            serde_yaml::Value::String("keys".to_string()),
+                            serde_yaml::Value::Sequence(vec![
                             serde_yaml::Value::String(
                                 "job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}"
                                     .to_string(),
                             ),
                             serde_yaml::Value::String("job_status-v1-".to_string()),
                         ]),
-                    );
-                    let mut restore_step = serde_yaml::Mapping::new();
-                    restore_step.insert(
-                        serde_yaml::Value::String("restore_cache".to_string()),
-                        serde_yaml::Value::Mapping(restore_cfg),
-                    );
-                    circleci_job
-                        .steps
-                        .push(CircleCIStep::new(serde_yaml::Value::Mapping(restore_step)));
+                        );
+                        let mut restore_step = serde_yaml::Mapping::new();
+                        restore_step.insert(
+                            serde_yaml::Value::String("restore_cache".to_string()),
+                            serde_yaml::Value::Mapping(restore_cfg),
+                        );
+                        circleci_job
+                            .steps
+                            .push(CircleCIStep::new(serde_yaml::Value::Mapping(restore_step)));
 
-                    // 3) Check and early exit if restored
-                    let skip_check_step = self.build_skip_check_step(config, architecture)?;
-                    circleci_job.steps.push(CircleCIStep::new(skip_check_step));
+                        // 3) Check and early exit if restored
+                        let skip_check_step = self.build_skip_check_step(config, architecture)?;
+                        circleci_job.steps.push(CircleCIStep::new(skip_check_step));
+                    }
                 }
-            }
 
-            true
+                true
+            } else {
+                false
+            }
         } else {
             false
         };
@@ -1464,8 +1939,8 @@ cat /tmp/continuation.json
             }
         }
 
-        // Add record completion step at the end if skip logic is enabled
-        if has_skip_logic {
+        // Always record completion step at end to save exists markers for setup gating (no-op if no hash)
+        if has_skip_logic || (is_dynamic && job.source_files.is_some()) {
             self.add_record_completion_step(&mut circleci_job, architecture)?;
         }
 
@@ -1498,7 +1973,7 @@ cat /tmp/continuation.json
                 let names: HashSet<_> = db.images.iter().map(|i| i.name.as_str()).collect();
                 if !image.contains('/') && !image.contains(':') && names.contains(image) {
                     let base_hash = self
-                        .compute_docker_base_hash(config)?
+                        .get_cached_docker_base_hash(config)?
                         .ok_or_else(|| miette::miette!("Failed to compute docker base hash"))?;
                     format!(
                         "{}/{}:{}-{}",
@@ -1611,12 +2086,17 @@ cat /tmp/continuation.json
         }
 
         // Check if CircleCI CLI is installed
+        println!("Validating with CircleCI CLI: {}", config_file.display());
         let cli_check = Command::new("circleci").arg("version").output();
 
         match cli_check {
             Ok(output) if output.status.success() => {
                 // CLI is installed, run validation
-                println!("Validating config with CircleCI CLI...");
+                println!(
+                    "circleci config validate -c {} (cwd: {})",
+                    config_file.display(),
+                    config_file.parent().unwrap().parent().unwrap().display()
+                );
 
                 let validation_result = Command::new("circleci")
                     .arg("config")
@@ -2078,7 +2558,10 @@ fi
     ) -> Result<()> {
         let command = r#"
 echo "Recording successful completion for hash ${JOB_HASH}"
+mkdir -p "/tmp/cigen_job_status"
+mkdir -p "/tmp/cigen_job_exists"
 touch "/tmp/cigen_job_status/done_${JOB_HASH}"
+touch "/tmp/cigen_job_exists/done_${JOB_HASH}"
         "#
         .trim()
         .to_string();
@@ -2125,6 +2608,31 @@ touch "/tmp/cigen_job_status/done_${JOB_HASH}"
         circleci_job
             .steps
             .push(CircleCIStep::new(serde_yaml::Value::Mapping(save_step)));
+
+        // Save exists marker cache for setup gating
+        let mut save_exists_cfg = serde_yaml::Mapping::new();
+        save_exists_cfg.insert(
+            serde_yaml::Value::String("key".to_string()),
+            serde_yaml::Value::String(
+                "job_status-exists-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}".to_string(),
+            ),
+        );
+        save_exists_cfg.insert(
+            serde_yaml::Value::String("paths".to_string()),
+            serde_yaml::Value::Sequence(vec![serde_yaml::Value::String(
+                "/tmp/cigen_job_exists".to_string(),
+            )]),
+        );
+        let mut save_exists_step = serde_yaml::Mapping::new();
+        save_exists_step.insert(
+            serde_yaml::Value::String("save_cache".to_string()),
+            serde_yaml::Value::Mapping(save_exists_cfg),
+        );
+        circleci_job
+            .steps
+            .push(CircleCIStep::new(serde_yaml::Value::Mapping(
+                save_exists_step,
+            )));
 
         Ok(())
     }
@@ -2264,3 +2772,4 @@ touch "/tmp/cigen_job_status/done_${JOB_HASH}"
         }
     }
 }
+// (impl method removed; using module-level helper)

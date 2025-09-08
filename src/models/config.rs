@@ -76,7 +76,13 @@ pub struct Config {
     pub workflows: Option<HashMap<String, WorkflowConfig>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub workflows_meta: Option<HashMap<String, WorkflowMeta>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub checkout: Option<CheckoutSetting>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setup_options: Option<SetupOptions>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,7 +269,9 @@ impl Default for Config {
             docker_build: None,
             package_managers: None,
             workflows: None,
+            workflows_meta: None,
             checkout: None,
+            setup_options: None,
         }
     }
 }
@@ -364,6 +372,37 @@ pub struct WorkflowConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkout: Option<CheckoutSetting>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkflowMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub continuation: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger_param: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduled: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupOptions {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub self_check: Option<SelfCheckOptions>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_image: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelfCheckOptions {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_on_diff: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
