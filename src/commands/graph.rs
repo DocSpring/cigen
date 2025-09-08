@@ -174,8 +174,7 @@ fn check_graphviz() -> Result<()> {
             eprintln!("  sudo pacman -S graphviz");
         }
 
-        #[cfg(target_os = "windows")]
-        eprintln!("  Download from: https://graphviz.org/download/");
+        // Windows is not supported
 
         anyhow::bail!("Graphviz not found");
     }

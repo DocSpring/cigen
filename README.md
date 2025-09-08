@@ -195,7 +195,7 @@ RUST_LOG=debug cargo run
   ./scripts/create-release-tag.sh --no-push
   ```
 
-- When the `vX.Y.Z` tag is pushed, GitHub Actions builds binaries for Linux, macOS, and Windows, generates checksums, and creates a GitHub Release with assets.
+- When the `vX.Y.Z` tag is pushed, GitHub Actions builds binaries for Linux and macOS, generates checksums, and creates a GitHub Release with assets.
 
 ### Git Hooks with Lefthook
 
