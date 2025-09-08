@@ -211,7 +211,7 @@ jobs:
           echo "Building docspringcom/cigen:${VERSION} and :latest"
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            -f docker/cigen.Dockerfile \
+            -f Dockerfile \
             --build-arg CIGEN_VERSION="${VERSION}" \
             -t docspringcom/cigen:"${VERSION}" \
             -t docspringcom/cigen:latest \

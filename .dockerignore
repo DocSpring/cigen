@@ -1,0 +1,15 @@
+target
+.git
+node_modules
+docs
+docspring
+.nx
+.circleci
+.cursor
+.vscode
+.renamify
+build
+*.DS_Store
+integration_tests
+docs/**
+docspring/**
