@@ -288,7 +288,7 @@ fn test_docker_image_resolution() {
     // Convert job and check that the image was resolved
     let circleci_job = provider
         .generator
-        .convert_job_with_architecture(&config, &job, "amd64")
+        .convert_job_with_architecture(&config, &job, "amd64", "test_job_amd64")
         .unwrap();
 
     // Check that docker images were set
@@ -325,7 +325,7 @@ fn test_docker_image_full_reference_passthrough() {
     // Convert job
     let circleci_job = provider
         .generator
-        .convert_job_with_architecture(&config, &job, "amd64")
+        .convert_job_with_architecture(&config, &job, "amd64", "test_job_amd64")
         .unwrap();
 
     // Check that full image reference was used as-is
@@ -543,7 +543,7 @@ fn test_architecture_environment_variables() {
 
     let generator = generator::CircleCIGenerator::new();
     let circleci_job = generator
-        .convert_job_with_architecture(&config, &job, "arm64")
+        .convert_job_with_architecture(&config, &job, "arm64", "test_job_arm64")
         .unwrap();
 
     // Check environment variables
@@ -553,6 +553,76 @@ fn test_architecture_environment_variables() {
     // Check that the correct architecture-specific image was used
     let docker_images = circleci_job.docker.unwrap();
     assert_eq!(docker_images[0].image, "cimg/ruby:3.3.5-arm64");
+}
+
+#[test]
+fn test_job_skip_logic_hash_step_patterns() {
+    let config = Config {
+        source_file_groups: Some(HashMap::from([(
+            "ruby".to_string(),
+            vec!["**/*.rb".to_string(), "Gemfile".to_string()],
+        )])),
+        ..Config::default()
+    };
+
+    let job = Job {
+        image: "cimg/ruby:3.3".to_string(),
+        architectures: None,
+        resource_class: None,
+        source_files: Some(vec!["@ruby".to_string(), "config/ci.yml".to_string()]),
+        parallelism: None,
+        requires: None,
+        cache: None,
+        restore_cache: None,
+        services: None,
+        packages: None,
+        steps: None,
+        checkout: None,
+        job_type: None,
+    };
+
+    let generator = generator::CircleCIGenerator::new();
+    let circleci_job = generator
+        .convert_job_with_architecture(&config, &job, "amd64", "ruby_lint")
+        .unwrap();
+
+    assert!(
+        circleci_job.steps.len() >= 6,
+        "expected checkout, hash, skip, completion, and cache steps"
+    );
+
+    let hash_step = &circleci_job.steps[1].raw;
+    let hash_map = hash_step
+        .as_mapping()
+        .expect("hash step should be a mapping");
+    let command_key = Value::String("cigen_calculate_sha256".to_string());
+    let command = hash_map
+        .get(&command_key)
+        .expect("cigen_calculate_sha256 command missing")
+        .as_mapping()
+        .expect("command should be a mapping");
+    let patterns_key = Value::String("patterns".to_string());
+    let patterns = command
+        .get(&patterns_key)
+        .expect("patterns parameter missing")
+        .as_str()
+        .expect("patterns should be a string");
+
+    assert_eq!(patterns, "**/*.rb\nGemfile\nconfig/ci.yml");
+
+    let skip_step = &circleci_job.steps[2].raw;
+    let skip_yaml = serde_yaml::to_string(skip_step).unwrap();
+    assert!(
+        skip_yaml.contains("Check if job should be skipped"),
+        "skip check run step missing"
+    );
+
+    let exists_cache_step = &circleci_job.steps.last().unwrap().raw;
+    let exists_yaml = serde_yaml::to_string(exists_cache_step).unwrap();
+    assert!(
+        exists_yaml.contains("job_status-exists-v1-ruby_lint-amd64"),
+        "job exists cache key should include job name and architecture"
+    );
 }
 
 #[test]

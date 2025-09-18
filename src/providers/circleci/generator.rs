@@ -190,7 +190,12 @@ impl CircleCIGenerator {
                         job_name.clone()
                     };
 
-                    let circleci_job = self.convert_job_with_architecture(config, job_def, arch)?;
+                    let circleci_job = self.convert_job_with_architecture(
+                        config,
+                        job_def,
+                        arch,
+                        &variant_job_name,
+                    )?;
                     circleci_config.jobs.insert(variant_job_name, circleci_job);
                 }
             }
@@ -304,8 +309,12 @@ impl CircleCIGenerator {
                         } else {
                             job_name.clone()
                         };
-                        let circleci_job =
-                            self.convert_job_with_architecture(config, job_def, arch)?;
+                        let circleci_job = self.convert_job_with_architecture(
+                            config,
+                            job_def,
+                            arch,
+                            &variant_job_name,
+                        )?;
                         circleci_config.jobs.insert(variant_job_name, circleci_job);
                     }
                 }
@@ -329,12 +338,13 @@ impl CircleCIGenerator {
             .insert("setup".to_string(), setup_workflow);
 
         // Build setup job
-        // Choose setup runtime image: prefer configured one, else default to cimg/base:current
+        // Choose setup runtime image: prefer configured one,
+        // else default to docspringcom/cigen:latest
         let setup_image = config
             .setup_options
             .as_ref()
             .and_then(|o| o.runtime_image.clone())
-            .unwrap_or_else(|| "cimg/base:current".to_string());
+            .unwrap_or_else(|| "docspringcom/cigen:latest".to_string());
 
         let mut setup_job = cc::CircleCIJob {
             executor: None,
@@ -356,21 +366,26 @@ impl CircleCIGenerator {
             steps: Vec::new(),
         };
 
-        // Steps: checkout, install cigen fallback, self-check (opt-in), generate main
-        setup_job
-            .steps
-            .push(cc::CircleCIStep::new(serde_yaml::Value::String(
-                "checkout".to_string(),
-            )));
-
-        let install_cmd = r#"if ! command -v cigen >/dev/null 2>&1; then
-  echo "Installing cigen..."
-  curl -fsSL https://docspring.github.io/cigen/install.sh | bash
-fi"#;
-        setup_job.steps.push(cc::CircleCIStep::new(run_step(
-            "Install cigen",
-            install_cmd,
-        )));
+        // Steps: built-in checkout, self-check (opt-in), generate main
+        // Use the same checkout resolution as regular jobs so we get the vendored shallow checkout by default
+        let placeholder_job = crate::models::Job {
+            image: "cimg/base:current".to_string(),
+            architectures: None,
+            resource_class: None,
+            source_files: None,
+            parallelism: None,
+            requires: None,
+            cache: None,
+            restore_cache: None,
+            services: None,
+            packages: None,
+            steps: None,
+            checkout: None,
+            job_type: None,
+        };
+        if let Some(checkout_step) = self.resolve_checkout_step(config, None, &placeholder_job)? {
+            setup_job.steps.push(cc::CircleCIStep::new(checkout_step));
+        }
 
         // Optional self-check to ensure entrypoint is up to date
         if let Some(opts) = &config.setup_options
@@ -378,22 +393,23 @@ fi"#;
             && sc.enabled
         {
             let diff_cmd = if sc.commit_on_diff.unwrap_or(false) {
-                r#"mkdir -p .circleci_check
-cigen generate -o .circleci_check
-if ! diff -q .circleci/config.yml .circleci_check/config.yml >/dev/null 2>&1; then
-  echo "config.yml drift detected. Committing and failing..."
-  git config user.email "ci@docspring.com"
-  git config user.name "docspring-ci"
-  cp .circleci_check/config.yml .circleci/config.yml
+                r#"set -euo pipefail
+cp -f .circleci/config.yml .circleci/config.yml.bak
+cigen generate
+if ! diff -q .circleci/config.yml .circleci/config.yml.bak >/dev/null 2>&1; then
+  echo "config.yml drift detected. Committing and pushing..."
+  git config user.email "ci@cigen.dev"
+  git config user.name "CIGen"
   git add .circleci/config.yml
   git commit -m "ci: update .circleci/config.yml from cigen"
   git push || true
   exit 1
 fi"#
             } else {
-                r#"mkdir -p .circleci_check
-cigen generate -o .circleci_check
-if ! diff -q .circleci/config.yml .circleci_check/config.yml >/dev/null 2>&1; then
+                r#"set -euo pipefail
+cp -f .circleci/config.yml .circleci/config.yml.bak
+cigen generate
+if ! diff -q .circleci/config.yml .circleci/config.yml.bak >/dev/null 2>&1; then
   echo "config.yml drift detected. Please update .circleci/config.yml via cigen and push." >&2
   exit 1
 fi"#
@@ -404,10 +420,23 @@ fi"#
             )));
         }
 
-        setup_job.steps.push(cc::CircleCIStep::new(run_step(
-            "Generate main workflow",
-            "cigen generate --workflow main",
-        )));
+        let has_skip_cache_param = config
+            .parameters
+            .as_ref()
+            .map(|params| params.contains_key("skip_cache"))
+            .unwrap_or(false);
+
+        if has_skip_cache_param {
+            let skip_cache_step = run_step(
+                "Handle skip_cache parameter",
+                r#"if [ "<< pipeline.parameters.skip_cache >>" = "true" ]; then
+  echo "skip_cache parameter true; regenerating main without job-status cache gating"
+  cigen generate main
+  circleci step halt
+fi"#,
+            );
+            setup_job.steps.push(cc::CircleCIStep::new(skip_cache_step));
+        }
 
         // Skip analysis for main
         if let Some(main_jobs) = workflows.get("main") {
@@ -432,33 +461,19 @@ fi"#
                         } else {
                             job_name.clone()
                         };
-                        // Export vars for this variant
-                        setup_job.steps.push(cc::CircleCIStep::new(run_step(
-                            &format!("Set variant env: {}", variant),
-                            &format!(
-                                "export DOCKER_ARCH=\"{}\"\nexport JOB_NAME=\"{}\"",
-                                arch, variant
-                            ),
-                        )));
                         // Hash calculation (reuse existing function)
                         let hash_step = self.build_hash_calculation_step(config, source_files)?;
                         setup_job.steps.push(cc::CircleCIStep::new(hash_step));
-                        // Prepare job-key for exists cache
-                        let prep = run_step(
-                            &format!("Prepare job key (exists): {}", variant),
-                            &format!(
-                                "mkdir -p /tmp/setup_keys/{} && echo \"${{JOB_NAME}}-${{DOCKER_ARCH}}-${{JOB_HASH}}\" > /tmp/setup_keys/{}/job-key",
-                                variant, variant
-                            ),
-                        );
-                        setup_job.steps.push(cc::CircleCIStep::new(prep));
-                        // Restore exists cache
+                        // Restore exists cache with OS + variant + job hash
                         let mut restore_cfg = serde_yaml::Mapping::new();
                         restore_cfg.insert(
                             serde_yaml::Value::String("keys".to_string()),
                             serde_yaml::Value::Sequence(vec![
-                                serde_yaml::Value::String(format!("job_status-exists-v1-{{{{ checksum \"/tmp/setup_keys/{}/job-key\" }}}}", variant)),
-                                serde_yaml::Value::String("job_status-exists-v1-".to_string()),
+                                serde_yaml::Value::String(format!(
+                                    "linux-{{{{ checksum \"/etc/os-release\" }}}}-job_status-exists-v1-{}-{{{{ checksum \"/tmp/cigen/job_hash\" }}}}",
+                                    variant
+                                )),
+                                serde_yaml::Value::String("linux-{{ checksum \"/etc/os-release\" }}-job_status-exists-v1-".to_string()),
                             ]),
                         );
                         let mut restore_step = serde_yaml::Mapping::new();
@@ -488,7 +503,7 @@ fi"#
         // Generate filtered main with skip file and continue
         setup_job.steps.push(cc::CircleCIStep::new(run_step(
             "Generate filtered main",
-            "if [ -f /tmp/skip/main.txt ]; then CIGEN_SKIP_JOBS_FILE=/tmp/skip/main.txt cigen generate --workflow main; else echo 'No skip list'; fi",
+            "if [ -f /tmp/skip/main.txt ]; then CIGEN_SKIP_JOBS_FILE=/tmp/skip/main.txt cigen generate main; else echo 'No skip list'; fi",
         )));
 
         // Continue pipeline to .circleci/main.yml
@@ -526,6 +541,28 @@ cat /tmp/continuation.json
         )));
 
         circleci_config.jobs.insert(setup_job_name, setup_job);
+
+        // Scan for template/user command usage and add them to commands section (needed for setup job)
+        let used_template_commands = self.scan_for_template_commands(&circleci_config);
+        let used_user_commands = self.scan_for_user_commands(&circleci_config, _commands);
+
+        let mut all_commands = HashMap::new();
+        for cmd_name in used_template_commands {
+            if let Some(cmd_def) = template_commands::get_template_command(&cmd_name) {
+                let command: CircleCICommand = serde_yaml::from_value(cmd_def.clone())
+                    .map_err(|e| miette::miette!("Failed to parse template command: {}", e))?;
+                all_commands.insert(cmd_name, command);
+            }
+        }
+        for cmd_name in used_user_commands {
+            if let Some(user_cmd) = _commands.get(&cmd_name) {
+                let command = self.convert_user_command(user_cmd)?;
+                all_commands.insert(cmd_name, command);
+            }
+        }
+        if !all_commands.is_empty() {
+            circleci_config.commands = Some(all_commands);
+        }
 
         // Write combined config.yml
         let yaml_content = serde_yaml::to_string(&circleci_config).into_diagnostic()?;
@@ -594,7 +631,8 @@ cat /tmp/continuation.json
                     job_name.clone()
                 };
 
-                let circleci_job = self.convert_job_with_architecture(config, job_def, arch)?;
+                let circleci_job =
+                    self.convert_job_with_architecture(config, job_def, arch, &variant_job_name)?;
                 circleci_config.jobs.insert(variant_job_name, circleci_job);
             }
         }
@@ -947,7 +985,7 @@ cat /tmp/continuation.json
                         ("redis://127.0.0.1:6379".to_string(), None)
                     };
 
-                    // Prepare key env
+                    // Prepare key env (persist across steps)
                     raw_steps.push(serde_yaml::to_value(serde_yaml::Mapping::from_iter([
                         (
                             serde_yaml::Value::String("run".to_string()),
@@ -959,7 +997,7 @@ cat /tmp/continuation.json
                                 (
                                     serde_yaml::Value::String("command".to_string()),
                                     serde_yaml::Value::String(format!(
-                                        "export JOB_STATUS_KEY=\"job_status:${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\"",
+                                        "echo \"export JOB_STATUS_KEY=\\\"job_status:${{CIRCLE_JOB}}-${{DOCKER_ARCH}}-{}\\\"\" >> \"$BASH_ENV\"",
                                         base_hash
                                     )),
                                 ),
@@ -1497,6 +1535,7 @@ cat /tmp/continuation.json
         config: &Config,
         job: &Job,
         architecture: &str,
+        job_name: &str,
     ) -> Result<CircleCIJob> {
         let mut circleci_job = CircleCIJob {
             executor: None,
@@ -1562,19 +1601,24 @@ cat /tmp/continuation.json
 
                 match backend {
                     "redis" => {
-                        // Prepare key env
+                        // Prepare key env (includes OS label; no CircleCI checksum here since redis key is used in shell)
                         let mut key_step = serde_yaml::Mapping::new();
                         let mut key_run = serde_yaml::Mapping::new();
                         key_run.insert(
                             serde_yaml::Value::String("name".to_string()),
                             serde_yaml::Value::String("Prepare job status key".to_string()),
                         );
+                        let key_cmd = format!(
+                            r#". /etc/os-release 2>/dev/null || true
+OS_LABEL="linux-${{ID:-unknown}}${{VERSION_ID:+-${{VERSION_ID}}}}"
+echo "export JOB_STATUS_KEY=\"${{OS_LABEL}}-job_status-v1-{job}-{arch}-${{JOB_HASH}}\"" >> "$BASH_ENV""#,
+                            job = job_name,
+                            arch = architecture
+                        );
                         key_run.insert(
-                        serde_yaml::Value::String("command".to_string()),
-                        serde_yaml::Value::String(
-                            "export JOB_STATUS_KEY=\"job_status:${CIRCLE_JOB}-${DOCKER_ARCH}-${JOB_HASH}\"".to_string(),
-                        ),
-                    );
+                            serde_yaml::Value::String("command".to_string()),
+                            serde_yaml::Value::String(key_cmd),
+                        );
                         key_step.insert(
                             serde_yaml::Value::String("run".to_string()),
                             serde_yaml::Value::Mapping(key_run),
@@ -1655,37 +1699,16 @@ cat /tmp/continuation.json
                     }
                     _ => {
                         // Native CircleCI cache
-                        // 1) Write job-key file (CIRCLE_JOB + arch + hash)
-                        let mut key_step = serde_yaml::Mapping::new();
-                        let mut key_run = serde_yaml::Mapping::new();
-                        key_run.insert(
-                            serde_yaml::Value::String("name".to_string()),
-                            serde_yaml::Value::String("Prepare job status key".to_string()),
-                        );
-                        key_run.insert(
-                        serde_yaml::Value::String("command".to_string()),
-                        serde_yaml::Value::String(
-                            "mkdir -p /tmp/cigen_job_status && echo \"${CIRCLE_JOB}-$(echo $DOCKER_ARCH)-${JOB_HASH}\" > /tmp/cigen_job_status/job-key".to_string(),
-                        ),
-                    );
-                        key_step.insert(
-                            serde_yaml::Value::String("run".to_string()),
-                            serde_yaml::Value::Mapping(key_run),
-                        );
-                        circleci_job
-                            .steps
-                            .push(CircleCIStep::new(serde_yaml::Value::Mapping(key_step)));
-
-                        // 2) Restore job status cache
+                        // 1) Restore job status cache with OS label + job + arch + file hash
                         let mut restore_cfg = serde_yaml::Mapping::new();
                         restore_cfg.insert(
                             serde_yaml::Value::String("keys".to_string()),
                             serde_yaml::Value::Sequence(vec![
-                            serde_yaml::Value::String(
-                                "job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}"
-                                    .to_string(),
-                            ),
-                            serde_yaml::Value::String("job_status-v1-".to_string()),
+                            serde_yaml::Value::String(format!(
+                                "linux-{{{{ checksum \"/etc/os-release\" }}}}-job_status-v1-{}-{}-{{{{ checksum \"/tmp/cigen/job_hash\" }}}}",
+                                job_name, architecture
+                            )),
+                            serde_yaml::Value::String("linux-{{ checksum \"/etc/os-release\" }}-job_status-v1-".to_string()),
                         ]),
                         );
                         let mut restore_step = serde_yaml::Mapping::new();
@@ -1941,7 +1964,7 @@ cat /tmp/continuation.json
 
         // Always record completion step at end to save exists markers for setup gating (no-op if no hash)
         if has_skip_logic || (is_dynamic && job.source_files.is_some()) {
-            self.add_record_completion_step(&mut circleci_job, architecture)?;
+            self.add_record_completion_step(&mut circleci_job, architecture, job_name)?;
         }
 
         Ok(circleci_job)
@@ -2423,96 +2446,42 @@ cat /tmp/continuation.json
             .as_ref()
             .ok_or_else(|| miette::miette!("source_file_groups not defined in config"))?;
 
-        let mut all_patterns = Vec::new();
-
-        for source_file in source_files {
-            if let Some(group_name) = source_file.strip_prefix('@') {
-                // Named group reference like "@ruby"
-
+        // Expand groups into concrete patterns
+        let mut patterns: Vec<String> = Vec::new();
+        for entry in source_files {
+            if let Some(group_name) = entry.strip_prefix('@') {
                 let file_patterns = source_file_groups.get(group_name).ok_or_else(|| {
                     miette::miette!(
                         "source_files group '{}' not found in source_file_groups",
                         group_name
                     )
                 })?;
-
-                all_patterns.extend(file_patterns.clone());
-            } else {
-                // Inline pattern like "scripts/**/*"
-                all_patterns.push(source_file.clone());
-            }
-        }
-
-        // Build find commands for all file patterns
-        let mut find_commands = Vec::new();
-        for pattern in all_patterns {
-            if pattern.starts_with('(') && pattern.ends_with(')') {
-                // Reference to another group like "(rails)"
-                let referenced_group = &pattern[1..pattern.len() - 1];
+                patterns.extend(file_patterns.clone());
+            } else if entry.starts_with('(') && entry.ends_with(')') {
+                let referenced_group = &entry[1..entry.len() - 1];
                 if let Some(referenced_patterns) = source_file_groups.get(referenced_group) {
-                    for ref_pattern in referenced_patterns {
-                        if ref_pattern.ends_with('/') {
-                            find_commands
-                                .push(format!("find {} -type f 2>/dev/null || true", ref_pattern));
-                        } else {
-                            find_commands.push(format!(
-                                "[ -f {} ] && echo {} || true",
-                                ref_pattern, ref_pattern
-                            ));
-                        }
-                    }
+                    patterns.extend(referenced_patterns.clone());
                 }
-            } else if pattern.ends_with('/') {
-                // Directory pattern
-                find_commands.push(format!("find {} -type f 2>/dev/null || true", pattern));
             } else {
-                // File pattern
-                find_commands.push(format!("[ -f {} ] && echo {} || true", pattern, pattern));
+                patterns.push(entry.clone());
             }
         }
 
-        let command = format!(
-            r#"
-echo "Calculating hash for source files..."
-TEMP_HASH_FILE="/tmp/source_files_for_hash"
-rm -f "$TEMP_HASH_FILE"
+        // Join patterns into a single whitespace separated string
+        let pat_str = patterns.join("\n");
 
-{}
-
-if [ -f "$TEMP_HASH_FILE" ]; then
-    export JOB_HASH=$(sort "$TEMP_HASH_FILE" | xargs sha256sum | sha256sum | cut -d' ' -f1)
-    echo "Hash calculated: $JOB_HASH"
-else
-    export JOB_HASH="empty"
-    echo "No source files found, using empty hash"
-fi
-            "#,
-            find_commands
-                .iter()
-                .map(|cmd| format!("{} >> \"$TEMP_HASH_FILE\"", cmd))
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-        .trim()
-        .to_string();
-
-        let mut step = serde_yaml::Mapping::new();
-        let mut run_details = serde_yaml::Mapping::new();
-        run_details.insert(
-            serde_yaml::Value::String("name".to_string()),
-            serde_yaml::Value::String("Calculate source file hash".to_string()),
+        // Emit our template command with parameters
+        let mut params = serde_yaml::Mapping::new();
+        params.insert(
+            serde_yaml::Value::String("patterns".to_string()),
+            serde_yaml::Value::String(pat_str),
         );
-        run_details.insert(
-            serde_yaml::Value::String("command".to_string()),
-            serde_yaml::Value::String(command),
+        let mut step_map = serde_yaml::Mapping::new();
+        step_map.insert(
+            serde_yaml::Value::String("cigen_calculate_sha256".to_string()),
+            serde_yaml::Value::Mapping(params),
         );
-
-        step.insert(
-            serde_yaml::Value::String("run".to_string()),
-            serde_yaml::Value::Mapping(run_details),
-        );
-
-        Ok(serde_yaml::Value::Mapping(step))
+        Ok(serde_yaml::Value::Mapping(step_map))
     }
 
     fn build_skip_check_step(
@@ -2554,7 +2523,8 @@ fi
     fn add_record_completion_step(
         &self,
         circleci_job: &mut CircleCIJob,
-        _architecture: &str,
+        architecture: &str,
+        job_name: &str,
     ) -> Result<()> {
         let command = r#"
 echo "Recording successful completion for hash ${JOB_HASH}"
@@ -2590,9 +2560,10 @@ touch "/tmp/cigen_job_exists/done_${JOB_HASH}"
         let mut save_cfg = serde_yaml::Mapping::new();
         save_cfg.insert(
             serde_yaml::Value::String("key".to_string()),
-            serde_yaml::Value::String(
-                "job_status-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}".to_string(),
-            ),
+            serde_yaml::Value::String(format!(
+                "linux-{{{{ checksum \"/etc/os-release\" }}}}-job_status-v1-{}-{}-{{{{ checksum \"/tmp/cigen/job_hash\" }}}}",
+                job_name, architecture
+            )),
         );
         save_cfg.insert(
             serde_yaml::Value::String("paths".to_string()),
@@ -2613,9 +2584,10 @@ touch "/tmp/cigen_job_exists/done_${JOB_HASH}"
         let mut save_exists_cfg = serde_yaml::Mapping::new();
         save_exists_cfg.insert(
             serde_yaml::Value::String("key".to_string()),
-            serde_yaml::Value::String(
-                "job_status-exists-v1-{{ checksum \"/tmp/cigen_job_status/job-key\" }}".to_string(),
-            ),
+            serde_yaml::Value::String(format!(
+                "linux-{{{{ checksum \"/etc/os-release\" }}}}-job_status-exists-v1-{}-{}-{{{{ checksum \"/tmp/cigen/job_hash\" }}}}",
+                job_name, architecture
+            )),
         );
         save_exists_cfg.insert(
             serde_yaml::Value::String("paths".to_string()),

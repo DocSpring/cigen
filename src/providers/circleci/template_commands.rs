@@ -62,6 +62,163 @@ steps:
         .expect("Failed to parse shallow_checkout template");
     commands.insert("cigen_shallow_checkout".to_string(), shallow_checkout);
 
+    // cigen_calculate_sha256 command - efficient hashing with per-pattern caching
+    let calculate_hash = serde_yaml::from_str(
+        r#"
+description: "Calculate a stable SHA-256 over file patterns with caching; exports JOB_HASH"
+parameters:
+  patterns:
+    type: string
+    description: "Newline-separated list of path patterns"
+  ignorefile:
+    type: string
+    description: "Optional path to an ignore file to filter matches"
+    default: ""
+  add_ci_files:
+    type: boolean
+    description: "Include .circleci/* and ./scripts/ci/* in the hash"
+    default: true
+  unfiltered_patterns:
+    type: string
+    description: "Optional newline-separated patterns that bypass ignore filtering"
+    default: ""
+steps:
+  - run:
+      name: Calculate source file hash
+      environment:
+        PATTERNS: << parameters.patterns >>
+        IGNOREFILE: << parameters.ignorefile >>
+        ADD_CI: << parameters.add_ci_files >>
+        UNFILTERED_PATTERNS: << parameters.unfiltered_patterns >>
+      command: |
+        set -euo pipefail
+
+        if [ -z "${PATTERNS:-}" ]; then
+          echo "Please provide at least one pattern" >&2
+          exit 1
+        fi
+
+        if [ -z "${CI:-}" ]; then
+          rm -rf /tmp/sha256-patterns
+        fi
+
+        mkdir -p /tmp/sha256-patterns
+        mkdir -p /tmp/cigen
+
+        sha() {
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum
+          else
+            shasum -a 256
+          fi
+        }
+
+        list_files() {
+          git ls-files -s --cached --modified --others --exclude-standard -- "$@" |
+            grep -v '^16 ' | cut -f2- | LC_ALL=C sort -u || true
+        }
+
+        _CIGEN_IGNORE_ACTIVE=0
+        _CIGEN_GITIGNORE_BACKUP=""
+
+        restore_gitignore() {
+          if [ "${_CIGEN_IGNORE_ACTIVE}" -eq 1 ]; then
+            if [ -n "${_CIGEN_GITIGNORE_BACKUP}" ]; then
+              mv "${_CIGEN_GITIGNORE_BACKUP}" .gitignore
+            else
+              rm -f .gitignore
+            fi
+            _CIGEN_IGNORE_ACTIVE=0
+            _CIGEN_GITIGNORE_BACKUP=""
+          fi
+        }
+
+        calculate_hash_for_pattern() {
+          local pattern="$1"
+          local cache_key
+          local cache_path
+          local matched
+          local hash
+
+          cache_key=$(printf '%s;%s' "$pattern" "${IGNOREFILE}" | sha | cut -d' ' -f1)
+          cache_path="/tmp/sha256-patterns/${cache_key}"
+
+          if [ -f "$cache_path" ]; then
+            cat "$cache_path"
+            return 0
+          fi
+
+          if [ -f "$pattern" ]; then
+            matched="$pattern"
+          else
+            matched="$(list_files "$pattern")"
+          fi
+
+          if [ -z "$matched" ]; then
+            echo "ERROR: No files matched '$pattern'" >&2
+            exit 1
+          fi
+
+          if [ -n "${IGNOREFILE}" ]; then
+            _CIGEN_IGNORE_ACTIVE=1
+            if [ -f .gitignore ]; then
+              _CIGEN_GITIGNORE_BACKUP=".gitignore.cigen-backup"
+              cp .gitignore "${_CIGEN_GITIGNORE_BACKUP}"
+            else
+              _CIGEN_GITIGNORE_BACKUP=""
+            fi
+
+            cp "${IGNOREFILE}" .gitignore
+
+            filtered="$(printf '%s\n' "$matched" | git check-ignore -v -n --no-index --stdin 2>/dev/null || true)"
+            matched="$(printf '%s\n' "$filtered" | awk -F'\t' '/^::/ {print $2}' | LC_ALL=C sort -u)"
+
+            restore_gitignore
+            if [ -z "$matched" ]; then
+              echo "ERROR: No files matched '$pattern' after filtering" >&2
+              exit 1
+            fi
+          fi
+
+          hash="$(printf '%s\n' "$matched" | xargs sha | cut -d' ' -f1 | sha | cut -d' ' -f1)"
+          printf '%s' "$hash" > "$cache_path"
+          printf '%s' "$hash"
+        }
+
+        OLD_IFS=$IFS
+        IFS=$'\n'
+        set -f
+
+        combined=""
+        for pat in $PATTERNS; do
+          [ -z "$pat" ] && continue
+          combined="${combined}$(calculate_hash_for_pattern "$pat")"
+        done
+
+        if [ -n "${UNFILTERED_PATTERNS}" ]; then
+          for pat in $UNFILTERED_PATTERNS; do
+            [ -z "$pat" ] && continue
+            combined="${combined}$(IGNOREFILE="" calculate_hash_for_pattern "$pat")"
+          done
+        fi
+
+        if [ "${ADD_CI}" = "true" ]; then
+          for pat in '.circleci/*' './scripts/ci/*'; do
+            combined="${combined}$(IGNOREFILE="" calculate_hash_for_pattern "$pat")"
+          done
+        fi
+
+        set +f
+        IFS=$OLD_IFS
+
+        JOB_HASH=$(printf '%s' "$combined" | sha | cut -d' ' -f1)
+        printf '%s' "$JOB_HASH" > /tmp/cigen/job_hash
+        echo "Hash calculated: $JOB_HASH"
+"#,
+    )
+    .expect("Failed to parse cigen_calculate_sha256 template");
+    commands.insert("cigen_calculate_sha256".to_string(), calculate_hash);
+
     // Add more template commands here in the future
     // For example:
     // - setup_remote_docker_with_cache

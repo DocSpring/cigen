@@ -3,5 +3,5 @@ description: Configure git user for CI operations
 steps:
   - name: Configure git user
     run: |
-      git config --global user.email "ci@docspring.com"
-      git config --global user.name "DocSpring CI"
+      git config --global user.email "ci@cigen.dev"
+      git config --global user.name "CIGen"
