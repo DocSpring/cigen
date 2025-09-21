@@ -1,0 +1,43 @@
+description: "Write git submodule commit hash to a file"
+parameters:
+  submodule:
+    type: string
+    description: "Path to the git submodule"
+  output_file:
+    type: string
+    description: "File path to write the commit hash"
+steps:
+  - run:
+      name: Record commit hash for << parameters.submodule >>
+      command: |
+        set -eu
+        SUBMODULE_PATH="<< parameters.submodule >>"
+        OUTPUT_FILE="<< parameters.output_file >>"
+
+        if [ -z "$SUBMODULE_PATH" ]; then
+          echo "Submodule path is required" >&2
+          exit 1
+        fi
+
+        TMP_FILE="$(mktemp /tmp/cigen-submodule-hash.XXXXXX)"
+        if ! git ls-tree HEAD -- "$SUBMODULE_PATH" > "$TMP_FILE" 2>"${TMP_FILE}.err"; then
+          echo "Failed to read commit hash for submodule $SUBMODULE_PATH" >&2
+          cat "${TMP_FILE}.err" >&2 || true
+          rm -f "$TMP_FILE" "${TMP_FILE}.err"
+          exit 1
+        fi
+
+        COMMIT_HASH=$(awk 'NR==1 {print $3}' "$TMP_FILE")
+        rm -f "$TMP_FILE" "${TMP_FILE}.err"
+
+        if [ -z "$COMMIT_HASH" ]; then
+          echo "Failed to parse commit hash for submodule $SUBMODULE_PATH" >&2
+          exit 1
+        fi
+
+        OUTPUT_DIR=$(dirname "$OUTPUT_FILE")
+        if [ -n "$OUTPUT_DIR" ] && [ ! -d "$OUTPUT_DIR" ]; then
+          mkdir -p "$OUTPUT_DIR"
+        fi
+
+        printf '%s' "$COMMIT_HASH" > "$OUTPUT_FILE"

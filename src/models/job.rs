@@ -36,6 +36,13 @@ pub struct Job {
     )]
     pub source_files: Option<Vec<String>>,
 
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        default,
+        deserialize_with = "deserialize_string_or_vec"
+    )]
+    pub source_submodules: Option<Vec<String>>,
+
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parallelism: Option<u32>,
 

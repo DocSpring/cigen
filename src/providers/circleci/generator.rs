@@ -373,6 +373,7 @@ impl CircleCIGenerator {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -462,7 +463,47 @@ fi"#,
                             job_name.clone()
                         };
                         // Hash calculation (reuse existing function)
-                        let hash_step = self.build_hash_calculation_step(config, source_files)?;
+                        let mut extra_patterns: Vec<String> = Vec::new();
+                        if let Some(submodules) = &job_def.source_submodules {
+                            for submodule in submodules {
+                                let output_file =
+                                    Self::submodule_hash_output_path(&variant, submodule);
+
+                                let mut params = serde_yaml::Mapping::new();
+                                params.insert(
+                                    serde_yaml::Value::String("submodule".to_string()),
+                                    serde_yaml::Value::String(submodule.clone()),
+                                );
+                                params.insert(
+                                    serde_yaml::Value::String("output_file".to_string()),
+                                    serde_yaml::Value::String(output_file.clone()),
+                                );
+
+                                let mut step_map = serde_yaml::Mapping::new();
+                                step_map.insert(
+                                    serde_yaml::Value::String(
+                                        "cigen_write_submodule_commit_hash".to_string(),
+                                    ),
+                                    serde_yaml::Value::Mapping(params),
+                                );
+
+                                setup_job.steps.push(cc::CircleCIStep::new(
+                                    serde_yaml::Value::Mapping(step_map),
+                                ));
+
+                                extra_patterns.push(output_file);
+                            }
+                        }
+
+                        let hash_step = self.build_hash_calculation_step(
+                            config,
+                            source_files,
+                            if extra_patterns.is_empty() {
+                                None
+                            } else {
+                                Some(&extra_patterns)
+                            },
+                        )?;
                         setup_job.steps.push(cc::CircleCIStep::new(hash_step));
                         // Restore exists cache with OS + variant + job hash
                         let mut restore_cfg = serde_yaml::Mapping::new();
@@ -933,6 +974,7 @@ cat /tmp/continuation.json
                 architectures: Some(archs.iter().cloned().collect()),
                 resource_class: None,
                 source_files: None,
+                source_submodules: None,
                 parallelism: None,
                 requires: None,
                 cache: None,
@@ -1588,6 +1630,8 @@ cat /tmp/continuation.json
                     &mut circleci_job,
                     config,
                     source_files,
+                    job.source_submodules.as_ref(),
+                    job_name,
                     architecture,
                 )?;
 
@@ -2423,10 +2467,50 @@ echo "export JOB_STATUS_KEY=\"${{OS_LABEL}}-job_status-v1-{job}-{arch}-${{JOB_HA
         circleci_job: &mut CircleCIJob,
         config: &Config,
         source_files: &Vec<String>,
+        submodules: Option<&Vec<String>>,
+        job_name: &str,
         architecture: &str,
     ) -> Result<()> {
+        let mut unfiltered_patterns: Vec<String> = Vec::new();
+
+        if let Some(submodules) = submodules {
+            for submodule in submodules {
+                let output_file = Self::submodule_hash_output_path(job_name, submodule);
+
+                let mut params = serde_yaml::Mapping::new();
+                params.insert(
+                    serde_yaml::Value::String("submodule".to_string()),
+                    serde_yaml::Value::String(submodule.clone()),
+                );
+                params.insert(
+                    serde_yaml::Value::String("output_file".to_string()),
+                    serde_yaml::Value::String(output_file.clone()),
+                );
+
+                let mut step_map = serde_yaml::Mapping::new();
+                step_map.insert(
+                    serde_yaml::Value::String("cigen_write_submodule_commit_hash".to_string()),
+                    serde_yaml::Value::Mapping(params),
+                );
+
+                circleci_job
+                    .steps
+                    .push(CircleCIStep::new(serde_yaml::Value::Mapping(step_map)));
+
+                unfiltered_patterns.push(output_file);
+            }
+        }
+
         // Add hash calculation step
-        let hash_step = self.build_hash_calculation_step(config, source_files)?;
+        let hash_step = self.build_hash_calculation_step(
+            config,
+            source_files,
+            if unfiltered_patterns.is_empty() {
+                None
+            } else {
+                Some(&unfiltered_patterns)
+            },
+        )?;
         circleci_job.steps.push(CircleCIStep::new(hash_step));
 
         // Add skip check step
@@ -2440,6 +2524,7 @@ echo "export JOB_STATUS_KEY=\"${{OS_LABEL}}-job_status-v1-{job}-{arch}-${{JOB_HA
         &self,
         config: &Config,
         source_files: &Vec<String>,
+        unfiltered_patterns: Option<&Vec<String>>,
     ) -> Result<serde_yaml::Value> {
         let source_file_groups = config
             .source_file_groups
@@ -2476,12 +2561,51 @@ echo "export JOB_STATUS_KEY=\"${{OS_LABEL}}-job_status-v1-{job}-{arch}-${{JOB_HA
             serde_yaml::Value::String("patterns".to_string()),
             serde_yaml::Value::String(pat_str),
         );
+        if let Some(extra_patterns) = unfiltered_patterns
+            && !extra_patterns.is_empty()
+        {
+            params.insert(
+                serde_yaml::Value::String("unfiltered_patterns".to_string()),
+                serde_yaml::Value::String(extra_patterns.join(" ")),
+            );
+        }
         let mut step_map = serde_yaml::Mapping::new();
         step_map.insert(
             serde_yaml::Value::String("cigen_calculate_sha256".to_string()),
             serde_yaml::Value::Mapping(params),
         );
         Ok(serde_yaml::Value::Mapping(step_map))
+    }
+
+    fn sanitize_identifier(input: &str) -> String {
+        let mut sanitized = String::new();
+        let mut last_was_dash = false;
+
+        for ch in input.chars() {
+            if ch.is_ascii_alphanumeric() {
+                sanitized.push(ch);
+                last_was_dash = false;
+            } else if !last_was_dash {
+                sanitized.push('-');
+                last_was_dash = true;
+            }
+        }
+
+        let trimmed = sanitized.trim_matches('-');
+        if trimmed.is_empty() {
+            "entry".to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+
+    fn submodule_hash_output_path(job_identifier: &str, submodule: &str) -> String {
+        let job_part = Self::sanitize_identifier(job_identifier);
+        let module_part = Self::sanitize_identifier(submodule);
+        format!(
+            "/tmp/cigen/submodule-hashes/{}-{}.commit",
+            job_part, module_part
+        )
     }
 
     fn build_skip_check_step(

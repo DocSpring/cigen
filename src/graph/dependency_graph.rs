@@ -184,6 +184,7 @@ mod tests {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: requires.map(|deps| {
                 if deps.len() == 1 {

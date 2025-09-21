@@ -48,6 +48,22 @@
         }
       ]
     },
+    "source_submodules": {
+      "oneOf": [
+        {
+          "type": "string",
+          "description": "Single git submodule path to include when hashing source files"
+        },
+        {
+          "type": "array",
+          "description": "List of git submodule paths whose commit hashes are tracked",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        }
+      ]
+    },
     "parallelism": {
       "type": "integer",
       "description": "Number of parallel instances of this job",

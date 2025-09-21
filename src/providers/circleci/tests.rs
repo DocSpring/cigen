@@ -18,6 +18,7 @@ fn test_simple_job_conversion() {
             architectures: None,
             resource_class: Some("medium".to_string()),
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -123,6 +124,7 @@ fn test_job_with_services() {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -173,6 +175,7 @@ fn test_job_dependencies() {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -200,6 +203,7 @@ fn test_job_dependencies() {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             cache: None,
             restore_cache: None,
@@ -274,6 +278,7 @@ fn test_docker_image_resolution() {
         architectures: None,
         resource_class: None,
         source_files: None,
+        source_submodules: None,
         parallelism: None,
         requires: None,
         cache: None,
@@ -311,6 +316,7 @@ fn test_docker_image_full_reference_passthrough() {
         architectures: None,
         resource_class: None,
         source_files: None,
+        source_submodules: None,
         parallelism: None,
         requires: None,
         cache: None,
@@ -345,6 +351,7 @@ fn test_architecture_matrix_generation() {
             architectures: Some(vec!["amd64".to_string(), "arm64".to_string()]),
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -400,6 +407,7 @@ fn test_architecture_matrix_with_dependencies() {
             architectures: Some(vec!["amd64".to_string(), "arm64".to_string()]),
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -421,6 +429,7 @@ fn test_architecture_matrix_with_dependencies() {
             requires: Some(crate::models::job::JobRequires::Single("build".to_string())),
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             cache: None,
             restore_cache: None,
@@ -477,6 +486,7 @@ fn test_single_architecture_no_suffix() {
             architectures: Some(vec!["amd64".to_string()]), // Single architecture
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -530,6 +540,7 @@ fn test_architecture_environment_variables() {
         architectures: Some(vec!["arm64".to_string()]),
         resource_class: None,
         source_files: None,
+        source_submodules: None,
         parallelism: None,
         requires: None,
         cache: None,
@@ -570,6 +581,7 @@ fn test_job_skip_logic_hash_step_patterns() {
         architectures: None,
         resource_class: None,
         source_files: Some(vec!["@ruby".to_string(), "config/ci.yml".to_string()]),
+        source_submodules: None,
         parallelism: None,
         requires: None,
         cache: None,
@@ -626,6 +638,102 @@ fn test_job_skip_logic_hash_step_patterns() {
 }
 
 #[test]
+fn test_job_skip_logic_with_submodules() {
+    let config = Config {
+        source_file_groups: Some(HashMap::new()),
+        ..Config::default()
+    };
+
+    let job = Job {
+        image: "cimg/node:20".to_string(),
+        architectures: None,
+        resource_class: None,
+        source_files: Some(vec!["docs/**/*".to_string()]),
+        source_submodules: Some(vec![
+            "docs/scalar".to_string(),
+            "docs/src/content/docs".to_string(),
+        ]),
+        parallelism: None,
+        requires: None,
+        cache: None,
+        restore_cache: None,
+        services: None,
+        packages: None,
+        steps: None,
+        checkout: None,
+        job_type: None,
+    };
+
+    let generator = generator::CircleCIGenerator::new();
+    let circleci_job = generator
+        .convert_job_with_architecture(&config, &job, "amd64", "compile_docs")
+        .unwrap();
+
+    assert!(circleci_job.steps.len() >= 6);
+
+    let command_key = Value::String("cigen_write_submodule_commit_hash".to_string());
+    let submodule_key = Value::String("submodule".to_string());
+    let output_file_key = Value::String("output_file".to_string());
+    let hash_key = Value::String("cigen_calculate_sha256".to_string());
+    let unfiltered_key = Value::String("unfiltered_patterns".to_string());
+
+    let first_submodule_step = &circleci_job.steps[1].raw;
+    let first_map = first_submodule_step
+        .as_mapping()
+        .expect("first submodule step should be mapping");
+    let first_command = first_map
+        .get(&command_key)
+        .expect("first submodule command missing")
+        .as_mapping()
+        .expect("first submodule command parameters");
+    assert_eq!(
+        first_command
+            .get(&submodule_key)
+            .expect("submodule parameter missing")
+            .as_str()
+            .unwrap(),
+        "docs/scalar"
+    );
+    let first_output = first_command
+        .get(&output_file_key)
+        .expect("output_file parameter missing")
+        .as_str()
+        .unwrap();
+    assert!(first_output.contains("/tmp/cigen/submodule-hashes/compile-docs-docs-scalar.commit"));
+
+    let second_submodule_step = &circleci_job.steps[2].raw;
+    let second_map = second_submodule_step
+        .as_mapping()
+        .expect("second submodule step should be mapping");
+    let second_command = second_map
+        .get(&command_key)
+        .expect("second submodule command missing")
+        .as_mapping()
+        .expect("second submodule command parameters");
+    let second_output = second_command
+        .get(&output_file_key)
+        .expect("output_file parameter missing")
+        .as_str()
+        .unwrap();
+    assert!(second_output.contains("compile-docs-docs-src-content-docs.commit"));
+
+    let hash_step = &circleci_job.steps[3].raw;
+    let hash_map = hash_step.as_mapping().expect("hash step should be mapping");
+    let hash_command = hash_map
+        .get(&hash_key)
+        .expect("hash command missing")
+        .as_mapping()
+        .expect("hash parameters");
+    let unfiltered = hash_command
+        .get(&unfiltered_key)
+        .expect("unfiltered_patterns missing")
+        .as_str()
+        .unwrap();
+    assert!(unfiltered.contains("compile-docs-docs-scalar.commit"));
+    assert!(unfiltered.contains("compile-docs-docs-src-content-docs.commit"));
+}
+
+#[test]
 fn test_dynamic_config_with_parameters() {
     use crate::models::ParameterConfig;
     use serde_json::Value as JsonValue;
@@ -663,6 +771,7 @@ fn test_dynamic_config_with_parameters() {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,
@@ -734,6 +843,7 @@ fn test_dynamic_flag_enables_setup() {
             architectures: None,
             resource_class: None,
             source_files: None,
+            source_submodules: None,
             parallelism: None,
             requires: None,
             cache: None,

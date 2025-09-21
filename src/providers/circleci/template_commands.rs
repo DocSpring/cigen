@@ -62,6 +62,15 @@ steps:
         .expect("Failed to parse shallow_checkout template");
     commands.insert("cigen_shallow_checkout".to_string(), shallow_checkout);
 
+    // write_submodule_commit_hash command - ensure submodule changes trigger job re-runs
+    let write_submodule_commit_hash =
+        serde_yaml::from_str(include_str!("templates/write_submodule_commit_hash.yml"))
+            .expect("Failed to parse write_submodule_commit_hash template");
+    commands.insert(
+        "cigen_write_submodule_commit_hash".to_string(),
+        write_submodule_commit_hash,
+    );
+
     // cigen_calculate_sha256 command - efficient hashing with per-pattern caching
     let calculate_hash = serde_yaml::from_str(
         r#"
@@ -245,6 +254,7 @@ mod tests {
     fn test_template_commands_loaded() {
         assert!(is_template_command("continue_circleci_pipeline"));
         assert!(is_template_command("cigen_shallow_checkout"));
+        assert!(is_template_command("cigen_write_submodule_commit_hash"));
         assert!(!is_template_command("unknown_command"));
     }
 

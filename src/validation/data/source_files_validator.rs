@@ -64,6 +64,21 @@ impl<'a> SourceFilesValidator<'a> {
             }
         }
 
+        if job.source_submodules.is_some()
+            && job.source_files.is_none()
+            && let Some(span) = span_finder.find_field_span(&["source_submodules"])
+        {
+            let err = DataValidationError::new(
+                file_path,
+                content.to_string(),
+                span,
+                "source_submodules requires source_files to be configured".to_string(),
+            );
+            eprintln!();
+            eprintln!("{:?}", miette::Report::new(err));
+            return Err(anyhow::anyhow!("Data validation failed"));
+        }
+
         Ok(())
     }
 }
