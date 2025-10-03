@@ -1,4 +1,5 @@
 pub mod circleci;
+pub mod github_actions;
 
 use crate::models::{Command, Config, Job};
 use miette::Result;
@@ -37,6 +38,7 @@ pub trait Provider: Send + Sync {
 pub fn get_provider(name: &str) -> Result<Box<dyn Provider>> {
     match name {
         "circleci" => Ok(Box::new(circleci::CircleCIProvider::new())),
+        "github-actions" => Ok(Box::new(github_actions::GitHubActionsProvider::new())),
         _ => Err(miette::miette!("Unknown provider: {}", name)),
     }
 }
