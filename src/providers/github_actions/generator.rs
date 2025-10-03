@@ -1,3 +1,4 @@
+use super::cache::CacheGenerator;
 use super::schema::{Job as GHJob, RunsOn, Step, Workflow};
 use crate::models::{Command, Config, Job};
 use miette::{IntoDiagnostic, Result};
@@ -5,11 +6,15 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-pub struct GitHubActionsGenerator {}
+pub struct GitHubActionsGenerator {
+    cache_generator: CacheGenerator,
+}
 
 impl GitHubActionsGenerator {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            cache_generator: CacheGenerator::new(),
+        }
     }
 
     /// Generate a single workflow file
@@ -67,7 +72,7 @@ impl GitHubActionsGenerator {
         let mut gh_jobs = HashMap::new();
 
         for (job_name, job) in jobs {
-            let gh_job = self.build_job(job)?;
+            let gh_job = self.build_job(config, job)?;
             gh_jobs.insert(job_name.clone(), gh_job);
         }
 
@@ -133,8 +138,8 @@ impl GitHubActionsGenerator {
     }
 
     /// Build a GitHub Actions job from a cigen job
-    fn build_job(&self, job: &Job) -> Result<GHJob> {
-        let steps = self.build_steps(job)?;
+    fn build_job(&self, config: &Config, job: &Job) -> Result<GHJob> {
+        let steps = self.build_steps(config, job)?;
 
         // Convert requires to needs (GitHub Actions only supports AND dependencies)
         let needs = job.requires.as_ref().map(|r| r.to_vec());
@@ -216,7 +221,7 @@ impl GitHubActionsGenerator {
     }
 
     /// Build steps from a cigen job
-    fn build_steps(&self, job: &Job) -> Result<Vec<Step>> {
+    fn build_steps(&self, config: &Config, job: &Job) -> Result<Vec<Step>> {
         let mut steps = Vec::new();
 
         // Add checkout step if needed
@@ -242,6 +247,20 @@ impl GitHubActionsGenerator {
                 timeout_minutes: None,
             });
         }
+
+        // Add automatic cache restoration
+        // Determine architecture - use first from architectures or default to amd64
+        let architecture = job
+            .architectures
+            .as_ref()
+            .and_then(|archs| archs.first())
+            .map(|s| s.as_str())
+            .unwrap_or("amd64");
+
+        let cache_steps = self
+            .cache_generator
+            .generate_cache_steps(config, job, architecture)?;
+        steps.extend(cache_steps);
 
         // Convert cigen steps to GitHub Actions steps
         if let Some(job_steps) = &job.steps {
