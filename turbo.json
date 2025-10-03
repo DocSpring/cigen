@@ -1,0 +1,22 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["target/**"]
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "lint": {
+      "outputs": []
+    },
+    "fmt": {
+      "outputs": []
+    },
+    "clippy": {
+      "outputs": []
+    }
+  }
+}
