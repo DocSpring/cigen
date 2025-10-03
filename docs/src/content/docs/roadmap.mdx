@@ -1,0 +1,56 @@
+---
+title: Roadmap
+description: Future features and enhancements planned for cigen
+---
+
+## CI Provider Support
+
+### GitHub Actions
+
+Full support for GitHub Actions workflows, including:
+
+- Matrix builds
+- Reusable workflows
+- GitHub-specific features (caching, artifacts, etc.)
+- Environment and deployment support
+
+### Buildkite
+
+Native Buildkite pipeline generation with:
+
+- Dynamic pipelines
+- Plugin support
+- Agent targeting
+- Artifact management
+
+### Jenkins
+
+Jenkins pipeline generation supporting:
+
+- Declarative pipelines
+- Jenkinsfile generation
+- Plugin integration
+- Multi-branch support
+
+## Local Execution
+
+First-class support for running all your CI jobs locally, similar to tools like Taskfile and [act](https://github.com/nektos/act):
+
+- **Docker-based execution** - Run jobs in isolated containers matching your CI environment
+- **Native execution** - Run jobs directly on your machine for faster iteration
+- **Selective job execution** - Run individual jobs or entire workflows
+- **Environment parity** - Use the same configuration for CI and local runs
+
+This enables rapid development and testing without pushing to CI.
+
+## CLI Workflow Management
+
+Interactive CLI tools to manage your CI pipelines:
+
+- **Job status monitoring** - View real-time status of running jobs across providers
+- **Log fetching** - Download and view logs for failing jobs
+- **Local reproduction** - Automatically re-run failing tests on your machine with the same environment
+- **Pipeline control** - Trigger, cancel, or retry jobs from the command line
+- **Cross-provider interface** - Unified CLI regardless of which CI provider you use
+
+This brings the power of CI/CD management directly to your terminal.

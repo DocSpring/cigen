@@ -396,6 +396,9 @@ pub struct SetupOptions {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_image: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_cigen: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

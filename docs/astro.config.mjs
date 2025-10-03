@@ -76,6 +76,10 @@ export default defineConfig({
           label: 'Reference',
           items: [{ label: 'Requirements', slug: 'reference/requirements' }],
         },
+        {
+          label: 'Project',
+          items: [{ label: 'Roadmap', slug: 'roadmap' }],
+        },
       ],
     }),
   ],

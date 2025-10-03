@@ -338,13 +338,27 @@ impl CircleCIGenerator {
             .insert("setup".to_string(), setup_workflow);
 
         // Build setup job
-        // Choose setup runtime image: prefer configured one,
-        // else default to docspringcom/cigen:latest
+        // Choose setup runtime image based on configuration:
+        // 1. If runtime_image is explicitly set, use it
+        // 2. If compile_cigen is true, use Rust image for compilation
+        // 3. Otherwise default to docspringcom/cigen:latest (has cigen pre-installed + openssh-client)
+        let compile_cigen = config
+            .setup_options
+            .as_ref()
+            .and_then(|o| o.compile_cigen)
+            .unwrap_or(false);
+
         let setup_image = config
             .setup_options
             .as_ref()
             .and_then(|o| o.runtime_image.clone())
-            .unwrap_or_else(|| "docspringcom/cigen:latest".to_string());
+            .unwrap_or_else(|| {
+                if compile_cigen {
+                    "cimg/rust:1.75".to_string()
+                } else {
+                    "docspringcom/cigen:latest".to_string()
+                }
+            });
 
         let mut setup_job = cc::CircleCIJob {
             executor: None,
@@ -386,6 +400,31 @@ impl CircleCIGenerator {
         };
         if let Some(checkout_step) = self.resolve_checkout_step(config, None, &placeholder_job)? {
             setup_job.steps.push(cc::CircleCIStep::new(checkout_step));
+        }
+
+        // Optional cigen compilation from source for testing cigen changes on CI
+        if compile_cigen {
+            // Checkout cigen repository
+            let checkout_cigen_cmd = r#"set -euo pipefail
+echo "Checking out cigen from GitHub..."
+git clone --depth 1 https://github.com/DocSpring/cigen.git /tmp/cigen
+cd /tmp/cigen"#;
+            setup_job.steps.push(cc::CircleCIStep::new(run_step(
+                "Checkout cigen repository",
+                checkout_cigen_cmd,
+            )));
+
+            // Compile cigen from source
+            let compile_cigen_cmd = r#"set -euo pipefail
+cd /tmp/cigen
+echo "Compiling cigen from source..."
+cargo build --release
+echo "Cigen compiled successfully"
+echo "export PATH=\"/tmp/cigen/target/release:\$PATH\"" >> $BASH_ENV"#;
+            setup_job.steps.push(cc::CircleCIStep::new(run_step(
+                "Compile cigen from source",
+                compile_cigen_cmd,
+            )));
         }
 
         // Optional self-check to ensure entrypoint is up to date

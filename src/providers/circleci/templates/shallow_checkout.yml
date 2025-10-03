@@ -66,6 +66,19 @@ steps:
         KEYSCAN_BITBUCKET="<< parameters.keyscan_bitbucket >>"
         CHECKOUT_PATH="<< parameters.path >>"
 
+        # Verify ssh is available (required for git ssh operations and keyscan)
+        if ! command -v ssh >/dev/null 2>&1; then
+            echo "ERROR: ssh command not found" >&2
+            echo "" >&2
+            echo "You must run this command from a Docker image that has openssh-client installed." >&2
+            echo "" >&2
+            echo "Use a CircleCI convenience image (cimg/*) or install openssh-client in your Dockerfile:" >&2
+            echo "  - Debian/Ubuntu: RUN apt-get update && apt-get install -y openssh-client" >&2
+            echo "  - Alpine: RUN apk add --no-cache openssh-client" >&2
+            echo "  - RHEL/CentOS: RUN yum install -y openssh-clients" >&2
+            exit 1
+        fi
+
         # Create SSH directory if not exists
         if [ ! -d ~/.ssh ]; then
             mkdir -p ~/.ssh
