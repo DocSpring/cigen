@@ -60,7 +60,7 @@ impl GitHubActionsGenerator {
     /// Build the workflow structure from config
     fn build_workflow(
         &self,
-        _config: &Config,
+        config: &Config,
         workflow_name: &str,
         jobs: &HashMap<String, Job>,
     ) -> Result<Workflow> {
@@ -71,13 +71,65 @@ impl GitHubActionsGenerator {
             gh_jobs.insert(job_name.clone(), gh_job);
         }
 
+        // Build workflow triggers
+        let triggers = self.build_workflow_triggers(config, workflow_name);
+
         Ok(Workflow {
             name: workflow_name.to_string(),
-            on: None, // TODO: Parse from workflow config
+            on: triggers,
             jobs: gh_jobs,
             env: None,
             concurrency: None,
         })
+    }
+
+    /// Build workflow triggers from config
+    fn build_workflow_triggers(
+        &self,
+        config: &Config,
+        workflow_name: &str,
+    ) -> Option<super::schema::WorkflowTrigger> {
+        // Check if there's workflow-specific configuration
+        if let Some(workflows) = &config.workflows
+            && let Some(_workflow_config) = workflows.get(workflow_name)
+        {
+            // For now, use sensible defaults for CI workflows
+            // TODO: Parse trigger configuration from workflow config
+            return Some(self.default_ci_triggers());
+        }
+
+        // Default triggers for CI workflows
+        Some(self.default_ci_triggers())
+    }
+
+    /// Generate default CI triggers (push to main, pull requests)
+    fn default_ci_triggers(&self) -> super::schema::WorkflowTrigger {
+        use super::schema::{TriggerConfig, WorkflowTrigger};
+        use std::collections::HashMap;
+
+        let mut triggers = HashMap::new();
+
+        // Trigger on push to main
+        triggers.insert(
+            "push".to_string(),
+            TriggerConfig {
+                branches: Some(vec!["main".to_string()]),
+                paths: None,
+                types: None,
+            },
+        );
+
+        // Trigger on pull requests to main
+        triggers.insert(
+            "pull_request".to_string(),
+            TriggerConfig {
+                branches: Some(vec!["main".to_string()]),
+                paths: None,
+                types: None,
+            },
+        );
+
+        WorkflowTrigger::Detailed(triggers)
     }
 
     /// Build a GitHub Actions job from a cigen job
@@ -87,19 +139,80 @@ impl GitHubActionsGenerator {
         // Convert requires to needs (GitHub Actions only supports AND dependencies)
         let needs = job.requires.as_ref().map(|r| r.to_vec());
 
+        // Build matrix strategy if architectures are specified
+        let strategy = self.build_matrix_strategy(job)?;
+
+        // Build services
+        let services = self.build_services(job)?;
+
+        // Build conditional expression
+        let condition = self.build_job_condition(job);
+
         Ok(GHJob {
             name: None, // GitHub Actions infers job name from key
-            runs_on: Some(RunsOn::Single("ubuntu-latest".to_string())), // TODO: From config
+            runs_on: Some(RunsOn::Single("ubuntu-latest".to_string())), // TODO: From config/matrix
             needs,
-            condition: None, // TODO: Map from job conditions
+            condition,
             steps: Some(steps),
-            env: None,      // TODO: Environment variables
-            strategy: None, // TODO: Matrix builds
-            services: None, // TODO: Service containers
+            env: None, // TODO: Environment variables
+            strategy,
+            services,
             container: None,
             timeout_minutes: None,
             outputs: None,
         })
+    }
+
+    /// Build conditional expression for a job
+    /// In the future, this will handle requires_any by generating OR conditions
+    fn build_job_condition(&self, _job: &Job) -> Option<String> {
+        // TODO: Check for requires_any field (when added to Job model)
+        // If requires_any is present, generate:
+        // "needs.job1.result == 'success' || needs.job2.result == 'success'"
+        //
+        // For now, return None (no conditions)
+        None
+    }
+
+    /// Build matrix strategy from job architectures
+    fn build_matrix_strategy(&self, job: &Job) -> Result<Option<super::schema::Strategy>> {
+        if let Some(architectures) = &job.architectures
+            && architectures.len() > 1
+        {
+            use super::schema::Strategy;
+            use std::collections::HashMap;
+
+            let mut matrix = HashMap::new();
+
+            // Add architecture dimension
+            let arch_values: Vec<serde_json::Value> = architectures
+                .iter()
+                .map(|a| serde_json::Value::String(a.clone()))
+                .collect();
+
+            matrix.insert("arch".to_string(), arch_values);
+
+            return Ok(Some(Strategy {
+                matrix,
+                fail_fast: None,
+                max_parallel: None,
+            }));
+        }
+
+        Ok(None)
+    }
+
+    /// Build service containers from job services
+    fn build_services(&self, job: &Job) -> Result<Option<HashMap<String, super::schema::Service>>> {
+        if let Some(service_refs) = &job.services
+            && !service_refs.is_empty()
+        {
+            // TODO: Look up service definitions from config and convert to GH Actions format
+            // For now, return None - will implement in service containers task
+            return Ok(None);
+        }
+
+        Ok(None)
     }
 
     /// Build steps from a cigen job
