@@ -313,7 +313,37 @@ impl GitHubActionsGenerator {
 
         // Try to extract common step fields from the YAML value
         if let Some(mapping) = step_value.as_mapping() {
-            // Check if it's a run step
+            // Check if it's a CircleCI run step with command
+            if let Some(run_mapping) = mapping.get("run")
+                && let Some(run_map) = run_mapping.as_mapping()
+            {
+                let name = run_map
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let command = run_map
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+
+                if let Some(cmd) = command {
+                    return Ok(Step {
+                        id: None,
+                        name,
+                        uses: None,
+                        run: Some(cmd),
+                        with: None,
+                        env: None,
+                        condition: None,
+                        working_directory: None,
+                        shell: None,
+                        continue_on_error: None,
+                        timeout_minutes: None,
+                    });
+                }
+            }
+
+            // Check if it's a native GitHub Actions run step
             if let Some(name_val) = mapping.get("name")
                 && let Some(run_val) = mapping.get("run")
             {

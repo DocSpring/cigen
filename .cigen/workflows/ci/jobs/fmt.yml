@@ -2,5 +2,6 @@ image: rust:latest
 source_files: "@rust"
 
 steps:
-  - name: Format check
-    run: cargo fmt -- --check
+  - run:
+      name: Format check
+      command: cargo fmt -- --check

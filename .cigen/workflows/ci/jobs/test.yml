@@ -5,5 +5,6 @@ source_files:
   - "@examples"
 
 steps:
-  - name: Run tests
-    run: cargo test --all-features
+  - run:
+      name: Run tests
+      command: cargo test --all-features
