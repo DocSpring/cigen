@@ -1,0 +1,6 @@
+image: rust:latest
+source_files: "@rust"
+
+steps:
+  - name: Format check
+    run: cargo fmt -- --check

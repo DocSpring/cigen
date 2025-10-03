@@ -453,7 +453,7 @@ steps:
 **Example Configuration:**
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: github-actions
 
 skip_cache:
@@ -582,7 +582,7 @@ jobs:
 **Example Configuration:**
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: github-actions
 
 runners:
@@ -778,7 +778,7 @@ steps:
 **Tasks:**
 
 1. **Create CIGen Config**
-   - [ ] Create `.cigen/cigen.yml` with provider: github-actions
+   - [ ] Create `.cigen/config.yml` with provider: github-actions
    - [ ] Define runner profiles (cloud only for now)
    - [ ] Configure Rust and Node.js packages
    - [ ] Define cache for cargo and node_modules
@@ -814,7 +814,7 @@ steps:
 **Example CIGen Config:**
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: github-actions
 
 architectures: [x64]
@@ -951,7 +951,7 @@ steps:
 ### Simple Project (GitHub-hosted only)
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: github-actions
 
 packages: [node]
@@ -967,7 +967,7 @@ workflows:
 ### Multi-Architecture with Self-Hosted
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: github-actions
 
 architectures: [x64, ARM64]
@@ -998,7 +998,7 @@ jobs:
 ### Complex Monorepo
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: github-actions
 
 packages:
@@ -1044,7 +1044,7 @@ workflows:
 
 1. **Initial Setup**
    - Install cigen
-   - Create `.cigen/cigen.yml` with `provider: github-actions`
+   - Create `.cigen/config.yml` with `provider: github-actions`
    - Define existing workflows in `.cigen/workflows/`
 
 2. **Incremental Migration**
@@ -1191,7 +1191,7 @@ To prove cigen's "write once, run anywhere" philosophy, **cigen will run its own
 **Setup:**
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 # Single config that works for BOTH providers
 
 architectures: [x64]

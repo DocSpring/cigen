@@ -35,7 +35,7 @@ When `circleci.fix_github_status: true` is set, cigen automatically injects a `p
 
 1. Create a GitHub personal access token with `repo:status` scope
 2. Add it to your CircleCI project as an environment variable named `GITHUB_PERSONAL_ACCESS_TOKEN`
-3. Enable the feature in your `cigen.yml` configuration
+3. Enable the feature in your `config.yml` configuration
 
 The patch job is automatically injected when:
 

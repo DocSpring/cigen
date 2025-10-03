@@ -16,14 +16,14 @@ Cigen contains an initial scaffold for job skipping based on a hash of source fi
 ## How It Works
 
 <Steps>
-  1. Calculate SHA-256 hash of configured source files
-  2. Check for a local skip marker file for that hash
-  3. If present, halt remaining steps (CircleCI)
-  4. Otherwise, run the job and write the marker file at the end
+  1. Calculate SHA-256 hash of configured source files 2. Check for a local skip
+  marker file for that hash 3. If present, halt remaining steps (CircleCI) 4.
+  Otherwise, run the job and write the marker file at the end
 </Steps>
 
 <Aside type="tip">
-  This is non-persistent. Markers live under `/tmp` in the job container and are not restored across runs yet.
+  This is non-persistent. Markers live under `/tmp` in the job container and are
+  not restored across runs yet.
 </Aside>
 
 ## Source File Configuration
@@ -32,7 +32,7 @@ Cigen contains an initial scaffold for job skipping based on a hash of source fi
 
 Define reusable patterns in your configuration:
 
-<Code code={`# In cigen.yml or config/source_file_groups.yml
+<Code code={`# In config.yml or config/source_file_groups.yml
 source_file_groups:
   ruby:
     - '**/*.rb'

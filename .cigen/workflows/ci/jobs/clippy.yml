@@ -1,0 +1,6 @@
+image: rust:latest
+source_files: "@rust"
+
+steps:
+  - name: Clippy check
+    run: cargo clippy --all-targets --all-features -- -D warnings

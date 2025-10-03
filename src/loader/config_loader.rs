@@ -144,20 +144,20 @@ impl<'a> ConfigLoader<'a> {
     fn find_main_config_path(&self) -> Result<PathBuf> {
         // Check the 4 valid locations in order of preference:
         // 1. .cigen/config.yml
-        // 2. ./cigen.yml (root)
-        // 3. ./.cigen.yml (root)
+        // 2. ./config.yml (root)
+        // 3. ./.config.yml (root)
         // 4. If in .cigen/ directory, look for config.yml
 
         if Path::new(".cigen/config.yml").exists() {
             return Ok(PathBuf::from(".cigen/config.yml"));
         }
 
-        if Path::new("cigen.yml").exists() {
-            return Ok(PathBuf::from("cigen.yml"));
+        if Path::new("config.yml").exists() {
+            return Ok(PathBuf::from("config.yml"));
         }
 
-        if Path::new(".cigen.yml").exists() {
-            return Ok(PathBuf::from(".cigen.yml"));
+        if Path::new(".config.yml").exists() {
+            return Ok(PathBuf::from(".config.yml"));
         }
 
         // Check if we're in .cigen directory
@@ -169,7 +169,7 @@ impl<'a> ConfigLoader<'a> {
         }
 
         anyhow::bail!(
-            "No config file found. Expected one of: .cigen/config.yml, cigen.yml, .cigen.yml, or config.yml (if in .cigen/ directory)"
+            "No config file found. Expected one of: .cigen/config.yml, config.yml, .config.yml, or config.yml (if in .cigen/ directory)"
         )
     }
 

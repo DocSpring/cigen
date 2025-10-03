@@ -257,7 +257,7 @@ You can also reference `/Users/ndbroadbent/code/docspring/lib/tools/generate_cir
 
 ## Use Our Own Tool
 
-The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/cigen.yml` file.
+The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/config.yml` file.
 
 We will start by hand-writing our own GitHub Actions workflow files, but eventually migrate to using `cigen` to generate our CI configuration.
 
@@ -289,13 +289,13 @@ When working on DocSpring configuration conversion:
 
 ## Split Configuration
 
-**IMPORTANT**: CIGen supports a "split config" style where different top-level keys can be refactored into their own files under `.cigen/config/`, and it all gets merged together. This prevents `.cigen/cigen.yml` from becoming unmaintainable.
+**IMPORTANT**: CIGen supports a "split config" style where different top-level keys can be refactored into their own files under `.cigen/config/`, and it all gets merged together. This prevents `.cigen/config.yml` from becoming unmaintainable.
 
 We MUST use split config for large configuration sections:
 
 - Source file groups are already split: `docspring/.cigen/config/source_file_groups.yml`
 - Any other config section that grows beyond ~20 lines should be split into its own file
-- Files in `.cigen/config/` are automatically merged with the main `cigen.yml`
+- Files in `.cigen/config/` are automatically merged with the main `config.yml`
 - Use descriptive filenames that match the top-level key (e.g., `cache_definitions.yml` for cache definitions)
 
 ## Key Concepts

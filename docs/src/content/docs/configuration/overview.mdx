@@ -54,16 +54,16 @@ POSTGRES_PASSWORD: test
 # Job definitions
 
 jobs:
-  test:
-    image: cimg/ruby:3.3
-    services: [postgres]
-    steps: [shallow_checkout, { run: bundle exec rspec }]
+test:
+image: cimg/ruby:3.3
+services: [postgres]
+steps: [shallow_checkout, { run: bundle exec rspec }]
 
 # Workflow definitions
 
 workflows:
 main:
-jobs: - test`} lang="yaml" title="Basic cigen.yml" />
+jobs: - test`} lang="yaml" title="Basic config.yml" />
 
 ## Directory Structure
 
@@ -73,14 +73,14 @@ Cigen supports both single-file and multi-file configurations:
 
 ```
 .cigen/
-└── cigen.yml
+└── config.yml
 ```
 
 ### Multi-File (Complex Projects)
 
 ```
 .cigen/
-├── cigen.yml              # Main configuration
+├── config.yml              # Main configuration
 ├── config/                # Split configuration files
 │   ├── services.yml
 │   └── cache.yml

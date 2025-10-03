@@ -1,0 +1,9 @@
+image: rust:latest
+source_files:
+  - "@rust"
+  - "@tests"
+  - "@examples"
+
+steps:
+  - name: Run tests
+    run: cargo test --all-features

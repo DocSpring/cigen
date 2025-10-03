@@ -43,27 +43,36 @@ Cigen ships default definitions for common technologies that you can extend or o
 
 ### Ruby Gems
 
-<Code code={`cache_definitions:
+<Code
+  code={`cache_definitions:
   gems:
     versions: [ruby, bundler]
     checksum_sources: [Gemfile, Gemfile.lock]
     paths: [vendor/bundle, .bundle]
-`} lang="yaml" title="Ruby cache definition (paths and sources)" />
+`}
+  lang="yaml"
+  title="Ruby cache definition (paths and sources)"
+/>
 
 ### Node.js Modules
 
-<Code code={`cache_definitions:
+<Code
+  code={`cache_definitions:
   node_modules:
     versions: [node]
     checksum_sources:
       - package.json
       - detect: [package-lock.json, yarn.lock, bun.lockb, pnpm-lock.yaml]
     paths: [node_modules]
-`} lang="yaml" title="Node.js cache definition" />
+`}
+  lang="yaml"
+  title="Node.js cache definition"
+/>
 
 ### Python Packages
 
-<Code code={`cache_definitions:
+<Code
+  code={`cache_definitions:
   pip:
     versions: [python, pip]
     checksum_sources:
@@ -72,7 +81,10 @@ Cigen ships default definitions for common technologies that you can extend or o
     paths:
       - detect: [.venv, venv]
       - ~/.cache/pip
-`} lang="yaml" title="Python cache definition" />
+`}
+  lang="yaml"
+  title="Python cache definition"
+/>
 
 ## Using Caches in Jobs
 
@@ -96,11 +108,12 @@ jobs:
 ```
 
 The `restore_cache` field is a shorthand for:
+
 ```yaml
 cache:
   gems:
-    restore: true  # Always true by default anyway
-    save: false    # This is what restore_cache does
+    restore: true # Always true by default anyway
+    save: false # This is what restore_cache does
 ```
 
 ### Simple Cache Usage
@@ -151,12 +164,11 @@ This injects a `restore_cache` step before, and a `save_cache` step after, when 
   title="Customizing cache paths"
 />
 
-
 ## Advanced Cache Configuration
 
 ### Custom Cache Types
 
-<Code code={`# In cigen.yml
+<Code code={`# In config.yml
 cache_definitions:
   ml_models:
     versions: [python]

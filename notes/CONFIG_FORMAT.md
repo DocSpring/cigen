@@ -406,7 +406,7 @@ CIGen can generate multiple output files from a single configuration, useful for
 ### Configuration
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 provider: circleci
 outputs:
   - template: setup_workflow.yml.j2
@@ -439,7 +439,7 @@ Templates are stored in `.cigen/templates/`:
 
 ```
 .cigen/
-├── cigen.yml
+├── config.yml
 ├── templates/
 │   ├── setup_workflow.yml.j2      # Minimal template - just workflow structure
 │   ├── main_workflow.yml.j2       # Minimal template - just workflow structure
@@ -457,10 +457,10 @@ The templates only contain what makes each workflow unique - the cigen engine ha
 
 ### Docker Image Management
 
-Docker images are defined once in `cigen.yml` and referenced by logical names:
+Docker images are defined once in `config.yml` and referenced by logical names:
 
 ```yaml
-# cigen.yml
+# config.yml
 docker_images:
   ruby:
     default: cimg/ruby:3.3.5

@@ -1,0 +1,7 @@
+jobs:
+  fmt:
+  clippy:
+  test:
+    requires:
+      - fmt
+      - clippy

@@ -119,7 +119,7 @@ cigen already has minijinja integrated as the templating engine, which provides:
 cigen must support generating multiple output files from a single command:
 
 ```yaml
-# .cigen/cigen.yml
+# .cigen/config.yml
 outputs:
   - template: setup_config.yml.j2
     output: .circleci/config.yml

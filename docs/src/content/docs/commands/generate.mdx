@@ -93,7 +93,7 @@ For CircleCI (`provider: circleci`):
 
 ### Multi-Architecture Jobs
 
-<Code code={`# Input (cigen.yml):
+<Code code={`# Input (config.yml):
 jobs:
   build:
     architectures: [amd64, arm64]
@@ -112,7 +112,7 @@ resource_class: arm.medium`} lang="yaml" title="Architecture expansion" />
 
 ### Cache Injection
 
-<Code code={`# Input (cigen.yml):
+<Code code={`# Input (config.yml):
 jobs:
   test:
     cache: [node_modules]
@@ -194,7 +194,7 @@ Override built-in templates by placing files in your config directory:
 
 ```
 .cigen/
-├── cigen.yml
+├── config.yml
 ├── templates/
 │   └── custom_job.yml
 └── workflows/

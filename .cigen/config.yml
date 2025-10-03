@@ -1,0 +1,23 @@
+provider: github-actions
+output_path: .github/workflows
+
+# Source file groups for job skipping
+source_file_groups:
+  rust:
+    - "src/**/*.rs"
+    - "Cargo.toml"
+    - "Cargo.lock"
+
+  tests:
+    - "tests/**/*.rs"
+    - "tests/**/*.yml"
+    - "tests/**/*.trycmd"
+
+  examples:
+    - "examples/**/*.yml"
+    - "examples/**/*.yaml"
+
+  docs:
+    - "*.md"
+    - "docs/**/*.md"
+    - "notes/**/*.md"

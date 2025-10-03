@@ -413,7 +413,7 @@ fn generate_with_templates(
     engine.set_template_base(&template_dir)?;
 
     // Try to load full configuration, but don't fail if jobs/commands don't exist
-    let config_path = current_dir.join("cigen.yml");
+    let config_path = current_dir.join("config.yml");
     let config_str = std::fs::read_to_string(&config_path)?;
     let config: cigen::models::Config = serde_yaml::from_str(&config_str)?;
 
@@ -494,20 +494,20 @@ fn generate_with_templates(
 fn find_config_path() -> Result<Option<PathBuf>> {
     // Check the 4 valid locations in order of preference:
     // 1. .cigen/config.yml
-    // 2. ./cigen.yml (root)
-    // 3. ./.cigen.yml (root)
+    // 2. ./config.yml (root)
+    // 3. ./.config.yml (root)
     // 4. If in .cigen/ directory, look for config.yml
 
     if Path::new(".cigen/config.yml").exists() {
         return Ok(Some(PathBuf::from(".cigen/config.yml")));
     }
 
-    if Path::new("cigen.yml").exists() {
-        return Ok(Some(PathBuf::from("cigen.yml")));
+    if Path::new("config.yml").exists() {
+        return Ok(Some(PathBuf::from("config.yml")));
     }
 
-    if Path::new(".cigen.yml").exists() {
-        return Ok(Some(PathBuf::from(".cigen.yml")));
+    if Path::new(".config.yml").exists() {
+        return Ok(Some(PathBuf::from(".config.yml")));
     }
 
     // Check if we're in .cigen directory

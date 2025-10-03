@@ -233,8 +233,8 @@ impl Validator {
     fn find_main_config_path(&self, base_path: &Path) -> Result<std::path::PathBuf> {
         // Check the 4 valid locations in order of preference:
         // 1. .cigen/config.yml (if base_path is project root)
-        // 2. ./cigen.yml (if base_path is project root)
-        // 3. ./.cigen.yml (if base_path is project root)
+        // 2. ./config.yml (if base_path is project root)
+        // 3. ./.config.yml (if base_path is project root)
         // 4. config.yml (if base_path is .cigen directory)
 
         let is_cigen_dir = base_path.file_name() == Some(std::ffi::OsStr::new(".cigen"));
@@ -245,12 +245,12 @@ impl Validator {
                 return Ok(base_path.join(".cigen/config.yml"));
             }
 
-            if base_path.join("cigen.yml").exists() {
-                return Ok(base_path.join("cigen.yml"));
+            if base_path.join("config.yml").exists() {
+                return Ok(base_path.join("config.yml"));
             }
 
-            if base_path.join(".cigen.yml").exists() {
-                return Ok(base_path.join(".cigen.yml"));
+            if base_path.join(".config.yml").exists() {
+                return Ok(base_path.join(".config.yml"));
             }
         } else {
             // We're in .cigen directory
@@ -260,7 +260,7 @@ impl Validator {
         }
 
         anyhow::bail!(
-            "No config file found in {}. Expected one of: .cigen/config.yml, cigen.yml, .cigen.yml, or config.yml (if in .cigen/ directory)",
+            "No config file found in {}. Expected one of: .cigen/config.yml, config.yml, .config.yml, or config.yml (if in .cigen/ directory)",
             base_path.display()
         )
     }
