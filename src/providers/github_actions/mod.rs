@@ -1,5 +1,6 @@
 mod cache;
 mod generator;
+mod job_skip;
 pub mod schema;
 
 #[cfg(test)]

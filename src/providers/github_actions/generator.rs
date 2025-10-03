@@ -1,4 +1,5 @@
 use super::cache::CacheGenerator;
+use super::job_skip::JobSkipGenerator;
 use super::schema::{Job as GHJob, RunsOn, Step, Workflow};
 use crate::models::{Command, Config, Job};
 use miette::{IntoDiagnostic, Result};
@@ -8,12 +9,14 @@ use std::path::Path;
 
 pub struct GitHubActionsGenerator {
     cache_generator: CacheGenerator,
+    job_skip_generator: JobSkipGenerator,
 }
 
 impl GitHubActionsGenerator {
     pub fn new() -> Self {
         Self {
             cache_generator: CacheGenerator::new(),
+            job_skip_generator: JobSkipGenerator::new(),
         }
     }
 
@@ -248,7 +251,6 @@ impl GitHubActionsGenerator {
             });
         }
 
-        // Add automatic cache restoration
         // Determine architecture - use first from architectures or default to amd64
         let architecture = job
             .architectures
@@ -257,16 +259,47 @@ impl GitHubActionsGenerator {
             .map(|s| s.as_str())
             .unwrap_or("amd64");
 
-        let cache_steps = self
-            .cache_generator
-            .generate_cache_steps(config, job, architecture)?;
-        steps.extend(cache_steps);
+        // Add job skip logic if source_files are defined
+        let skip_steps = self
+            .job_skip_generator
+            .generate_skip_steps(config, job, architecture)?;
 
-        // Convert cigen steps to GitHub Actions steps
-        if let Some(job_steps) = &job.steps {
-            for cigen_step in job_steps {
-                let step = self.build_step(cigen_step)?;
-                steps.push(step);
+        if let Some((hash_step, skip_check_step, completion_step)) = skip_steps {
+            // Add hash calculation step
+            steps.push(hash_step);
+
+            // Add skip check step
+            steps.push(skip_check_step);
+
+            // Add automatic cache restoration
+            let cache_steps =
+                self.cache_generator
+                    .generate_cache_steps(config, job, architecture)?;
+            steps.extend(cache_steps);
+
+            // Convert cigen steps to GitHub Actions steps
+            if let Some(job_steps) = &job.steps {
+                for cigen_step in job_steps {
+                    let step = self.build_step(cigen_step)?;
+                    steps.push(step);
+                }
+            }
+
+            // Add completion recording step at the end
+            steps.push(completion_step);
+        } else {
+            // No skip logic - add cache and user steps normally
+            let cache_steps =
+                self.cache_generator
+                    .generate_cache_steps(config, job, architecture)?;
+            steps.extend(cache_steps);
+
+            // Convert cigen steps to GitHub Actions steps
+            if let Some(job_steps) = &job.steps {
+                for cigen_step in job_steps {
+                    let step = self.build_step(cigen_step)?;
+                    steps.push(step);
+                }
             }
         }
 
