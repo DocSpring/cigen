@@ -1,218 +1,155 @@
-name: Release
-
+name: release
 on:
   push:
-    tags:
-      - "v*" # Version tags like v1.2.3
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
+    branches:
+    - main
+  pull_request:
+    branches:
+    - main
 jobs:
   release_build:
-    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Wait for required checks
+      uses: actions/github-script@v7
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+    - name: Install cross (for cross-compilation)
+      run: cargo install cross --git https://github.com/cross-rs/cross
+    - name: Build binary
+      run: |
+        set -e
+        if [ "${{ matrix.use-cross }}" = "true" ]; then
+          cross build --release --target ${{ matrix.target }} --bin cigen
+        else
+          cargo build --release --target ${{ matrix.target }} --bin cigen
+        fi
+    - name: Create archive
+      run: |
+        set -e
+        cd "target/${{ matrix.target }}/release"
+        tar czf "../../../${{ matrix.name }}.tar.gz" cigen
+        cd ../../../
+        echo "ASSET_PATH=${{ matrix.name }}.tar.gz" >> "$GITHUB_ENV"
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
     strategy:
-      fail-fast: false
       matrix:
         include:
-          # macOS builds
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            name: cigen-macos-amd64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            name: cigen-macos-arm64
-
-          # Linux builds
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            name: cigen-linux-amd64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            name: cigen-linux-arm64
-            use-cross: true
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Wait for required checks
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const script = require('./.github/wait-for-checks.js');
-            await script({ github, context, core });
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Install cross (for cross-compilation)
-        if: matrix.use-cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
-
-      - name: Build binary
-        shell: bash
-        run: |
-          set -e
-          if [ "${{ matrix.use-cross }}" = "true" ]; then
-            cross build --release --target ${{ matrix.target }} --bin cigen
-          else
-            cargo build --release --target ${{ matrix.target }} --bin cigen
-          fi
-
-      - name: Create archive
-        shell: bash
-        run: |
-          set -e
-          cd "target/${{ matrix.target }}/release"
-          tar czf "../../../${{ matrix.name }}.tar.gz" cigen
-          cd ../../../
-          echo "ASSET_PATH=${{ matrix.name }}.tar.gz" >> "$GITHUB_ENV"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.name }}
-          path: ${{ env.ASSET_PATH }}
-
-  release_create:
-    name: Create Release
-    needs: release_build
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Get version from Cargo.toml
-        id: version
-        run: |
-          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          {
-            echo "version=$VERSION"
-          } >> "$GITHUB_OUTPUT"
-
-          if [ "${{ github.event_name }}" = "push" ]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            EXPECTED_TAG="v$VERSION"
-            if [ "$TAG" != "$EXPECTED_TAG" ]; then
-              echo "Error: Tag $TAG doesn't match expected $EXPECTED_TAG from Cargo.toml" >&2
-              exit 1
-            fi
-            {
-              echo "tag=$TAG"
-            } >> "$GITHUB_OUTPUT"
-          else
-            {
-              echo "tag=v$VERSION"
-            } >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Generate checksums
-        shell: bash
-        run: |
-          set -e
-          cd artifacts
-          for dir in */; do
-            cd "$dir"
-            for file in *; do
-              case "$file" in
-                *.tar.gz|*.zip)
-                  if [ -f "$file" ]; then
-                    sha256sum "$file" > "${file}.sha256" || shasum -a 256 "$file" | awk '{print $1}' > "${file}.sha256"
-                  fi
-                  ;;
-              esac
-            done
-            cd ..
-          done
-          cd ..
-
-      - name: Generate changelog
-        id: changelog
-        run: |
-          cat > changelog.md <<EOF
-          ## Installation
-
-          ### One-liner (Linux/macOS)
-              curl -fsSL https://docspring.github.io/cigen/install.sh | sh
-
-          ### Direct downloads
-          - macOS (Intel): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-amd64.tar.gz
-          - macOS (Apple Silicon): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-arm64.tar.gz
-          - Linux (x86_64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-amd64.tar.gz
-          - Linux (ARM64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-arm64.tar.gz
-          EOF
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: CIGen v${{ steps.version.outputs.version }}
-          body_path: changelog.md
-          draft: false
-          prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
-          files: |
-            artifacts/**/*.tar.gz
-            artifacts/**/*.sha256
-
+        - name: cigen-macos-amd64
+          os: macos-latest
+          target: x86_64-apple-darwin
+        - name: cigen-macos-arm64
+          os: macos-latest
+          target: aarch64-apple-darwin
+        - name: cigen-linux-amd64
+          os: ubuntu-latest
+          target: x86_64-unknown-linux-gnu
+        - name: cigen-linux-arm64
+          os: ubuntu-latest
+          target: aarch64-unknown-linux-gnu
+          use-cross: true
+      fail-fast: false
   docker_image:
-    name: Build and Push Docker Image
-    needs: release_create
     runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Extract version
+      run: |
+        VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+    - name: Build and push multi-arch image
+      run: |
+        set -euo pipefail
+        VERSION="${{ steps.v.outputs.version }}"
+        echo "Building docspringcom/cigen:${VERSION} and :latest"
+        docker buildx build \
+          --platform linux/amd64,linux/arm64 \
+          -f Dockerfile \
+          --build-arg CIGEN_VERSION="${VERSION}" \
+          -t docspringcom/cigen:"${VERSION}" \
+          -t docspringcom/cigen:latest \
+          --push .
+    env:
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     permissions:
       contents: read
-    env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+  release_create:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+    - name: Get version from Cargo.toml
+      run: |
+        VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+        {
+          echo "version=$VERSION"
+        } >> "$GITHUB_OUTPUT"
 
-      - name: Extract version
-        id: v
-        run: |
-          VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        if [ "${{ github.event_name }}" = "push" ]; then
+          TAG="${GITHUB_REF#refs/tags/}"
+          EXPECTED_TAG="v$VERSION"
+          if [ "$TAG" != "$EXPECTED_TAG" ]; then
+            echo "Error: Tag $TAG doesn't match expected $EXPECTED_TAG from Cargo.toml" >&2
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+          } >> "$GITHUB_OUTPUT"
+        else
+          {
+            echo "tag=v$VERSION"
+          } >> "$GITHUB_OUTPUT"
+        fi
+    - name: Generate checksums
+      run: |
+        set -e
+        cd artifacts
+        for dir in */; do
+          cd "$dir"
+          for file in *; do
+            case "$file" in
+              *.tar.gz|*.zip)
+                if [ -f "$file" ]; then
+                  sha256sum "$file" > "${file}.sha256" || shasum -a 256 "$file" | awk '{print $1}' > "${file}.sha256"
+                fi
+                ;;
+            esac
+          done
+          cd ..
+        done
+        cd ..
+    - name: Generate changelog
+      run: |
+        cat > changelog.md <<EOF
+        ## Installation
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        ### One-liner (Linux/macOS)
+            curl -fsSL https://docspring.github.io/cigen/install.sh | sh
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_TOKEN }}
-
-      - name: Build and push multi-arch image
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.v.outputs.version }}"
-          echo "Building docspringcom/cigen:${VERSION} and :latest"
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            -f Dockerfile \
-            --build-arg CIGEN_VERSION="${VERSION}" \
-            -t docspringcom/cigen:"${VERSION}" \
-            -t docspringcom/cigen:latest \
-            --push .
+        ### Direct downloads
+        - macOS (Intel): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-amd64.tar.gz
+        - macOS (Apple Silicon): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-arm64.tar.gz
+        - Linux (x86_64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-amd64.tar.gz
+        - Linux (ARM64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-arm64.tar.gz
+        EOF
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2

@@ -76,6 +76,26 @@ pub struct Job {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
     pub job_type: Option<String>,
+
+    /// GitHub Actions-specific: strategy matrix configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: environment
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: concurrency
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: environment variables
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Intermediate parsing structure for cache definitions that handles multiple YAML formats

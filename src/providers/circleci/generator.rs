@@ -397,6 +397,11 @@ impl CircleCIGenerator {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         };
         if let Some(checkout_step) = self.resolve_checkout_step(config, None, &placeholder_job)? {
             setup_job.steps.push(cc::CircleCIStep::new(checkout_step));
@@ -1023,6 +1028,11 @@ cat /tmp/continuation.json
                 steps: Some(vec![]),
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             };
 
             // Add DAG dependencies (as build jobs)

@@ -336,16 +336,121 @@
           },
           {
             "type": "object",
+            "description": "GitHub Actions step with 'uses'",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Step name"
+              },
+              "id": {
+                "type": "string",
+                "description": "Step ID for output references"
+              },
+              "uses": {
+                "type": "string",
+                "description": "GitHub Action to use"
+              },
+              "with": {
+                "type": "object",
+                "description": "Action inputs"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables"
+              },
+              "if": {
+                "type": "string",
+                "description": "Conditional expression"
+              },
+              "continue-on-error": {
+                "type": "boolean",
+                "description": "Continue on error"
+              },
+              "timeout-minutes": {
+                "type": "integer",
+                "description": "Timeout in minutes"
+              }
+            },
+            "required": ["uses"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "description": "GitHub Actions step with 'run'",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Step name"
+              },
+              "id": {
+                "type": "string",
+                "description": "Step ID for output references"
+              },
+              "run": {
+                "type": "string",
+                "description": "Command to run"
+              },
+              "shell": {
+                "type": "string",
+                "description": "Shell to use"
+              },
+              "working-directory": {
+                "type": "string",
+                "description": "Working directory"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables"
+              },
+              "if": {
+                "type": "string",
+                "description": "Conditional expression"
+              },
+              "continue-on-error": {
+                "type": "boolean",
+                "description": "Continue on error"
+              },
+              "timeout-minutes": {
+                "type": "integer",
+                "description": "Timeout in minutes"
+              }
+            },
+            "required": ["run"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
             "description": "Built-in CircleCI steps or custom commands",
             "additionalProperties": true,
             "minProperties": 1,
             "maxProperties": 1,
             "not": {
-              "required": ["run"]
+              "anyOf": [
+                {"required": ["run"]},
+                {"required": ["uses"]}
+              ]
             }
           }
         ]
       }
+    },
+    "strategy": {
+      "type": "object",
+      "description": "GitHub Actions strategy matrix"
+    },
+    "permissions": {
+      "description": "GitHub Actions permissions"
+    },
+    "environment": {
+      "description": "GitHub Actions environment"
+    },
+    "concurrency": {
+      "type": "object",
+      "description": "GitHub Actions concurrency control"
+    },
+    "env": {
+      "type": "object",
+      "description": "Environment variables for the job"
     }
   },
   "additionalProperties": false

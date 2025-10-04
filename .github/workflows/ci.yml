@@ -1,9 +1,9 @@
 name: ci
 on:
-  pull_request:
+  push:
     branches:
     - main
-  push:
+  pull_request:
     branches:
     - main
 jobs:
@@ -52,62 +52,6 @@ jobs:
       shell: bash
     - name: Format check
       run: cargo fmt -- --check
-    - id: record_completion
-      name: Record job completion
-      run: |-
-        set -e
-        SKIP_CACHE_DIR="/tmp/cigen_skip_cache"
-        SKIP_MARKER="$SKIP_CACHE_DIR/job_${{JOB_HASH}}_amd64"
-
-        echo "Recording successful completion for hash ${{JOB_HASH}}"
-        mkdir -p "$SKIP_CACHE_DIR"
-        echo "$(date): Job completed successfully" > "$SKIP_MARKER"
-      shell: bash
-  clippy:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    - id: calculate_hash
-      name: Calculate source file hash
-      run: |-
-        set -e
-        echo 'Calculating source file hash...'
-        TEMP_HASH_FILE="/tmp/source_files_for_hash"
-        rm -f "$TEMP_HASH_FILE"
-
-        find . -path './src/**/*.rs' -type f 2>/dev/null | sort >> "$TEMP_HASH_FILE" || true
-        find . -path './Cargo.toml' -type f 2>/dev/null | sort >> "$TEMP_HASH_FILE" || true
-        find . -path './Cargo.lock' -type f 2>/dev/null | sort >> "$TEMP_HASH_FILE" || true
-
-        if [ -s "$TEMP_HASH_FILE" ]; then
-          # Calculate hash of file contents
-          JOB_HASH=$(xargs -I{{}} sh -c 'cat "{{}}"' < "$TEMP_HASH_FILE" | sha256sum | cut -d' ' -f1)
-          echo "Hash calculated: $JOB_HASH"
-          echo "JOB_HASH=$JOB_HASH" >> $GITHUB_ENV
-        else
-          JOB_HASH="empty"
-          echo "No source files found, using empty hash"
-          echo "JOB_HASH=$JOB_HASH" >> $GITHUB_ENV
-        fi
-      shell: bash
-    - id: check_skip
-      name: Check if job should be skipped
-      run: |-
-        set -e
-        SKIP_CACHE_DIR="/tmp/cigen_skip_cache"
-        SKIP_MARKER="$SKIP_CACHE_DIR/job_${{JOB_HASH}}_amd64"
-
-        if [ -f "$SKIP_MARKER" ]; then
-          echo "✓ Job already completed successfully for this file hash. Skipping..."
-          exit 0
-        else
-          echo "→ No previous successful run found. Proceeding with job..."
-          mkdir -p "$SKIP_CACHE_DIR"
-        fi
-      shell: bash
-    - name: Clippy check
-      run: cargo clippy --all-targets --all-features -- -D warnings
     - id: record_completion
       name: Record job completion
       run: |-
@@ -169,6 +113,62 @@ jobs:
       shell: bash
     - name: Run tests
       run: cargo test --all-features
+    - id: record_completion
+      name: Record job completion
+      run: |-
+        set -e
+        SKIP_CACHE_DIR="/tmp/cigen_skip_cache"
+        SKIP_MARKER="$SKIP_CACHE_DIR/job_${{JOB_HASH}}_amd64"
+
+        echo "Recording successful completion for hash ${{JOB_HASH}}"
+        mkdir -p "$SKIP_CACHE_DIR"
+        echo "$(date): Job completed successfully" > "$SKIP_MARKER"
+      shell: bash
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - id: calculate_hash
+      name: Calculate source file hash
+      run: |-
+        set -e
+        echo 'Calculating source file hash...'
+        TEMP_HASH_FILE="/tmp/source_files_for_hash"
+        rm -f "$TEMP_HASH_FILE"
+
+        find . -path './src/**/*.rs' -type f 2>/dev/null | sort >> "$TEMP_HASH_FILE" || true
+        find . -path './Cargo.toml' -type f 2>/dev/null | sort >> "$TEMP_HASH_FILE" || true
+        find . -path './Cargo.lock' -type f 2>/dev/null | sort >> "$TEMP_HASH_FILE" || true
+
+        if [ -s "$TEMP_HASH_FILE" ]; then
+          # Calculate hash of file contents
+          JOB_HASH=$(xargs -I{{}} sh -c 'cat "{{}}"' < "$TEMP_HASH_FILE" | sha256sum | cut -d' ' -f1)
+          echo "Hash calculated: $JOB_HASH"
+          echo "JOB_HASH=$JOB_HASH" >> $GITHUB_ENV
+        else
+          JOB_HASH="empty"
+          echo "No source files found, using empty hash"
+          echo "JOB_HASH=$JOB_HASH" >> $GITHUB_ENV
+        fi
+      shell: bash
+    - id: check_skip
+      name: Check if job should be skipped
+      run: |-
+        set -e
+        SKIP_CACHE_DIR="/tmp/cigen_skip_cache"
+        SKIP_MARKER="$SKIP_CACHE_DIR/job_${{JOB_HASH}}_amd64"
+
+        if [ -f "$SKIP_MARKER" ]; then
+          echo "✓ Job already completed successfully for this file hash. Skipping..."
+          exit 0
+        else
+          echo "→ No previous successful run found. Proceeding with job..."
+          mkdir -p "$SKIP_CACHE_DIR"
+        fi
+      shell: bash
+    - name: Clippy check
+      run: cargo clippy --all-targets --all-features -- -D warnings
     - id: record_completion
       name: Record job completion
       run: |-

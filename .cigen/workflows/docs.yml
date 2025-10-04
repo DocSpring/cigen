@@ -1,0 +1,24 @@
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/docs.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  ci_gate:
+  build:
+    requires:
+      - ci_gate
+  deploy:
+    requires:
+      - build

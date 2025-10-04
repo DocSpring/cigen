@@ -103,6 +103,11 @@ impl PackageDeduplicator {
             services: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         };
 
         // Add installation steps (checkout will be added automatically by CircleCI provider)

@@ -1,0 +1,10 @@
+image: ubuntu-latest
+
+steps:
+  - uses: actions/checkout@v4
+  - name: Wait for CI checks to complete
+    uses: actions/github-script@v7
+    with:
+      script: |
+        const wait = require('./.github/wait-for-checks.js');
+        await wait({ github, context, core, checks: ["test"] });

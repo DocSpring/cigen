@@ -372,6 +372,22 @@ pub struct WorkflowConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub checkout: Option<CheckoutSetting>,
+
+    /// GitHub Actions-specific: workflow triggers
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: workflow permissions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: concurrency control
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub concurrency: Option<serde_yaml::Value>,
+
+    /// GitHub Actions-specific: environment variables
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

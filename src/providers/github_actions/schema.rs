@@ -9,6 +9,9 @@ pub struct Workflow {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on: Option<WorkflowTrigger>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Permissions>,
+
     pub jobs: HashMap<String, Job>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -83,6 +86,12 @@ pub struct Job {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outputs: Option<HashMap<String, String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub permissions: Option<Permissions>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<Environment>,
 }
 
 /// Runner specification
@@ -194,4 +203,37 @@ pub struct Step {
 
     #[serde(skip_serializing_if = "Option::is_none", rename = "timeout-minutes")]
     pub timeout_minutes: Option<u32>,
+}
+
+/// Permissions configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Permissions {
+    /// Simple read/write permissions
+    Simple(PermissionLevel),
+    /// Detailed per-scope permissions
+    Detailed(HashMap<String, PermissionLevel>),
+}
+
+/// Permission level for a scope
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PermissionLevel {
+    Read,
+    Write,
+    None,
+}
+
+/// Environment configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Environment {
+    /// Simple environment name
+    Simple(String),
+    /// Detailed environment with URL
+    Detailed {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        url: Option<String>,
+    },
 }

@@ -79,15 +79,49 @@ impl GitHubActionsGenerator {
             gh_jobs.insert(job_name.clone(), gh_job);
         }
 
-        // Build workflow triggers
-        let triggers = self.build_workflow_triggers(config, workflow_name);
+        // Get workflow-specific config if available
+        let workflow_config = config
+            .workflows
+            .as_ref()
+            .and_then(|workflows| workflows.get(workflow_name));
+
+        // Build workflow triggers - use explicit 'on' or generate defaults
+        let triggers = if let Some(wf_config) = workflow_config
+            && let Some(on_value) = &wf_config.on
+        {
+            Some(serde_yaml::from_value(on_value.clone()).into_diagnostic()?)
+        } else {
+            self.build_workflow_triggers(config, workflow_name)
+        };
+
+        // Parse permissions if provided
+        let permissions = if let Some(wf_config) = workflow_config
+            && let Some(perms_value) = &wf_config.permissions
+        {
+            Some(serde_yaml::from_value(perms_value.clone()).into_diagnostic()?)
+        } else {
+            None
+        };
+
+        // Parse concurrency if provided
+        let concurrency = if let Some(wf_config) = workflow_config
+            && let Some(conc_value) = &wf_config.concurrency
+        {
+            Some(serde_yaml::from_value(conc_value.clone()).into_diagnostic()?)
+        } else {
+            None
+        };
+
+        // Get env vars
+        let env = workflow_config.and_then(|wf| wf.env.clone());
 
         Ok(Workflow {
             name: workflow_name.to_string(),
             on: triggers,
+            permissions,
             jobs: gh_jobs,
-            env: None,
-            concurrency: None,
+            env,
+            concurrency,
         })
     }
 
@@ -147,8 +181,13 @@ impl GitHubActionsGenerator {
         // Convert requires to needs (GitHub Actions only supports AND dependencies)
         let needs = job.requires.as_ref().map(|r| r.to_vec());
 
-        // Build matrix strategy if architectures are specified
-        let strategy = self.build_matrix_strategy(job)?;
+        // Build matrix strategy - prefer explicit strategy field, fall back to architectures
+        let strategy = if let Some(strategy_value) = &job.strategy {
+            // Parse the YAML value into our Strategy type
+            Some(serde_yaml::from_value(strategy_value.clone()).into_diagnostic()?)
+        } else {
+            self.build_matrix_strategy(job)?
+        };
 
         // Build services
         let services = self.build_services(job)?;
@@ -156,18 +195,43 @@ impl GitHubActionsGenerator {
         // Build conditional expression
         let condition = self.build_job_condition(job);
 
+        // Parse permissions if provided
+        let permissions = if let Some(perms_value) = &job.permissions {
+            Some(serde_yaml::from_value(perms_value.clone()).into_diagnostic()?)
+        } else {
+            None
+        };
+
+        // Parse environment if provided
+        let environment = if let Some(env_value) = &job.environment {
+            Some(serde_yaml::from_value(env_value.clone()).into_diagnostic()?)
+        } else {
+            None
+        };
+
+        // Determine runs_on from image field or default
+        let runs_on = Some(if job.image.starts_with("ubuntu") || job.image.starts_with("rust") {
+            RunsOn::Single("ubuntu-latest".to_string())
+        } else if job.image.starts_with("macos") {
+            RunsOn::Single("macos-latest".to_string())
+        } else {
+            RunsOn::Single(job.image.clone())
+        });
+
         Ok(GHJob {
             name: None, // GitHub Actions infers job name from key
-            runs_on: Some(RunsOn::Single("ubuntu-latest".to_string())), // TODO: From config/matrix
+            runs_on,
             needs,
             condition,
             steps: Some(steps),
-            env: None, // TODO: Environment variables
+            env: job.env.clone(),
             strategy,
             services,
             container: None,
             timeout_minutes: None,
             outputs: None,
+            permissions,
+            environment,
         })
     }
 
