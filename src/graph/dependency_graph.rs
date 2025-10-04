@@ -200,6 +200,11 @@ mod tests {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         }
     }
 

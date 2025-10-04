@@ -1,5 +1,6 @@
 provider: github-actions
 output_path: .github/workflows
+dynamic: true # Generate separate workflow files
 
 # Source file groups for job skipping
 source_file_groups:

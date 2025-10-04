@@ -156,6 +156,7 @@ impl GitHubActionsGenerator {
             "push".to_string(),
             TriggerConfig {
                 branches: Some(vec!["main".to_string()]),
+                tags: None,
                 paths: None,
                 types: None,
             },
@@ -166,6 +167,7 @@ impl GitHubActionsGenerator {
             "pull_request".to_string(),
             TriggerConfig {
                 branches: Some(vec!["main".to_string()]),
+                tags: None,
                 paths: None,
                 types: None,
             },
@@ -210,13 +212,15 @@ impl GitHubActionsGenerator {
         };
 
         // Determine runs_on from image field or default
-        let runs_on = Some(if job.image.starts_with("ubuntu") || job.image.starts_with("rust") {
-            RunsOn::Single("ubuntu-latest".to_string())
-        } else if job.image.starts_with("macos") {
-            RunsOn::Single("macos-latest".to_string())
-        } else {
-            RunsOn::Single(job.image.clone())
-        });
+        let runs_on = Some(
+            if job.image.starts_with("ubuntu") || job.image.starts_with("rust") {
+                RunsOn::Single("ubuntu-latest".to_string())
+            } else if job.image.starts_with("macos") {
+                RunsOn::Single("macos-latest".to_string())
+            } else {
+                RunsOn::Single(job.image.clone())
+            },
+        );
 
         Ok(GHJob {
             name: None, // GitHub Actions infers job name from key
@@ -412,7 +416,10 @@ impl GitHubActionsGenerator {
                 && let Some(run_val) = mapping.get("run")
             {
                 return Ok(Step {
-                    id: None,
+                    id: mapping
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     name: name_val.as_str().map(|s| s.to_string()),
                     uses: None,
                     run: run_val.as_str().map(|s| s.to_string()),
@@ -428,21 +435,69 @@ impl GitHubActionsGenerator {
 
             // Check if it's a uses step
             if let Some(uses_val) = mapping.get("uses") {
+                // Parse with parameters if present
+                let with_params = mapping.get("with").and_then(|v| {
+                    if let Some(with_map) = v.as_mapping() {
+                        let mut params = std::collections::HashMap::new();
+                        for (k, val) in with_map {
+                            if let Some(key_str) = k.as_str() {
+                                // Convert YAML value to JSON value
+                                if let Ok(json_val) = serde_json::to_value(val) {
+                                    params.insert(key_str.to_string(), json_val);
+                                }
+                            }
+                        }
+                        Some(params)
+                    } else {
+                        None
+                    }
+                });
+
+                // Parse env if present
+                let env_vars = mapping.get("env").and_then(|v| {
+                    if let Some(env_map) = v.as_mapping() {
+                        let mut vars = std::collections::HashMap::new();
+                        for (k, val) in env_map {
+                            if let (Some(key_str), Some(val_str)) = (k.as_str(), val.as_str()) {
+                                vars.insert(key_str.to_string(), val_str.to_string());
+                            }
+                        }
+                        Some(vars)
+                    } else {
+                        None
+                    }
+                });
+
                 return Ok(Step {
-                    id: None,
+                    id: mapping
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
                     name: mapping
                         .get("name")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string()),
                     uses: uses_val.as_str().map(|s| s.to_string()),
                     run: None,
-                    with: None,
-                    env: None,
-                    condition: None,
-                    working_directory: None,
-                    shell: None,
-                    continue_on_error: None,
-                    timeout_minutes: None,
+                    with: with_params,
+                    env: env_vars,
+                    condition: mapping
+                        .get("if")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    working_directory: mapping
+                        .get("working-directory")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    shell: mapping
+                        .get("shell")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string()),
+                    continue_on_error: mapping.get("continue-on-error").and_then(|v| v.as_bool()),
+                    timeout_minutes: mapping
+                        .get("timeout-minutes")
+                        .and_then(|v| v.as_u64())
+                        .map(|n| n as u32),
                 });
             }
 

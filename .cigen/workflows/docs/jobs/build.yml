@@ -1,5 +1,8 @@
 image: ubuntu-latest
 
+requires:
+  - ci_gate
+
 steps:
   - uses: actions/checkout@v4
 

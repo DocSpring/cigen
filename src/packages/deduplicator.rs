@@ -263,6 +263,11 @@ mod tests {
                 services: None,
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             },
         );
 
@@ -285,6 +290,11 @@ mod tests {
                 services: None,
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             },
         );
 
@@ -307,6 +317,11 @@ mod tests {
                 services: None,
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             },
         );
 
@@ -397,6 +412,11 @@ mod tests {
                 services: None,
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             },
         )]);
 

@@ -109,7 +109,7 @@ impl JobSkipGenerator {
         let command = format!(
             r#"set -e
 SKIP_CACHE_DIR="/tmp/cigen_skip_cache"
-SKIP_MARKER="$SKIP_CACHE_DIR/job_${{{{JOB_HASH}}}}_{}"
+SKIP_MARKER="$SKIP_CACHE_DIR/job_${{{{ env.JOB_HASH }}}}_{}"
 
 if [ -f "$SKIP_MARKER" ]; then
   echo "✓ Job already completed successfully for this file hash. Skipping..."
@@ -141,9 +141,9 @@ fi"#,
         let command = format!(
             r#"set -e
 SKIP_CACHE_DIR="/tmp/cigen_skip_cache"
-SKIP_MARKER="$SKIP_CACHE_DIR/job_${{{{JOB_HASH}}}}_{}"
+SKIP_MARKER="$SKIP_CACHE_DIR/job_${{{{ env.JOB_HASH }}}}_{}"
 
-echo "Recording successful completion for hash ${{{{JOB_HASH}}}}"
+echo "Recording successful completion for hash ${{{{ env.JOB_HASH }}}}"
 mkdir -p "$SKIP_CACHE_DIR"
 echo "$(date): Job completed successfully" > "$SKIP_MARKER""#,
             architecture
@@ -194,6 +194,11 @@ mod tests {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         };
 
         let result = generator
@@ -244,6 +249,11 @@ mod tests {
                 steps: None,
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             }
         };
 
@@ -276,7 +286,7 @@ mod tests {
         assert!(skip_step.run.is_some());
         let skip_command = skip_step.run.unwrap();
         assert!(skip_command.contains("/tmp/cigen_skip_cache"));
-        assert!(skip_command.contains("job_${{JOB_HASH}}_amd64"));
+        assert!(skip_command.contains("job_${{ env.JOB_HASH }}_amd64"));
         assert!(skip_command.contains("exit 0"));
 
         // Verify completion step
@@ -288,7 +298,7 @@ mod tests {
         assert!(completion_step.run.is_some());
         let completion_command = completion_step.run.unwrap();
         assert!(completion_command.contains("Recording successful completion"));
-        assert!(completion_command.contains("job_${{JOB_HASH}}_amd64"));
+        assert!(completion_command.contains("job_${{ env.JOB_HASH }}_amd64"));
     }
 
     #[test]
@@ -319,6 +329,11 @@ mod tests {
                 steps: None,
                 checkout: None,
                 job_type: None,
+                strategy: None,
+                permissions: None,
+                environment: None,
+                concurrency: None,
+                env: None,
             }
         };
 

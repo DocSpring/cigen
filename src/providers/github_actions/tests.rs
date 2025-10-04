@@ -46,6 +46,8 @@ fn test_workflow_serialization() {
             container: None,
             timeout_minutes: None,
             outputs: None,
+            environment: None,
+            permissions: None,
         },
     );
 
@@ -55,6 +57,7 @@ fn test_workflow_serialization() {
         jobs,
         env: None,
         concurrency: None,
+        permissions: None,
     };
 
     let yaml = serde_yaml::to_string(&workflow).unwrap();
@@ -126,6 +129,11 @@ fn test_basic_workflow_generation() {
             services: None,
             packages: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -207,6 +215,11 @@ fn test_matrix_build_generation() {
             services: None,
             packages: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 

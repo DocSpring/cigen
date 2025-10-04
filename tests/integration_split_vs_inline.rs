@@ -31,7 +31,15 @@ fn split_and_inline_configs_match() {
 
     let a = fs::read_to_string(&split_config).unwrap();
     let b = fs::read_to_string(&inline_config).unwrap();
-    assert_eq!(a, b, "split and inline generated configs should match");
+
+    // Parse YAML to compare structures, not raw strings (HashMap ordering can differ)
+    let a_parsed: serde_yaml::Value = serde_yaml::from_str(&a).unwrap();
+    let b_parsed: serde_yaml::Value = serde_yaml::from_str(&b).unwrap();
+
+    assert_eq!(
+        a_parsed, b_parsed,
+        "split and inline generated configs should match"
+    );
 }
 
 #[test]

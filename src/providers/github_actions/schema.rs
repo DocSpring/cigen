@@ -36,6 +36,9 @@ pub struct TriggerConfig {
     pub branches: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub paths: Option<Vec<String>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,13 +70,13 @@ pub struct Job {
     pub condition: Option<String>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<Strategy>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub steps: Option<Vec<Step>>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub env: Option<HashMap<String, String>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub strategy: Option<Strategy>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub services: Option<HashMap<String, Service>>,

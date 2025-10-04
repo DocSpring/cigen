@@ -121,10 +121,20 @@ impl<'a> ConfigLoader<'a> {
 
     /// Merge configs and convert to Config model
     fn merge_configs(
-        &self,
+        &mut self,
         main_config: JsonValue,
-        split_configs: Vec<(PathBuf, JsonValue)>,
+        mut split_configs: Vec<(PathBuf, JsonValue)>,
     ) -> Result<(Config, JsonValue)> {
+        // Load workflow definition files and add them to config
+        let workflow_configs = self.load_workflow_definitions()?;
+        if !workflow_configs.is_empty() {
+            // Add workflow configs as a split config entry
+            let workflows_json = serde_json::json!({
+                "workflows": workflow_configs
+            });
+            split_configs.push((PathBuf::from(".cigen/workflows"), workflows_json));
+        }
+
         if !split_configs.is_empty() {
             let merger = ConfigMerger::new();
             let merged = merger.merge_configs(main_config, split_configs)?;
@@ -138,6 +148,50 @@ impl<'a> ConfigLoader<'a> {
             let config = crate::defaults::merge_with_defaults(config);
             Ok((config, main_config))
         }
+    }
+
+    /// Load workflow definition files from .cigen/workflows/*.yml
+    fn load_workflow_definitions(&mut self) -> Result<HashMap<String, JsonValue>> {
+        let cwd = std::env::current_dir().unwrap();
+        let workflows_dir = if cwd.file_name() == Some(std::ffi::OsStr::new(".cigen")) {
+            Path::new("workflows")
+        } else {
+            Path::new(".cigen/workflows")
+        };
+
+        let mut workflows = HashMap::new();
+
+        if !workflows_dir.exists() {
+            return Ok(workflows);
+        }
+
+        // Scan for workflow definition files (not job files)
+        for entry in std::fs::read_dir(workflows_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            // Only process .yml/.yaml files directly in the workflows directory
+            if path.is_file()
+                && (path.extension() == Some(std::ffi::OsStr::new("yml"))
+                    || path.extension() == Some(std::ffi::OsStr::new("yaml")))
+            {
+                let workflow_name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!("Invalid workflow filename: {}", path.display())
+                    })?
+                    .to_string();
+
+                let content = std::fs::read_to_string(&path)?;
+                let processed = self.process_file_content(&path, &content)?;
+                let workflow_config: JsonValue = serde_yaml::from_str(&processed)?;
+
+                workflows.insert(workflow_name, workflow_config);
+            }
+        }
+
+        Ok(workflows)
     }
 
     /// Find the main config file in valid locations

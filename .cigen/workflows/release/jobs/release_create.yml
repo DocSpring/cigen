@@ -1,5 +1,8 @@
 image: ubuntu-latest
 
+requires:
+  - release_build
+
 steps:
   - name: Checkout repository
     uses: actions/checkout@v4
@@ -12,29 +15,29 @@ steps:
     with:
       path: artifacts
 
-  - run:
-      name: Get version from Cargo.toml
-      command: |
-        VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-        {
-          echo "version=$VERSION"
-        } >> "$GITHUB_OUTPUT"
+  - id: version
+    name: Get version from Cargo.toml
+    run: |
+      VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+      {
+        echo "version=$VERSION"
+      } >> "$GITHUB_OUTPUT"
 
-        if [ "${{ github.event_name }}" = "push" ]; then
-          TAG="${GITHUB_REF#refs/tags/}"
-          EXPECTED_TAG="v$VERSION"
-          if [ "$TAG" != "$EXPECTED_TAG" ]; then
-            echo "Error: Tag $TAG doesn't match expected $EXPECTED_TAG from Cargo.toml" >&2
-            exit 1
-          fi
-          {
-            echo "tag=$TAG"
-          } >> "$GITHUB_OUTPUT"
-        else
-          {
-            echo "tag=v$VERSION"
-          } >> "$GITHUB_OUTPUT"
+      if [ "${{ github.event_name }}" = "push" ]; then
+        TAG="${GITHUB_REF#refs/tags/}"
+        EXPECTED_TAG="v$VERSION"
+        if [ "$TAG" != "$EXPECTED_TAG" ]; then
+          echo "Error: Tag $TAG doesn't match expected $EXPECTED_TAG from Cargo.toml" >&2
+          exit 1
         fi
+        {
+          echo "tag=$TAG"
+        } >> "$GITHUB_OUTPUT"
+      else
+        {
+          echo "tag=v$VERSION"
+        } >> "$GITHUB_OUTPUT"
+      fi
 
   - run:
       name: Generate checksums

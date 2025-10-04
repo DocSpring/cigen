@@ -13,12 +13,3 @@ permissions:
 concurrency:
   group: "pages"
   cancel-in-progress: false
-
-jobs:
-  ci_gate:
-  build:
-    requires:
-      - ci_gate
-  deploy:
-    requires:
-      - build

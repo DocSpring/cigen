@@ -1,5 +1,8 @@
 image: ubuntu-latest
 
+requires:
+  - release_create
+
 permissions:
   contents: read
 
@@ -13,11 +16,11 @@ steps:
     with:
       fetch-depth: 0
 
-  - run:
-      name: Extract version
-      command: |
-        VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+  - id: v
+    name: Extract version
+    run: |
+      VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+      echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   - name: Set up QEMU
     uses: docker/setup-qemu-action@v3

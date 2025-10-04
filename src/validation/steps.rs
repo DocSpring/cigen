@@ -171,6 +171,11 @@ mod tests {
             packages: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         };
 
         jobs.insert("test".to_string(), job);
@@ -205,6 +210,11 @@ mod tests {
             packages: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         };
 
         jobs.insert("test".to_string(), job);
@@ -248,6 +258,11 @@ mod tests {
             packages: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         };
 
         jobs.insert("test".to_string(), job);

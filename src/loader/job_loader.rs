@@ -57,7 +57,8 @@ impl<'a> JobLoader<'a> {
         }
 
         // Scan and load all job files
-        for (job_path, workflow_name) in FileScanner::scan_job_files(workflows_dir)? {
+        let scanned_files = FileScanner::scan_job_files(workflows_dir)?;
+        for (job_path, workflow_name) in scanned_files {
             self.load_job_file(&job_path, &workflow_name, &mut jobs, span_tracker)?;
         }
 
@@ -139,7 +140,12 @@ impl<'a> JobLoader<'a> {
 
     /// Check if the config has inline workflows defined
     fn has_inline_workflows(&self, config: &Config) -> bool {
-        config.workflows.is_some()
+        // Only consider it inline if workflows exist AND at least one has jobs defined
+        if let Some(workflows) = &config.workflows {
+            workflows.values().any(|wf| wf.jobs.is_some())
+        } else {
+            false
+        }
     }
 
     /// Load jobs from inline workflow definitions in the main config

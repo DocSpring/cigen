@@ -56,6 +56,11 @@ fn test_simple_job_conversion() {
             ]),
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -140,6 +145,11 @@ fn test_job_with_services() {
             })]),
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -192,6 +202,11 @@ fn test_job_dependencies() {
             })]),
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -219,6 +234,11 @@ fn test_job_dependencies() {
             })]),
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -288,6 +308,11 @@ fn test_docker_image_resolution() {
         steps: None,
         checkout: None,
         job_type: None,
+        strategy: None,
+        permissions: None,
+        environment: None,
+        concurrency: None,
+        env: None,
     };
 
     // Convert job and check that the image was resolved
@@ -326,6 +351,11 @@ fn test_docker_image_full_reference_passthrough() {
         steps: None,
         checkout: None,
         job_type: None,
+        strategy: None,
+        permissions: None,
+        environment: None,
+        concurrency: None,
+        env: None,
     };
 
     // Convert job
@@ -361,6 +391,11 @@ fn test_architecture_matrix_generation() {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -417,6 +452,11 @@ fn test_architecture_matrix_with_dependencies() {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -438,6 +478,11 @@ fn test_architecture_matrix_with_dependencies() {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -496,6 +541,11 @@ fn test_single_architecture_no_suffix() {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -550,6 +600,11 @@ fn test_architecture_environment_variables() {
         steps: None,
         checkout: None,
         job_type: None,
+        strategy: None,
+        permissions: None,
+        environment: None,
+        concurrency: None,
+        env: None,
     };
 
     let generator = generator::CircleCIGenerator::new();
@@ -591,6 +646,11 @@ fn test_job_skip_logic_hash_step_patterns() {
         steps: None,
         checkout: None,
         job_type: None,
+        strategy: None,
+        permissions: None,
+        environment: None,
+        concurrency: None,
+        env: None,
     };
 
     let generator = generator::CircleCIGenerator::new();
@@ -662,6 +722,11 @@ fn test_job_skip_logic_with_submodules() {
         steps: None,
         checkout: None,
         job_type: None,
+        strategy: None,
+        permissions: None,
+        environment: None,
+        concurrency: None,
+        env: None,
     };
 
     let generator = generator::CircleCIGenerator::new();
@@ -781,6 +846,11 @@ fn test_dynamic_config_with_parameters() {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
@@ -853,6 +923,11 @@ fn test_dynamic_flag_enables_setup() {
             steps: None,
             checkout: None,
             job_type: None,
+            strategy: None,
+            permissions: None,
+            environment: None,
+            concurrency: None,
+            env: None,
         },
     );
 
