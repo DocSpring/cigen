@@ -1,0 +1,24 @@
+[package]
+name = "cigen-provider-github"
+version = "0.1.0"
+edition = "2024"
+authors = ["Nathan Broadbent / DocSpring Inc"]
+description = "GitHub Actions provider plugin for CIGen"
+license = "MIT"
+
+[[bin]]
+name = "cigen-provider-github"
+path = "src/main.rs"
+
+[dependencies]
+cigen = { path = "../.." }
+anyhow = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+prost = { workspace = true }
+tonic-prost = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = "0.9.34"

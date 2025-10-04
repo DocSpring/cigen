@@ -1,4 +1,3 @@
-use anyhow::{Context, Result};
 /// Plugin manager handles plugin lifecycle and orchestration
 ///
 /// This module is responsible for:
@@ -7,15 +6,18 @@ use anyhow::{Context, Result};
 /// - Handshake with version/capability negotiation
 /// - Hook invocation (detect, plan, generate, validate)
 /// - Error handling and crash recovery
+use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
 /// Plugin manager coordinates all plugin operations
 pub struct PluginManager {
     /// Discovered plugins by name
+    #[allow(dead_code)]
     plugins: HashMap<String, PluginMetadata>,
 
     /// Active plugin processes
+    #[allow(dead_code)]
     active: HashMap<String, PluginProcess>,
 }
 
@@ -52,7 +54,7 @@ impl PluginManager {
     }
 
     /// Spawn a plugin process
-    pub async fn spawn(&mut self, name: &str) -> Result<()> {
+    pub async fn spawn(&mut self, _name: &str) -> Result<()> {
         // TODO: Implement plugin spawning
         // 1. Find plugin binary
         // 2. Spawn process with stdio pipes
@@ -62,7 +64,7 @@ impl PluginManager {
     }
 
     /// Invoke a hook on all plugins with a capability
-    pub async fn invoke_hook(&self, capability: &str, hook: &str) -> Result<()> {
+    pub async fn invoke_hook(&self, _capability: &str, _hook: &str) -> Result<()> {
         // TODO: Implement hook invocation
         // 1. Filter plugins by capability
         // 2. Send hook request to each

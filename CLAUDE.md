@@ -191,14 +191,63 @@ Small, verifiable chunks prevent errors and ensure steady progress.
 
 ## Before Marking Tasks Complete
 
-**CRITICAL**: Before marking ANY task as complete in your todo list, you MUST:
+**CRITICAL**: Before marking ANY task as complete in your todo list, you MUST follow this workflow:
 
-1. Run `cargo test` to ensure all tests pass
-2. Run `cargo clippy --all-targets --all-features -- -D warnings` to check for linting issues
-3. Fix any failing tests or clippy warnings
-4. Only mark the task as complete after tests pass and clippy is clean
+### Step 1: Run All CI Checks
 
-This ensures code quality and prevents accumulating technical debt.
+```bash
+task ci
+```
+
+This runs all linters and tests that run on CI, including:
+
+- `cargo fmt --check` - Verify code formatting
+- `cargo clippy --all-targets --all-features -- -D warnings` - Lint checks
+- `cargo test --workspace` - All tests in workspace
+- Any other CI checks defined in Taskfile
+
+**If `task ci` fails:**
+
+1. Read the error messages carefully
+2. Fix ALL issues reported
+3. Run `task ci` again
+4. Repeat until it passes cleanly
+
+### Step 2: Get Code Review from CodeRabbit
+
+```bash
+coderabbit --plain
+```
+
+This provides an impartial third-party code review of your changes.
+
+**If CodeRabbit reports suggestions:**
+
+1. Read ALL suggestions carefully
+2. Implement ALL suggested improvements
+3. Run `task ci` again to ensure changes don't break anything
+4. Run `coderabbit --plain` again
+5. Repeat until CodeRabbit returns **no further suggestions**
+
+### Step 3: Mark Task Complete
+
+**ONLY** after both conditions are met:
+
+- ✅ `task ci` passes with no errors
+- ✅ `coderabbit --plain` returns no suggestions
+
+Then and only then can you mark the task as complete in your todo list.
+
+### Why This Matters
+
+This workflow ensures:
+
+- **Quality**: Code meets all project standards
+- **Consistency**: Same checks run locally and on CI
+- **Learning**: CodeRabbit catches patterns and improvements you might miss
+- **No Technical Debt**: Issues are fixed immediately, not deferred
+
+**NO EXCEPTIONS**: This applies to ALL tasks, no matter how small. Good habits compound.
 
 ## Error Handling
 

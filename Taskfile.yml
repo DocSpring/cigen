@@ -1,0 +1,70 @@
+version: "3"
+
+tasks:
+  # Run all CI checks (same as what runs in CI)
+  ci:
+    desc: Run all CI checks (linters + tests)
+    cmds:
+      - task: fmt-check
+      - task: clippy
+      - task: test
+
+  # Check code formatting
+  fmt-check:
+    desc: Check code formatting
+    cmds:
+      - cargo fmt --all --check
+
+  # Format code
+  fmt:
+    desc: Format code
+    cmds:
+      - cargo fmt --all
+
+  # Run clippy linter
+  clippy:
+    desc: Run clippy linter with strict settings
+    cmds:
+      - cargo clippy --all-targets --all-features --workspace -- -D warnings
+
+  # Run all tests
+  test:
+    desc: Run all tests in workspace
+    cmds:
+      - cargo test --workspace
+
+  # Build the project
+  build:
+    desc: Build the project
+    cmds:
+      - cargo build --workspace
+
+  # Build release version
+  build-release:
+    desc: Build optimized release version
+    cmds:
+      - cargo build --workspace --release
+
+  # Clean build artifacts
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - cargo clean
+
+  # Run specific integration test
+  integration:
+    desc: Run integration tests
+    cmds:
+      - cargo test --test '*'
+
+  # Check for outdated dependencies
+  outdated:
+    desc: Check for outdated dependencies
+    cmds:
+      - cargo outdated
+
+  # Update dependencies
+  update:
+    desc: Update dependencies
+    cmds:
+      - cargo update

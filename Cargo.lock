@@ -352,6 +352,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cigen-provider-github"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cigen",
+ "prost",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tokio",
+ "tonic",
+ "tonic-prost",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "clap"
 version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"

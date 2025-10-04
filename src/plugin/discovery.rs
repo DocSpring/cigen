@@ -1,4 +1,3 @@
-use anyhow::{Context, Result};
 /// Plugin discovery mechanisms
 ///
 /// This module handles finding plugins from various sources:
@@ -6,11 +5,12 @@ use anyhow::{Context, Result};
 /// - .cigen/plugins/ directory
 /// - Configuration file
 /// - Registry (future)
+use anyhow::Result;
 use std::path::{Path, PathBuf};
 
 /// Discover plugins in the system PATH
 pub fn discover_from_path() -> Result<Vec<PathBuf>> {
-    let mut plugins = Vec::new();
+    let plugins = Vec::new();
 
     // TODO: Implement PATH-based discovery
     // 1. Get PATH environment variable
@@ -22,8 +22,8 @@ pub fn discover_from_path() -> Result<Vec<PathBuf>> {
 }
 
 /// Discover plugins in a local directory
-pub fn discover_from_dir(dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut plugins = Vec::new();
+pub fn discover_from_dir(_dir: &Path) -> Result<Vec<PathBuf>> {
+    let plugins = Vec::new();
 
     // TODO: Implement directory-based discovery
     // 1. Check if directory exists
@@ -36,7 +36,7 @@ pub fn discover_from_dir(dir: &Path) -> Result<Vec<PathBuf>> {
 
 /// Discover bundled stdlib plugins
 pub fn discover_stdlib() -> Result<Vec<PathBuf>> {
-    let mut plugins = Vec::new();
+    let plugins = Vec::new();
 
     // TODO: Implement stdlib discovery
     // 1. Find cigen binary location
