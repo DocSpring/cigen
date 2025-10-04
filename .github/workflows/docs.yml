@@ -11,18 +11,6 @@ permissions:
   contents: read
   pages: write
 jobs:
-  ci_gate:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-      - name: Wait for CI checks to complete
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const wait = require('./.github/wait-for-checks.js');
-            await wait({ github, context, core, checks: ["test"] });
   build:
     runs-on: ubuntu-latest
     needs:
@@ -89,6 +77,18 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+  ci_gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - name: Wait for CI checks to complete
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const wait = require('./.github/wait-for-checks.js');
+            await wait({ github, context, core, checks: ["test"] });
 concurrency:
   group: pages
   cancel-in-progress: false

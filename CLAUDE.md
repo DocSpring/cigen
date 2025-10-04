@@ -81,10 +81,10 @@ cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 
 # Test validation on the example
-cargo run -- --config examples/circleci_rails/ validate
+cargo run -- --config integration_tests/circleci_rails/ validate
 
 # Test generation on the example
-cargo run -- --config examples/circleci_rails/ generate
+cargo run -- --config integration_tests/circleci_rails/ generate
 ```
 
 ## Rust Code Style
@@ -236,7 +236,7 @@ You can also reference `/Users/ndbroadbent/code/docspring/lib/tools/generate_cir
 
 **CRITICAL SECURITY DISTINCTION**:
 
-### Public Examples (`examples/`)
+### Public Examples (`integration_tests/`)
 
 - **PUBLIC MIT LICENSED** code visible to all users
 - Serves as demonstration of complex, production-ready CI pipeline patterns

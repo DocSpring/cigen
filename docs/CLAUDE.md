@@ -71,7 +71,7 @@ import {
 ### File Structure
 
 - Use kebab-case for file names: `mcp-server-config.mdx`
-- Organize in logical directories: `mcp/`, `commands/`, `examples/`
+- Organize in logical directories: `mcp/`, `commands/`, `integration_tests/`
 - Use `overview.mdx` for main landing pages in sections
 
 ### Frontmatter Requirements
