@@ -208,12 +208,14 @@ impl CircleCIStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
+#[allow(dead_code)]
 pub enum CircleCIRunStep {
     Simple { run: String },
     Detailed { run: CircleCIRunDetails },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIRunDetails {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -240,6 +242,7 @@ pub struct CircleCIRunDetails {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCISetupRemoteDocker {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub docker_layer_caching: Option<bool>,
@@ -249,6 +252,7 @@ pub struct CircleCISetupRemoteDocker {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCISaveCache {
     pub key: String,
     pub paths: Vec<String>,
@@ -261,6 +265,7 @@ pub struct CircleCISaveCache {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIRestoreCache {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keys: Option<Vec<String>>,
@@ -273,6 +278,7 @@ pub struct CircleCIRestoreCache {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIStoreArtifacts {
     pub path: String,
 
@@ -281,34 +287,40 @@ pub struct CircleCIStoreArtifacts {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIStoreTestResults {
     pub path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIPersistToWorkspace {
     pub root: String,
     pub paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIAttachWorkspace {
     pub at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIAddSSHKeys {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fingerprints: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIWhenStep {
     pub condition: String,
     pub steps: Vec<CircleCIStep>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct CircleCIUnlessStep {
     pub condition: String,
     pub steps: Vec<CircleCIStep>,
