@@ -1,0 +1,308 @@
+syntax = "proto3";
+
+package cigen.plugin.v1;
+
+// ============================================================================
+// Handshake & Plugin Info
+// ============================================================================
+
+// Initial message from core to plugin
+message Hello {
+  uint32 core_protocol = 1;    // Protocol version (e.g., 1)
+  string core_version = 2;      // Semantic version (e.g., "0.2.0")
+  map<string, string> env = 3;  // Environment variables
+}
+
+// Plugin responds with its metadata
+message PluginInfo {
+  string name = 1;                     // e.g., "provider/github"
+  string version = 2;                  // e.g., "1.2.3"
+  uint32 protocol = 3;                 // Must match core_protocol
+  repeated string capabilities = 4;    // ["provider:github", "cache:native"]
+  repeated string requires = 5;        // ["lang:*"] - dependencies
+  repeated string conflicts_with = 6;  // ["provider:*"] - mutual exclusions
+  map<string, string> metadata = 7;    // Optional key-value metadata
+}
+
+// ============================================================================
+// Detection Phase
+// ============================================================================
+
+message DetectRequest {
+  RepoSnapshot repo = 1;  // Repository snapshot
+}
+
+message RepoSnapshot {
+  string root_path = 1;              // Absolute path to repo root
+  repeated string files = 2;         // List of all files (relative paths)
+  GitInfo git = 3;                   // Git metadata
+  map<string, bytes> file_cache = 4; // Cache of frequently-checked files
+}
+
+message GitInfo {
+  string branch = 1;
+  string commit_sha = 2;
+  bool is_dirty = 3;
+  repeated string tags = 4;
+}
+
+message DetectResult {
+  repeated string signals = 1;     // ["ruby_detected", "has_gemfile"]
+  map<string, string> facts = 2;   // {"ruby_version": "3.3.0"}
+  float confidence = 3;            // 0.0-1.0 score for auto-enable
+  repeated Diagnostic diagnostics = 4;
+}
+
+// ============================================================================
+// Planning Phase
+// ============================================================================
+
+message PlanRequest {
+  repeated string capabilities = 1;    // All available capabilities from plugins
+  map<string, string> facts = 2;       // Aggregated facts from detect phase
+  CigSchema schema = 3;                // Parsed cig.toml
+  map<string, string> flags = 4;       // CLI flags and config overrides
+  RepoSnapshot repo = 5;               // Repository snapshot (for file reads)
+}
+
+// Simplified CigSchema - represents the parsed cig.toml
+message CigSchema {
+  string version = 1;                  // Schema version
+  ProjectConfig project = 2;
+  map<string, string> variables = 3;
+  repeated JobDefinition jobs = 4;
+  map<string, CacheDefinition> caches = 5;
+  map<string, RunnerDefinition> runners = 6;
+  repeated OutputConfig outputs = 7;
+}
+
+message ProjectConfig {
+  string name = 1;
+  string default_runner = 2;
+}
+
+message JobDefinition {
+  string id = 1;                       // Job identifier (e.g., "test")
+  repeated string needs = 2;           // Job dependencies
+  map<string, MatrixValue> matrix = 3; // Matrix dimensions
+  repeated string packages = 4;        // Package managers to use
+  repeated Step steps = 5;             // Job steps
+  SkipConfig skip_if = 6;              // Conditional skip rules
+  string runner = 7;                   // Runner class
+  map<string, string> env = 8;         // Environment variables
+}
+
+message MatrixValue {
+  repeated string values = 1;
+}
+
+message Step {
+  oneof step_type {
+    RunStep run = 1;
+    UsesStep uses = 2;
+    RestoreCacheStep restore_cache = 3;
+    SaveCacheStep save_cache = 4;
+  }
+}
+
+message RunStep {
+  string name = 1;
+  string command = 2;
+  map<string, string> env = 3;
+}
+
+message UsesStep {
+  string name = 1;
+  string module = 2;                   // e.g., "lang/ruby@~1.2"
+  map<string, string> with = 3;        // Parameters
+}
+
+message RestoreCacheStep {
+  string name = 1;
+  string key = 2;
+  repeated string restore_keys = 3;
+}
+
+message SaveCacheStep {
+  string name = 1;
+  string key = 2;
+  repeated string paths = 3;
+}
+
+message SkipConfig {
+  repeated string paths_unmodified = 1;
+  repeated string env = 2;
+  repeated string branch = 3;
+}
+
+message CacheDefinition {
+  repeated string paths = 1;
+  repeated string key_parts = 2;
+  string backend = 3;
+}
+
+message RunnerDefinition {
+  map<string, string> provider_config = 1;  // Provider-specific config
+}
+
+message OutputConfig {
+  string provider = 1;
+  string path = 2;
+  string description = 3;
+}
+
+message PlanResult {
+  repeated Resource resources = 1;   // Jobs, steps, caches, secrets
+  repeated Dependency deps = 2;      // Resource dependencies
+  repeated Diagnostic diagnostics = 3;
+}
+
+// Generic resource type that plugins propose
+message Resource {
+  string id = 1;                       // Unique identifier
+  ResourceType type = 2;
+  map<string, string> attributes = 3;  // Type-specific attributes (JSON-encoded)
+  map<string, string> metadata = 4;    // Plugin metadata
+}
+
+enum ResourceType {
+  RESOURCE_TYPE_UNSPECIFIED = 0;
+  RESOURCE_TYPE_JOB = 1;
+  RESOURCE_TYPE_STEP = 2;
+  RESOURCE_TYPE_CACHE = 3;
+  RESOURCE_TYPE_SECRET = 4;
+  RESOURCE_TYPE_ARTIFACT = 5;
+  RESOURCE_TYPE_SERVICE = 6;
+}
+
+message Dependency {
+  string from = 1;  // Resource ID
+  string to = 2;    // Resource ID
+  DependencyType type = 3;
+}
+
+enum DependencyType {
+  DEPENDENCY_TYPE_UNSPECIFIED = 0;
+  DEPENDENCY_TYPE_REQUIRES = 1;     // Hard dependency (must run before)
+  DEPENDENCY_TYPE_OPTIONAL = 2;     // Soft dependency (prefer before)
+  DEPENDENCY_TYPE_CONFLICTS = 3;    // Cannot coexist
+}
+
+// ============================================================================
+// Generation Phase
+// ============================================================================
+
+message GenerateRequest {
+  string target = 1;                        // "github", "circleci", etc.
+  repeated Resource graph = 2;              // Final resolved DAG
+  map<string, bytes> work_signatures = 3;   // Job hash map for skip logic
+  CigSchema schema = 4;                     // Original schema for reference
+  map<string, string> facts = 5;            // Facts from detect phase
+}
+
+message GenerateResult {
+  repeated Fragment fragments = 1;
+  repeated Diagnostic diagnostics = 2;
+}
+
+message Fragment {
+  string path = 1;              // ".github/workflows/ci.yml"
+  string content = 2;           // YAML/JSON content
+  MergeStrategy strategy = 3;   // How to merge this fragment
+  int32 order = 4;              // For APPEND strategy
+  string format = 5;            // "yaml", "json", "text"
+}
+
+enum MergeStrategy {
+  MERGE_STRATEGY_UNSPECIFIED = 0;
+  MERGE_STRATEGY_REPLACE = 1;  // Replace entire file
+  MERGE_STRATEGY_MERGE = 2;    // Deep merge with existing
+  MERGE_STRATEGY_APPEND = 3;   // Append to existing
+}
+
+// ============================================================================
+// Validation Phase
+// ============================================================================
+
+message ValidateRequest {
+  repeated Fragment rendered = 1;
+  CigSchema schema = 2;
+}
+
+message ValidateResult {
+  repeated Diagnostic diagnostics = 1;
+}
+
+message Diagnostic {
+  Level level = 1;
+  string code = 2;        // "SECURITY_001"
+  string title = 3;
+  string message = 4;
+  string fix_hint = 5;    // Actionable suggestion
+  SourceLocation loc = 6;
+
+  enum Level {
+    LEVEL_UNSPECIFIED = 0;
+    LEVEL_ERROR = 1;
+    LEVEL_WARNING = 2;
+    LEVEL_INFO = 3;
+  }
+}
+
+message SourceLocation {
+  string file = 1;
+  uint32 line = 2;
+  uint32 column = 3;
+  string snippet = 4;
+}
+
+// ============================================================================
+// Preflight Phase (Optional)
+// ============================================================================
+
+message PreflightRequest {
+  string job_id = 1;
+  RepoState repo_state = 2;
+  bytes previous_signature = 3;
+}
+
+message RepoState {
+  string commit_sha = 1;
+  repeated FileChange changes = 2;
+  map<string, string> env = 3;
+}
+
+message FileChange {
+  string path = 1;
+  ChangeType type = 2;
+  bytes checksum = 3;
+
+  enum ChangeType {
+    CHANGE_TYPE_UNSPECIFIED = 0;
+    CHANGE_TYPE_ADDED = 1;
+    CHANGE_TYPE_MODIFIED = 2;
+    CHANGE_TYPE_DELETED = 3;
+  }
+}
+
+message PreflightResult {
+  bool should_run = 1;
+  string reason = 2;          // "files_changed", "forced", etc.
+  bytes new_signature = 3;
+}
+
+// ============================================================================
+// Plugin Service Definition
+// ============================================================================
+
+service Plugin {
+  // Handshake
+  rpc Handshake(Hello) returns (PluginInfo);
+
+  // Hook methods
+  rpc Detect(DetectRequest) returns (DetectResult);
+  rpc Plan(PlanRequest) returns (PlanResult);
+  rpc Generate(GenerateRequest) returns (GenerateResult);
+  rpc Validate(ValidateRequest) returns (ValidateResult);
+  rpc Preflight(PreflightRequest) returns (PreflightResult);
+}

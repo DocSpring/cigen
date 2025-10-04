@@ -4,6 +4,7 @@ pub mod graph;
 pub mod loader;
 pub mod models;
 pub mod packages;
+pub mod plugin;
 pub mod providers;
 pub mod templating;
 pub mod validation;
