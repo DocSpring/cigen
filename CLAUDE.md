@@ -213,28 +213,11 @@ This runs all linters and tests that run on CI, including:
 3. Run `task ci` again
 4. Repeat until it passes cleanly
 
-### Step 2: Get Code Review from CodeRabbit
-
-```bash
-coderabbit --plain
-```
-
-This provides an impartial third-party code review of your changes.
-
-**If CodeRabbit reports suggestions:**
-
-1. Read ALL suggestions carefully
-2. Implement ALL suggested improvements
-3. Run `task ci` again to ensure changes don't break anything
-4. Run `coderabbit --plain` again
-5. Repeat until CodeRabbit returns **no further suggestions**
-
 ### Step 3: Mark Task Complete
 
-**ONLY** after both conditions are met:
+**ONLY** after this condition is met:
 
 - ✅ `task ci` passes with no errors
-- ✅ `coderabbit --plain` returns no suggestions
 
 Then and only then can you mark the task as complete in your todo list.
 
@@ -244,7 +227,6 @@ This workflow ensures:
 
 - **Quality**: Code meets all project standards
 - **Consistency**: Same checks run locally and on CI
-- **Learning**: CodeRabbit catches patterns and improvements you might miss
 - **No Technical Debt**: Issues are fixed immediately, not deferred
 
 **NO EXCEPTIONS**: This applies to ALL tasks, no matter how small. Good habits compound.
