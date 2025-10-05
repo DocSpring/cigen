@@ -6,7 +6,7 @@ Transform CIGen into "the Terraform for CI config generation" - a unified, exten
 
 - **Tiny core** that orchestrates plugins via RPC
 - **Plugin ecosystem** for providers (CircleCI, GitHub Actions, Buildkite, Jenkins) and modules (language support, caching, etc.)
-- **Unified declarative schema** (`cig.toml`) that's provider-agnostic
+- **Unified declarative schema** (`cigen.yml`) that's provider-agnostic
 - **Convention over configuration** with smart defaults
 - **Work signature hashing** for intelligent job skipping across providers
 - **No vendor lock-in** - write once, deploy to multiple CI platforms
@@ -53,7 +53,7 @@ The core is deliberately small and does ONLY:
    - Crash isolation and error handling
 
 2. **Schema parsing**
-   - Load and validate `cig.toml`
+   - Load and validate `cigen.yml`
    - Parse job definitions, matrices, dependencies
    - Resolve variable references and expressions
 
@@ -170,7 +170,7 @@ message DetectResult {
 message PlanRequest {
   repeated string capabilities = 1;  // Available capabilities from all plugins
   map<string, string> facts = 2;     // Aggregated facts from detect phase
-  CigSchema schema = 3;              // Parsed cig.toml
+  CigenSchema schema = 3;              // Parsed cigen.yml
   map<string, string> flags = 4;     // CLI flags, env vars
 }
 
@@ -237,7 +237,7 @@ message PreflightResult {
 ### Hook Execution Flow
 
 ```
-User runs: cig plan
+User runs: cigen plan
 
 1. DETECT
    Core → spawns all plugins → sends DetectRequest
@@ -263,7 +263,7 @@ User runs: cig plan
    Core → writes files, prints diff
 ```
 
-## Unified Schema (cig.toml)
+## Unified Schema (cigen.yml)
 
 Provider-agnostic declarative config that replaces `.cigen/config.yml`:
 
@@ -467,7 +467,7 @@ commands = ["bundle", "gem", "rake"]
 ### Using Modules
 
 ```toml
-# In cig.toml
+# In cigen.yml
 [jobs.test]
 steps = [
   { uses = "lang/ruby@~1.2", with = { version = "3.3" } },
@@ -491,7 +491,7 @@ requires = ["lang/ruby@~1.0", "db/postgres@^2.0"]
 
 ## Lockfile & Reproducibility
 
-### cig.lock Format
+### cigen.lock Format
 
 ```toml
 # Auto-generated, do not edit
@@ -519,10 +519,10 @@ node = "20.11.0"
 
 ### Workflow
 
-1. `cig init` - Creates `cig.toml`
-2. `cig sync` - Resolves versions, downloads plugins, generates `cig.lock`
-3. `cig plan` - Uses locked versions for deterministic builds
-4. `cig render` - Generates final CI configs
+1. `cigen init` - Creates `cigen.yml`
+2. `cigen sync` - Resolves versions, downloads plugins, generates `cigen.lock`
+3. `cigen plan` - Uses locked versions for deterministic builds
+4. `cigen render` - Generates final CI configs
 
 ## Migration Path from Current CIGen
 
@@ -540,9 +540,9 @@ node = "20.11.0"
 
 ### Phase 2: Schema Migration (Week 2-3)
 
-1. Design `cig.toml` schema
+1. Design `cigen.yml` schema
 2. Implement parser and validator
-3. Create migration tool: `.cigen/config.yml` → `cig.toml`
+3. Create migration tool: `.cigen/config.yml` → `cigen.yml`
 4. Update core to use new schema format
 5. Maintain backward compatibility during transition
 
@@ -579,7 +579,7 @@ node = "20.11.0"
 
 1. Design plugin registry API
 2. Implement registry server (simple HTTP + storage)
-3. Add `cig publish` command for plugin authors
+3. Add `cigen publish` command for plugin authors
 4. Create plugin SDK and templates
 5. Document plugin development process
 6. Build example third-party plugins
@@ -616,7 +616,7 @@ Ship with core, version-locked, but still separate binaries:
 - `cache/gcs`
 - `runners/self-hosted`
 
-These are installed with core but can be overridden by specifying explicit versions in `cig.toml`.
+These are installed with core but can be overridden by specifying explicit versions in `cigen.yml`.
 
 ## Testing Strategy
 
@@ -626,7 +626,7 @@ These are installed with core but can be overridden by specifying explicit versi
 tests/golden/
   ruby_app/
     input/
-      cig.toml
+      cigen.yml
       app/
       spec/
     expected/
@@ -639,7 +639,7 @@ Run: `cig render --all` and compare output to expected.
 
 ### Multi-Provider E2E
 
-CIGen's own CI runs the SAME `cig.toml` across all supported providers:
+CIGen's own CI runs the SAME `cigen.yml` across all supported providers:
 
 - GitHub Actions (primary)
 - CircleCI (test)
@@ -698,40 +698,40 @@ For untrusted community plugins:
 
 ```bash
 # Initialize new project
-cig init
+cigen init
 
 # Sync dependencies (like terraform init)
-cig sync
+cigen sync
 
 # Plan changes (show DAG, diffs)
-cig plan
+cigen plan
 
 # Generate configs (like terraform apply)
-cig render
+cigen render
 
 # Generate for specific provider
-cig render --provider github
+cigen render --provider github
 
 # Explain why a job will/won't run
-cig explain job test
+cigen explain job test
 
 # Validate without generating
-cig validate
+cigen validate
 
 # Compute work signatures (used internally by CI)
-cig compute-signatures
+cigen compute-signatures
 
 # Publish a plugin
-cig publish --plugin ./my-plugin
+cigen publish --plugin ./my-plugin
 
 # Add a plugin dependency
-cig plugin add lang/ruby@~1.2
+cigen plugin add lang/ruby@~1.2
 ```
 
 ### Output Format
 
 ```
-$ cig plan
+$ cigen plan
 
 Detecting project...
   ✓ Ruby 3.3.0 detected (lang/ruby)
@@ -757,7 +757,7 @@ Changes:
   + 6 jobs
   ~ 2 caches updated
 
-Run `cig render` to apply these changes.
+Run `cigen render` to apply these changes.
 ```
 
 ## Benefits of This Architecture

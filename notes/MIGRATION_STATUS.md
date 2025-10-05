@@ -15,7 +15,7 @@ CIGen is being transformed from a monolithic Rust binary into a plugin-based arc
 - Three-layer model (core + plugins + policy)
 - gRPC-over-stdio communication protocol
 - Plugin lifecycle: detect → plan → generate → validate → preflight
-- Unified `cig.toml` schema (provider-agnostic)
+- Unified `cigen.yml` schema (provider-agnostic)
 - Work signature hashing for job skipping
 - Module system with versioning and lockfiles
 - Security model with process isolation
@@ -24,7 +24,7 @@ CIGen is being transformed from a monolithic Rust binary into a plugin-based arc
 **PROJECT_PLAN.md** - 6-phase migration roadmap
 
 - Phase 1: Protocol & Plugin Manager (current, ~2 weeks)
-- Phase 2: Schema Migration to cig.toml (~1 week)
+- Phase 2: Schema Migration to cigen.yml (~1 week)
 - Phase 3: Extract Providers as Plugins (~1 week)
 - Phase 4: Module System (~1 week)
 - Phase 5: Work Signature & Job Skipping (~1 week)
@@ -196,7 +196,7 @@ workflows:
         # Provider-specific steps
 ```
 
-Future (`cig.toml`):
+Future (`cigen.yml`):
 
 ```toml
 [jobs.test]
@@ -258,7 +258,7 @@ skip_if = { paths_unmodified = ["app/**", "spec/**"] }
 
 ## Future Phases (Preview)
 
-**Phase 2**: Migrate to `cig.toml` schema
+**Phase 2**: Migrate to `cigen.yml` schema
 **Phase 3**: Extract CircleCI as second provider, validate multi-provider
 **Phase 4**: Language modules (`lang/ruby`, `lang/node`)
 **Phase 5**: Job skipping via work signatures (the killer feature!)
@@ -292,7 +292,7 @@ skip_if = { paths_unmodified = ["app/**", "spec/**"] }
 ## Timeline
 
 - **Week 1-2**: Complete Phase 1 (plugin protocol working end-to-end)
-- **Week 3**: Phase 2 (cig.toml schema)
+- **Week 3**: Phase 2 (cigen.yml schema)
 - **Week 4**: Phase 3 (multi-provider validated)
 - **Week 5**: Phase 4 (module system)
 - **Week 6**: Phase 5 (job skipping - the prize!)

@@ -60,13 +60,13 @@ message DetectResult {
 message PlanRequest {
   repeated string capabilities = 1;    // All available capabilities from plugins
   map<string, string> facts = 2;       // Aggregated facts from detect phase
-  CigSchema schema = 3;                // Parsed cig.toml
+  CigenSchema schema = 3;              // Parsed cigen.yml
   map<string, string> flags = 4;       // CLI flags and config overrides
   RepoSnapshot repo = 5;               // Repository snapshot (for file reads)
 }
 
-// Simplified CigSchema - represents the parsed cig.toml
-message CigSchema {
+// Simplified CigenSchema - represents the parsed cigen.yml
+message CigenSchema {
   string version = 1;                  // Schema version
   ProjectConfig project = 2;
   map<string, string> variables = 3;
@@ -196,7 +196,7 @@ message GenerateRequest {
   string target = 1;                        // "github", "circleci", etc.
   repeated Resource graph = 2;              // Final resolved DAG
   map<string, bytes> work_signatures = 3;   // Job hash map for skip logic
-  CigSchema schema = 4;                     // Original schema for reference
+  CigenSchema schema = 4;                   // Original schema for reference
   map<string, string> facts = 5;            // Facts from detect phase
 }
 
@@ -226,7 +226,7 @@ enum MergeStrategy {
 
 message ValidateRequest {
   repeated Fragment rendered = 1;
-  CigSchema schema = 2;
+  CigenSchema schema = 2;
 }
 
 message ValidateResult {
