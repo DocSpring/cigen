@@ -158,12 +158,12 @@ impl Plugin for GitHubProvider {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    // Initialize logging
+fn main() -> Result<()> {
+    // Initialize logging to stderr (stdout is used for protobuf messages)
     // Note: Use underscores in environment variable (e.g., RUST_LOG=cigen_provider_github=debug)
     // even though the plugin name uses slashes (provider/github)
     tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
                 .add_directive("cigen_provider_github=info".parse()?),
@@ -174,36 +174,53 @@ async fn main() -> Result<()> {
 
     tracing::info!("Starting {} v{}", PLUGIN_NAME, PLUGIN_VERSION);
 
-    // Create the plugin service
-    let _provider = GitHubProvider::default();
+    // Use simple stdio communication with length-prefixed framing
+    // Phase 1: Just handle handshake, exit after
+    // Phase 2: Message loop for multiple requests
 
-    // CRITICAL: gRPC server is NOT started!
-    // The plugin cannot currently receive or respond to requests from the core.
-    // This is a non-functional scaffold that demonstrates the plugin structure.
-    //
-    // TODO (HIGH PRIORITY): Wire up the plugin server
-    // 1. Use src/plugin/stdio_transport.rs to create a StdioChannel
-    // 2. Create a gRPC server with that transport
-    // 3. Register the provider service (PluginServer::new(provider))
-    // 4. Start the server to handle incoming requests
-    //
-    // Example pseudo-code:
-    //   let channel = StdioChannel::new();
-    //   let server = Server::builder()
-    //       .add_service(PluginServer::new(provider))
-    //       .serve_with_incoming(channel);
-    //   server.await?;
-    //
-    // Without this, the plugin cannot be used for actual generation.
-    // Integration tests cannot verify the plugin protocol.
-    // The handshake and generate methods remain unexercised.
-    tracing::warn!("Plugin server NOT started - this is a non-functional scaffold");
-    tracing::info!("Next step: Implement stdio transport server in main()");
+    use cigen::plugin::framing::{receive_message, send_message};
+    use std::io::{stdin, stdout};
 
-    // Keep running until killed (for manual testing/inspection only)
-    tokio::signal::ctrl_c().await?;
+    // Read Hello message from stdin
+    let hello: Hello = receive_message(&mut stdin().lock())?;
 
-    tracing::info!("Shutting down");
+    tracing::info!(
+        "Received handshake from core version {} (protocol {})",
+        hello.core_version,
+        hello.core_protocol
+    );
+
+    // Verify protocol compatibility
+    if hello.core_protocol != PROTOCOL_VERSION {
+        anyhow::bail!(
+            "Protocol version mismatch: core={}, plugin={}",
+            hello.core_protocol,
+            PROTOCOL_VERSION
+        );
+    }
+
+    // Send PluginInfo response
+    let info = PluginInfo {
+        name: PLUGIN_NAME.to_string(),
+        version: PLUGIN_VERSION.to_string(),
+        protocol: PROTOCOL_VERSION,
+        capabilities: vec![
+            "provider:github".to_string(),
+            "cache:native".to_string(),
+            "matrix:build".to_string(),
+        ],
+        requires: vec![],
+        conflicts_with: vec!["provider:*".to_string()],
+        metadata: std::collections::HashMap::new(),
+    };
+
+    send_message(&info, &mut stdout().lock())?;
+
+    tracing::info!("Handshake successful, plugin info sent");
+
+    // TODO: Implement message loop for hook invocations
+    // For now, just exit after handshake
+    tracing::info!("Shutting down (Phase 1: handshake-only mode)");
 
     Ok(())
 }
