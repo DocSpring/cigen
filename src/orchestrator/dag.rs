@@ -257,6 +257,7 @@ mod tests {
             steps: vec![],
             skip_if: None,
             trigger: None,
+            image: "ubuntu-latest".to_string(),
             runner: None,
             artifacts: vec![],
         }

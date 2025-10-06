@@ -1,9 +1,4 @@
 /// GitHub Actions Provider Plugin for CIGen
-///
-/// This plugin wraps the existing GitHub Actions generator in the plugin protocol.
-/// It serves as a "passthrough" plugin that validates the end-to-end plugin architecture.
-mod converter;
-
 use anyhow::Result;
 use cigen::plugin::protocol::{plugin_server::Plugin, *};
 use tonic::{Request, Response, Status};
@@ -252,6 +247,11 @@ fn main() -> Result<()> {
     match receive_message::<GenerateRequest, _>(&mut stdin) {
         Ok(gen_req) => {
             tracing::info!("Received GenerateRequest for target: {}", gen_req.target);
+            if let Some(schema) = &gen_req.schema {
+                for job in &schema.jobs {
+                    eprintln!("DEBUG: Job {} has image: '{}'", job.id, job.image);
+                }
+            }
 
             // Generate a simple workflow file
             let fragment = Fragment {
@@ -283,10 +283,77 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Generate a GitHub Actions workflow YAML using the existing generator
+/// Generate a GitHub Actions workflow YAML
 fn generate_workflow_yaml(req: &GenerateRequest) -> String {
-    use cigen::providers::github_actions::schema::*;
     use std::collections::HashMap;
+
+    // Import GitHub Actions schema types from the plugin's own copy
+    // These are copied from cigen's src/providers/github_actions/schema.rs
+    #[derive(serde::Serialize)]
+    #[allow(dead_code)]
+    struct Workflow {
+        name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        on: Option<WorkflowTrigger>,
+        jobs: HashMap<String, Job>,
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(untagged)]
+    #[allow(dead_code)]
+    enum WorkflowTrigger {
+        Detailed(HashMap<String, TriggerConfig>),
+    }
+
+    #[derive(serde::Serialize)]
+    #[allow(dead_code)]
+    struct TriggerConfig {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        branches: Option<Vec<String>>,
+    }
+
+    #[derive(serde::Serialize)]
+    #[allow(dead_code)]
+    struct Job {
+        #[serde(skip_serializing_if = "Option::is_none", rename = "runs-on")]
+        runs_on: Option<RunsOn>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        needs: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        container: Option<Container>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        steps: Option<Vec<Step>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        env: Option<HashMap<String, String>>,
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(untagged)]
+    #[allow(dead_code)]
+    enum RunsOn {
+        Single(String),
+    }
+
+    #[derive(serde::Serialize)]
+    #[allow(dead_code)]
+    struct Container {
+        image: String,
+    }
+
+    #[derive(serde::Serialize)]
+    #[allow(dead_code)]
+    struct Step {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        uses: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        run: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        with: Option<HashMap<String, serde_json::Value>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        env: Option<HashMap<String, String>>,
+    }
 
     let schema = match req.schema.as_ref() {
         Some(s) => s,
@@ -299,28 +366,53 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
     for job_def in &schema.jobs {
         let mut steps = Vec::new();
 
+        tracing::info!("Processing job {}: image = '{}'", job_def.id, job_def.image);
+
+        // Determine if we need a container
+        let (runs_on, container) =
+            if job_def.image.starts_with("ubuntu") || job_def.image.starts_with("macos") {
+                // Native runner - no container
+                let runs_on = if job_def.image.starts_with("ubuntu") {
+                    RunsOn::Single("ubuntu-latest".to_string())
+                } else {
+                    RunsOn::Single("macos-latest".to_string())
+                };
+                tracing::info!("Job {}: native runner, no container", job_def.id);
+                (runs_on, None)
+            } else {
+                // Docker image - run in container
+                tracing::info!(
+                    "Job {}: using container image {}",
+                    job_def.id,
+                    job_def.image
+                );
+                let container = Container {
+                    image: job_def.image.clone(),
+                };
+                (RunsOn::Single("ubuntu-latest".to_string()), Some(container))
+            };
+
         // Add checkout step
         steps.push(Step {
-            id: None,
             name: Some("Checkout code".to_string()),
             uses: Some("actions/checkout@v4".to_string()),
             run: None,
             with: None,
             env: None,
-            condition: None,
-            working_directory: None,
-            shell: None,
-            continue_on_error: None,
-            timeout_minutes: None,
         });
 
         // Add user-defined steps
         for step in &job_def.steps {
             if let Some(step_type) = &step.step_type {
                 match step_type {
+                    cigen::plugin::protocol::step::StepType::RestoreCache(_) => {
+                        // TODO: Implement cache restoration
+                    }
+                    cigen::plugin::protocol::step::StepType::SaveCache(_) => {
+                        // TODO: Implement cache saving
+                    }
                     cigen::plugin::protocol::step::StepType::Run(run) => {
                         steps.push(Step {
-                            id: None,
                             name: if run.name.is_empty() {
                                 None
                             } else {
@@ -334,11 +426,6 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
                             } else {
                                 Some(run.env.clone())
                             },
-                            condition: None,
-                            working_directory: None,
-                            shell: None,
-                            continue_on_error: None,
-                            timeout_minutes: None,
                         });
                     }
                     cigen::plugin::protocol::step::StepType::Uses(uses) => {
@@ -355,7 +442,6 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
                         };
 
                         steps.push(Step {
-                            id: None,
                             name: if uses.name.is_empty() {
                                 None
                             } else {
@@ -365,11 +451,6 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
                             run: None,
                             with: with_params,
                             env: None,
-                            condition: None,
-                            working_directory: None,
-                            shell: None,
-                            continue_on_error: None,
-                            timeout_minutes: None,
                         });
                     }
                 }
@@ -377,27 +458,19 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
         }
 
         let job = Job {
-            name: None,
-            runs_on: Some(RunsOn::Single("ubuntu-latest".to_string())),
+            runs_on: Some(runs_on),
             needs: if job_def.needs.is_empty() {
                 None
             } else {
                 Some(job_def.needs.clone())
             },
-            condition: None,
-            strategy: None,
+            container,
             steps: Some(steps),
             env: if job_def.env.is_empty() {
                 None
             } else {
                 Some(job_def.env.clone())
             },
-            services: None,
-            container: None,
-            timeout_minutes: None,
-            outputs: None,
-            permissions: None,
-            environment: None,
         };
 
         jobs.insert(job_def.id.clone(), job);
@@ -409,32 +482,21 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
         "push".to_string(),
         TriggerConfig {
             branches: Some(vec!["main".to_string()]),
-            tags: None,
-            paths: None,
-            types: None,
         },
     );
-    triggers.insert(
-        "pull_request".to_string(),
-        TriggerConfig {
-            branches: None,
-            tags: None,
-            paths: None,
-            types: None,
-        },
-    );
+    triggers.insert("pull_request".to_string(), TriggerConfig { branches: None });
 
     let workflow = Workflow {
         name: "CI".to_string(),
         on: Some(WorkflowTrigger::Detailed(triggers)),
-        permissions: None,
         jobs,
-        env: None,
-        concurrency: None,
     };
 
     // Serialize to YAML
-    let mut yaml = String::from("# Generated by cigen\n");
+    let mut yaml = String::from("# DO NOT EDIT - This file is generated by cigen\n");
+    yaml.push_str("# Source: .cigen/workflows/\n");
+    yaml.push_str("# Regenerate with: cargo run -- --config .cigen generate\n");
+    yaml.push_str("#\n");
     match serde_yaml::to_string(&workflow) {
         Ok(workflow_yaml) => {
             yaml.push_str(&workflow_yaml);

@@ -1,7 +1,0 @@
-- file: .java-version
-- file: pom.xml
-  pattern: "<maven.compiler.target>([^<]+)</maven.compiler.target>"
-- file: pom.xml
-  pattern: "<java.version>([^<]+)</java.version>"
-- command: java -version
-  parse_version: true

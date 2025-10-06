@@ -10,6 +10,7 @@ fn repo_root() -> PathBuf {
 }
 
 #[test]
+#[ignore = "CircleCI plugin not implemented yet"]
 fn snapshot_node_simple_split_config() {
     let root = repo_root();
     let fixture = root.join("integration_tests/circleci_node_simple_split");

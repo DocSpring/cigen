@@ -90,6 +90,7 @@ message JobDefinition {
   SkipConfig skip_if = 6;              // Conditional skip rules
   string runner = 7;                   // Runner class
   map<string, string> env = 8;         // Environment variables
+  string image = 9;                    // Docker image or runner (e.g., "rust:latest")
 }
 
 message MatrixValue {

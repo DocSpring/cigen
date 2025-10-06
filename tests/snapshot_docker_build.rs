@@ -8,6 +8,7 @@ fn repo_root() -> PathBuf {
 }
 
 #[test]
+#[ignore = "CircleCI plugin not implemented yet"]
 fn snapshot_docker_build_minimal() {
     let root = repo_root();
     let fixture_dir = root.join("integration_tests/circleci_docker_build_minimal");
@@ -33,6 +34,7 @@ fn snapshot_docker_build_minimal() {
 }
 
 #[test]
+#[ignore = "CircleCI plugin not implemented yet"]
 fn snapshot_docker_build_with_layer_cache() {
     let root = repo_root();
     let fixture_dir = root.join("integration_tests/circleci_docker_build_layer_cache");

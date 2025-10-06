@@ -52,6 +52,7 @@ fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
         skip_if: job.skip_if.as_ref().map(skip_config_to_proto),
         runner: job.runner.clone().unwrap_or_default(),
         env: job.env.clone(),
+        image: job.image.clone(),
     }
 }
 
@@ -139,6 +140,7 @@ mod tests {
                 }],
                 skip_if: None,
                 trigger: None,
+                image: "ubuntu-latest".to_string(),
                 runner: None,
                 artifacts: vec![],
             },

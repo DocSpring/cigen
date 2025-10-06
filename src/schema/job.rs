@@ -38,13 +38,21 @@ pub struct Job {
     #[serde(default)]
     pub trigger: Option<JobTrigger>,
 
-    /// Runner class
+    /// Docker image or runner class (e.g. "rust:latest", "ubuntu-latest")
+    #[serde(default = "default_image")]
+    pub image: String,
+
+    /// Runner class (deprecated, use image instead)
     #[serde(default)]
     pub runner: Option<String>,
 
     /// Artifacts to store
     #[serde(default)]
     pub artifacts: Vec<Artifact>,
+}
+
+fn default_image() -> String {
+    "ubuntu-latest".to_string()
 }
 
 /// Matrix dimension values

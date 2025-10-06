@@ -1,2 +1,0 @@
-- command: cargo --version
-  parse_version: true

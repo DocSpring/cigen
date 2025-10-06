@@ -1,5 +1,0 @@
-- file: rust-toolchain.toml
-  pattern: "channel\\s*=\\s*[\"\\']([^\"\\'])+[\"\\']"
-- file: rust-toolchain
-- command: rustc --version
-  parse_version: true

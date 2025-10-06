@@ -1,0 +1,21 @@
+providers:
+  - github
+
+jobs:
+  fmt:
+    image: instrumentisto/rust
+    steps:
+      - run: cargo fmt -- --check
+
+  clippy:
+    image: instrumentisto/rust
+    steps:
+      - run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    image: instrumentisto/rust
+    needs:
+      - fmt
+      - clippy
+    steps:
+      - run: cargo test --all-features
