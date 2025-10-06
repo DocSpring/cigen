@@ -1,0 +1,16 @@
+# Minimal CIGen Configuration
+# This is the absolute minimum - everything else is auto-detected and auto-configured
+
+jobs:
+  test:
+    packages:
+      - ruby
+    steps:
+      - run: bundle exec rspec
+# That's it! CIGen will automatically:
+# - Detect Ruby version from .ruby-version or Gemfile
+# - Generate `bundle install --deployment` step
+# - Cache vendor/bundle with Gemfile.lock key
+# - Add checkout step
+# - Skip job if app/** and spec/** are unchanged
+# - Generate configs for all enabled providers

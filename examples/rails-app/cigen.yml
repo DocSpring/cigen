@@ -1,0 +1,153 @@
+# Production Rails Application Example
+# Similar to DocSpring - demonstrates real-world complexity with clean config
+
+# Project metadata (optional)
+project:
+  name: myapp
+
+# Job definitions
+jobs:
+  # Setup job - runs first, installs dependencies
+  setup:
+    packages:
+      - ruby
+      - node
+    steps:
+      - run: bundle install --deployment
+      - run: npm ci
+
+  # Test job - matrix build across Ruby versions and architectures
+  test:
+    needs:
+      - setup
+    matrix:
+      ruby:
+        - "3.2"
+        - "3.3"
+      arch:
+        - amd64
+        - arm64
+    packages:
+      - ruby
+      - node
+    services:
+      - postgres:15
+      - redis:7
+    env:
+      DATABASE_URL: postgres://postgres@localhost/test
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - run: bundle exec rake db:schema:load
+      - run: bundle exec rspec
+      - run: npm test
+    skip_if:
+      paths_unmodified:
+        - app/**
+        - lib/**
+        - spec/**
+        - package.json
+        - Gemfile*
+
+  # Lint job - runs in parallel with tests
+  lint:
+    needs:
+      - setup
+    packages:
+      - ruby
+      - node
+    steps:
+      - run: bundle exec rubocop
+      - run: npm run lint
+    skip_if:
+      paths_unmodified:
+        - "**/*.rb"
+        - "**/*.js"
+        - "**/*.jsx"
+        - "**/*.ts"
+        - "**/*.tsx"
+
+  # Build Docker image
+  build:
+    needs:
+      - test
+      - lint
+    packages:
+      - docker
+    steps:
+      - uses: docker/build@>=1.1
+        with:
+          context: .
+          push: false
+          tags: myapp:${{ github.sha }}
+          cache-from: type=registry,ref=myapp:latest
+          cache-to: type=inline
+    skip_if:
+      paths_unmodified:
+        - Dockerfile
+        - app/**
+        - lib/**
+        - Gemfile*
+        - package.json
+
+  # Deploy to staging (manual trigger)
+  deploy-staging:
+    needs:
+      - build
+    trigger: manual
+    packages:
+      - docker
+    env:
+      DEPLOY_ENV: staging
+    steps:
+      - run: docker push myapp:${{ github.sha }}
+      - run: ./deploy.sh staging
+
+  # Deploy to production (tags only)
+  deploy-production:
+    needs:
+      - build
+    trigger:
+      tags: v*
+    packages:
+      - docker
+    env:
+      DEPLOY_ENV: production
+    steps:
+      - run: docker push myapp:${{ github.sha }}
+      - run: ./deploy.sh production
+
+# Optional: Custom cache definitions (overrides defaults)
+caches:
+  bundler:
+    paths:
+      - vendor/bundle
+    key_parts:
+      - Gemfile.lock
+      - ruby:{{ ruby_version }}
+
+  npm:
+    paths:
+      - node_modules
+      - .npm
+    key_parts:
+      - package-lock.json
+      - node:{{ node_version }}
+
+# Optional: Runner configuration
+runners:
+  default:
+    provider_config:
+      github:
+        runs_on: ubuntu-latest
+      circleci:
+        resource_class: medium
+      buildkite:
+        agents:
+          queue: default
+
+  large:
+    provider_config:
+      github:
+        runs_on: ubuntu-latest-8-cores
+      circleci:
+        resource_class: xlarge

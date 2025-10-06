@@ -1,0 +1,61 @@
+# Multi-Provider Example
+# This single config generates CI configs for GitHub Actions, CircleCI, and Buildkite
+
+project:
+  name: multi-provider-demo
+
+# Configure which providers to generate for
+providers:
+  - github
+  - circleci
+  - buildkite
+
+jobs:
+  test:
+    packages:
+      - ruby
+      - node
+    services:
+      - postgres:15
+      - redis:7
+    env:
+      DATABASE_URL: postgres://postgres@localhost/test
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - run: bundle exec rspec
+      - run: npm test
+    skip_if:
+      paths_unmodified:
+        - app/**
+        - spec/**
+
+  build:
+    needs:
+      - test
+    packages:
+      - docker
+    steps:
+      - uses: docker/build@1.0
+        with:
+          context: .
+          push: false
+          tags: myapp:latest
+
+# Provider-specific overrides (optional)
+provider_config:
+  github:
+    workflows:
+      ci:
+        # GitHub-specific: require PR approval before deploy
+        pull_request_approval: true
+
+  circleci:
+    # CircleCI-specific: use orbs
+    orbs:
+      - slack: circleci/slack@4.12
+
+  buildkite:
+    # Buildkite-specific: agent targeting
+    agents:
+      queue: default
+      os: linux

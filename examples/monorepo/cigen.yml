@@ -1,0 +1,77 @@
+# Monorepo Example (Nx-style)
+# Demonstrates selective job execution based on affected projects
+
+project:
+  name: monorepo
+  type: nx # Uses Nx graph for affected detection
+
+# Global packages available to all jobs
+packages:
+  - node
+
+# Job definitions
+jobs:
+  # Lint all affected projects
+  lint:
+    steps:
+      - run: nx affected --target=lint --parallel=3
+
+  # Test all affected projects
+  test:
+    needs:
+      - lint
+    matrix:
+      node:
+        - "18"
+        - "20"
+    steps:
+      - run: nx affected --target=test --parallel=3
+    skip_if:
+      # Skip if no source files changed in any project
+      paths_unmodified:
+        - apps/**
+        - libs/**
+        - "!**/*.md"
+        - "!**/*.txt"
+
+  # Build all affected projects
+  build:
+    needs:
+      - test
+    steps:
+      - run: nx affected --target=build --parallel=3
+    artifacts:
+      - path: dist/**
+        retention: 7d
+
+  # E2E tests for affected apps only
+  e2e:
+    needs:
+      - build
+    matrix:
+      browser:
+        - chrome
+        - firefox
+    services:
+      - postgres:15
+    steps:
+      - run: nx affected --target=e2e --parallel=1
+    skip_if:
+      paths_unmodified:
+        - apps/**/src/**
+        - apps/**/e2e/**
+
+  # Deploy affected apps to staging
+  deploy-staging:
+    needs:
+      - e2e
+    trigger: manual
+    steps:
+      - run: nx affected --target=deploy --args="--env=staging"
+# Per-project skip configuration (advanced)
+# This is parsed from project.json files in each app/lib
+# CIGen automatically:
+# - Reads nx.json and project.json
+# - Computes affected projects
+# - Only runs jobs for changed projects
+# - Generates skip logic based on project dependencies

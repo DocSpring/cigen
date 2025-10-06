@@ -1,0 +1,6 @@
+/// Job dependency graph and orchestration
+mod dag;
+mod workflow;
+
+pub use dag::{ConcreteJob, JobDAG};
+pub use workflow::{FileFragment, GenerationResult, MergeStrategy, WorkflowOrchestrator};
