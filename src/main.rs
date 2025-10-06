@@ -97,6 +97,17 @@ enum Commands {
         #[arg(long = "graph-color")]
         graph_color: Option<String>,
     },
+
+    /// Render CI configs from cigen.yml (new plugin-based system)
+    Render {
+        /// Path to cigen.yml (default: ./cigen.yml or .cigen/cigen.yml)
+        #[arg(short, long)]
+        file: Option<String>,
+
+        /// Output directory for generated files (default: .)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -185,6 +196,9 @@ fn main() -> Result<()> {
                         graph_color,
                         &cli_vars,
                     )?;
+                }
+                Some(Commands::Render { file, output }) => {
+                    commands::render_command(file, output)?;
                 }
                 None => {
                     // Default to generate command

@@ -1,6 +1,9 @@
 # Minimal CIGen Configuration
 # This is the absolute minimum - everything else is auto-detected and auto-configured
 
+providers:
+  - github
+
 jobs:
   test:
     packages:
