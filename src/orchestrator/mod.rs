@@ -1,4 +1,5 @@
 /// Job dependency graph and orchestration
+mod convert;
 mod dag;
 mod workflow;
 

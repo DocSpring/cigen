@@ -3,8 +3,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::plugin::manager::PluginManager;
+use crate::plugin::protocol::{GenerateRequest, PlanRequest};
 use crate::schema::CigenConfig;
 
+use super::convert::config_to_proto;
 use super::dag::JobDAG;
 
 /// Main orchestrator for the cigen workflow
@@ -30,30 +32,86 @@ impl WorkflowOrchestrator {
         let _dag = JobDAG::build(&config)
             .context("Failed to build dependency graph from job definitions")?;
 
-        // 2. Detect which plugins are needed
+        // 2. Convert config to protobuf
+        let proto_schema = config_to_proto(&config);
+
+        // 3. Detect which plugins are needed
         let providers = self.detect_providers(&config);
 
-        // 3. Spawn plugins
+        // 4. Spawn plugins
         let plugin_ids = self.spawn_plugins(&providers).await?;
 
-        // 4. For each plugin, execute plan → generate workflow
-        let all_fragments = Vec::new();
-        for _plugin_id in &plugin_ids {
-            // TODO: Send PlanRequest with config and DAG
-            // TODO: Receive PlanResponse
-            // TODO: Send GenerateRequest
-            // TODO: Receive GenerateResponse with fragments
-            // TODO: Collect fragments
+        // 5. For each plugin, execute plan → generate workflow
+        let mut all_fragments = Vec::new();
+        for plugin_id in &plugin_ids {
+            // Send PlanRequest
+            let plan_request = PlanRequest {
+                capabilities: vec![],  // TODO: Collect from all plugins
+                facts: HashMap::new(), // TODO: Implement detect phase
+                schema: Some(proto_schema.clone()),
+                flags: HashMap::new(),
+                repo: None, // TODO: Add repository snapshot
+            };
+
+            let plan_result = self
+                .plugin_manager
+                .send_plan(plugin_id, plan_request)
+                .await
+                .with_context(|| format!("Failed to send plan request to plugin '{plugin_id}'"))?;
+
+            tracing::info!(
+                "Plugin '{}' returned {} resources",
+                plugin_id,
+                plan_result.resources.len()
+            );
+
+            // Send GenerateRequest
+            let generate_request = GenerateRequest {
+                target: extract_provider_name(plugin_id),
+                graph: plan_result.resources,
+                work_signatures: HashMap::new(), // TODO: Compute work signatures
+                schema: Some(proto_schema.clone()),
+                facts: HashMap::new(),
+            };
+
+            let generate_result = self
+                .plugin_manager
+                .send_generate(plugin_id, generate_request)
+                .await
+                .with_context(|| {
+                    format!("Failed to send generate request to plugin '{plugin_id}'")
+                })?;
+
+            tracing::info!(
+                "Plugin '{}' generated {} fragments",
+                plugin_id,
+                generate_result.fragments.len()
+            );
+
+            // Collect fragments
+            for fragment in generate_result.fragments {
+                let merge_strategy = match fragment.strategy() {
+                    crate::plugin::protocol::MergeStrategy::Replace => MergeStrategy::Replace,
+                    crate::plugin::protocol::MergeStrategy::Merge => MergeStrategy::Merge,
+                    crate::plugin::protocol::MergeStrategy::Append => MergeStrategy::Append,
+                    _ => MergeStrategy::Replace,
+                };
+
+                all_fragments.push(FileFragment {
+                    path: fragment.path,
+                    content: fragment.content,
+                    merge_strategy,
+                });
+            }
         }
 
-        // 5. Shutdown all plugins
+        // 6. Shutdown all plugins
         self.plugin_manager
             .shutdown()
             .await
             .context("Failed to shutdown plugins")?;
 
-        // 6. Merge fragments and write files
-        // TODO: Implement fragment merging
+        // 7. Merge fragments and write files
         let files = merge_fragments(all_fragments)?;
 
         Ok(GenerationResult { files })
@@ -73,7 +131,7 @@ impl WorkflowOrchestrator {
         let mut plugin_ids = Vec::new();
 
         for provider in providers {
-            let plugin_path = self.plugin_dir.join(format!("provider-{provider}"));
+            let plugin_path = self.plugin_dir.join(format!("cigen-provider-{provider}"));
 
             if !plugin_path.exists() {
                 bail!("Plugin binary not found: {}", plugin_path.display());
@@ -119,6 +177,15 @@ pub struct FileFragment {
     pub content: String,
     /// How to merge with existing content
     pub merge_strategy: MergeStrategy,
+}
+
+/// Extract provider name from plugin ID (e.g., "provider/github" -> "github")
+fn extract_provider_name(plugin_id: &str) -> String {
+    plugin_id
+        .split('/')
+        .next_back()
+        .unwrap_or(plugin_id)
+        .to_string()
 }
 
 /// Merge fragments into final files

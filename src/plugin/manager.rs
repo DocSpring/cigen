@@ -173,6 +173,54 @@ impl PluginManager {
         Ok(())
     }
 
+    /// Send a Plan request to a plugin
+    pub async fn send_plan(
+        &mut self,
+        plugin_id: &str,
+        request: crate::plugin::protocol::PlanRequest,
+    ) -> Result<crate::plugin::protocol::PlanResult> {
+        // Take the plugin out of the map temporarily
+        let mut plugin = self.active.remove(plugin_id).context("Plugin not found")?;
+
+        let result = tokio::task::spawn_blocking(
+            move || -> Result<(PluginProcess, crate::plugin::protocol::PlanResult)> {
+                send_message(&request, &mut plugin.stdin)?;
+                let response: crate::plugin::protocol::PlanResult =
+                    receive_message(&mut plugin.stdout)?;
+                Ok((plugin, response))
+            },
+        )
+        .await??;
+
+        // Put the plugin back
+        self.active.insert(plugin_id.to_string(), result.0);
+        Ok(result.1)
+    }
+
+    /// Send a Generate request to a plugin
+    pub async fn send_generate(
+        &mut self,
+        plugin_id: &str,
+        request: crate::plugin::protocol::GenerateRequest,
+    ) -> Result<crate::plugin::protocol::GenerateResult> {
+        // Take the plugin out of the map temporarily
+        let mut plugin = self.active.remove(plugin_id).context("Plugin not found")?;
+
+        let result = tokio::task::spawn_blocking(
+            move || -> Result<(PluginProcess, crate::plugin::protocol::GenerateResult)> {
+                send_message(&request, &mut plugin.stdin)?;
+                let response: crate::plugin::protocol::GenerateResult =
+                    receive_message(&mut plugin.stdout)?;
+                Ok((plugin, response))
+            },
+        )
+        .await??;
+
+        // Put the plugin back
+        self.active.insert(plugin_id.to_string(), result.0);
+        Ok(result.1)
+    }
+
     /// Shutdown all active plugins
     ///
     /// Attempts graceful shutdown by closing stdin, then waits for process exit.

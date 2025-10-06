@@ -5,6 +5,6 @@ mod config;
 mod job;
 mod step;
 
-pub use config::CigenConfig;
+pub use config::{CacheDefinition, CigenConfig, ProjectConfig, RunnerDefinition};
 pub use job::{Job, JobTrigger, MatrixDimension, SkipConditions};
 pub use step::{Artifact, RunStepOptions, Step, UsesStep};
