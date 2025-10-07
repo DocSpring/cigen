@@ -53,6 +53,11 @@ pub fn load_split_config(config_dir: &Path) -> Result<CigenConfig> {
             let workflow_path = workflow_entry.path();
 
             if workflow_path.is_dir() {
+                let workflow_name = workflow_path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .context("Invalid workflow directory name")?;
+
                 let jobs_dir = workflow_path.join("jobs");
                 if jobs_dir.exists() {
                     for job_file in fs::read_dir(&jobs_dir)? {
@@ -69,9 +74,13 @@ pub fn load_split_config(config_dir: &Path) -> Result<CigenConfig> {
                                 .to_string();
 
                             let job_yaml = fs::read_to_string(&job_path)?;
-                            let job: Job = serde_yaml::from_str(&job_yaml).with_context(|| {
-                                format!("Failed to parse {}", job_path.display())
-                            })?;
+                            let mut job: Job =
+                                serde_yaml::from_str(&job_yaml).with_context(|| {
+                                    format!("Failed to parse {}", job_path.display())
+                                })?;
+
+                            // Set the workflow this job belongs to
+                            job.workflow = Some(workflow_name.to_string());
 
                             config.jobs.insert(job_name, job);
                         }

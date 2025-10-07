@@ -260,6 +260,7 @@ mod tests {
             image: "ubuntu-latest".to_string(),
             runner: None,
             artifacts: vec![],
+            workflow: None,
         }
     }
 

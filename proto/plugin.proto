@@ -91,6 +91,7 @@ message JobDefinition {
   string runner = 7;                   // Runner class
   map<string, string> env = 8;         // Environment variables
   string image = 9;                    // Docker image or runner (e.g., "rust:latest")
+  string workflow = 10;                // Workflow this job belongs to (e.g., "ci", "release")
 }
 
 message MatrixValue {

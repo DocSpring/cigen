@@ -247,23 +247,12 @@ fn main() -> Result<()> {
     match receive_message::<GenerateRequest, _>(&mut stdin) {
         Ok(gen_req) => {
             tracing::info!("Received GenerateRequest for target: {}", gen_req.target);
-            if let Some(schema) = &gen_req.schema {
-                for job in &schema.jobs {
-                    eprintln!("DEBUG: Job {} has image: '{}'", job.id, job.image);
-                }
-            }
 
-            // Generate a simple workflow file
-            let fragment = Fragment {
-                path: ".github/workflows/ci.yml".to_string(),
-                content: generate_workflow_yaml(&gen_req),
-                strategy: MergeStrategy::Replace as i32,
-                order: 0,
-                format: "yaml".to_string(),
-            };
+            // Generate workflow files (one per workflow directory)
+            let fragments = generate_workflow_files(&gen_req);
 
             let gen_result = GenerateResult {
-                fragments: vec![fragment],
+                fragments,
                 diagnostics: vec![],
             };
 
@@ -283,8 +272,51 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Generate a GitHub Actions workflow YAML
-fn generate_workflow_yaml(req: &GenerateRequest) -> String {
+/// Generate multiple workflow files (one per workflow directory)
+fn generate_workflow_files(req: &GenerateRequest) -> Vec<Fragment> {
+    use std::collections::HashMap;
+
+    let schema = match &req.schema {
+        Some(s) => s,
+        None => return vec![],
+    };
+
+    // Group jobs by workflow
+    let mut workflows: HashMap<String, Vec<&cigen::plugin::protocol::JobDefinition>> =
+        HashMap::new();
+    for job in &schema.jobs {
+        let workflow_name = if job.workflow.is_empty() {
+            "ci"
+        } else {
+            &job.workflow
+        };
+        workflows
+            .entry(workflow_name.to_string())
+            .or_default()
+            .push(job);
+    }
+
+    // Generate a fragment for each workflow
+    let mut fragments = Vec::new();
+    for (workflow_name, jobs) in workflows {
+        let content = generate_workflow_yaml_for_jobs(&workflow_name, jobs);
+        fragments.push(Fragment {
+            path: format!(".github/workflows/{}.yml", workflow_name),
+            content,
+            strategy: MergeStrategy::Replace as i32,
+            order: 0,
+            format: "yaml".to_string(),
+        });
+    }
+
+    fragments
+}
+
+/// Generate a GitHub Actions workflow YAML for a specific set of jobs
+fn generate_workflow_yaml_for_jobs(
+    workflow_name: &str,
+    jobs: Vec<&cigen::plugin::protocol::JobDefinition>,
+) -> String {
     use std::collections::HashMap;
 
     // Import GitHub Actions schema types from the plugin's own copy
@@ -355,15 +387,10 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
         env: Option<HashMap<String, String>>,
     }
 
-    let schema = match req.schema.as_ref() {
-        Some(s) => s,
-        None => return "# Error: No schema provided\n".to_string(),
-    };
-
     // Build workflow structure
-    let mut jobs = HashMap::new();
+    let mut jobs_map = HashMap::new();
 
-    for job_def in &schema.jobs {
+    for job_def in jobs {
         let mut steps = Vec::new();
 
         tracing::info!("Processing job {}: image = '{}'", job_def.id, job_def.image);
@@ -473,7 +500,7 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
             },
         };
 
-        jobs.insert(job_def.id.clone(), job);
+        jobs_map.insert(job_def.id.clone(), job);
     }
 
     // Build workflow triggers
@@ -487,9 +514,9 @@ fn generate_workflow_yaml(req: &GenerateRequest) -> String {
     triggers.insert("pull_request".to_string(), TriggerConfig { branches: None });
 
     let workflow = Workflow {
-        name: "CI".to_string(),
+        name: workflow_name.to_uppercase(),
         on: Some(WorkflowTrigger::Detailed(triggers)),
-        jobs,
+        jobs: jobs_map,
     };
 
     // Serialize to YAML

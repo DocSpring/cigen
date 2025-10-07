@@ -53,6 +53,7 @@ fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
         runner: job.runner.clone().unwrap_or_default(),
         env: job.env.clone(),
         image: job.image.clone(),
+        workflow: job.workflow.clone().unwrap_or_else(|| "ci".to_string()),
     }
 }
 
@@ -143,6 +144,7 @@ mod tests {
                 image: "ubuntu-latest".to_string(),
                 runner: None,
                 artifacts: vec![],
+                workflow: None,
             },
         );
 

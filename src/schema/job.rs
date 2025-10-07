@@ -49,6 +49,10 @@ pub struct Job {
     /// Artifacts to store
     #[serde(default)]
     pub artifacts: Vec<Artifact>,
+
+    /// Workflow this job belongs to (set by loader)
+    #[serde(default, skip_serializing)]
+    pub workflow: Option<String>,
 }
 
 fn default_image() -> String {
