@@ -1,7 +1,10 @@
-image: instrumentisto/rust
+image: rust:latest
 source_files: "@rust"
 
 steps:
+  - run:
+      name: Install rustfmt
+      command: rustup component add rustfmt
   - run:
       name: Format check
       command: cargo fmt -- --check

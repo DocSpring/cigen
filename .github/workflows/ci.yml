@@ -4,15 +4,26 @@
 #
 name: CI
 on:
+  pull_request: {}
   push:
     branches:
       - main
-  pull_request: {}
 jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Install rustfmt
+        run: rustup component add rustfmt
+      - name: Format check
+        run: cargo fmt -- --check
   test:
     runs-on: ubuntu-latest
     container:
-      image: instrumentisto/rust
+      image: rust:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -21,18 +32,11 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     container:
-      image: instrumentisto/rust
+      image: rust:latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      - name: Install clippy
+        run: rustup component add clippy
       - name: Clippy check
         run: cargo clippy --all-targets --all-features -- -D warnings
-  fmt:
-    runs-on: ubuntu-latest
-    container:
-      image: instrumentisto/rust
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Format check
-        run: cargo fmt -- --check

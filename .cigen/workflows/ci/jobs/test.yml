@@ -1,4 +1,4 @@
-image: instrumentisto/rust
+image: rust:latest
 source_files:
   - "@rust"
   - "@tests"

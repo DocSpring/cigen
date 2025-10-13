@@ -68,3 +68,10 @@ tasks:
     desc: Update dependencies
     cmds:
       - cargo update
+
+  # Generate workflows and test with act
+  act:
+    desc: Generate CI workflows and test locally with act
+    cmds:
+      - cargo run -- generate
+      - act -W .github/workflows/ci.yml --container-architecture linux/amd64
