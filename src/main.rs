@@ -31,6 +31,11 @@ enum Commands {
         #[arg(short, long)]
         output: Option<String>,
     },
+    /// Compute hashes for file patterns or jobs
+    Hash {
+        #[command(flatten)]
+        args: commands::HashArgs,
+    },
 }
 
 fn main() -> Result<()> {
@@ -40,6 +45,9 @@ fn main() -> Result<()> {
     match cli.command {
         Some(Commands::Generate { file, output }) => {
             commands::generate_command(file, output)?;
+        }
+        Some(Commands::Hash { args }) => {
+            commands::hash_command(args)?;
         }
         None => {
             // Default to generate command

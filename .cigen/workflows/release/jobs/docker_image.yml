@@ -10,17 +10,14 @@ env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
   DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
+checkout:
+  fetch-depth: 0
 
-  - id: v
-    name: Extract version
+steps:
+  - name: Extract version
     run: |
       VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-      echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      echo "DOCKER_IMAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
   - name: Set up QEMU
     uses: docker/setup-qemu-action@v3
@@ -38,7 +35,7 @@ steps:
       name: Build and push multi-arch image
       command: |
         set -euo pipefail
-        VERSION="${{ steps.v.outputs.version }}"
+        VERSION="${{ env.DOCKER_IMAGE_VERSION }}"
         echo "Building docspringcom/cigen:${VERSION} and :latest"
         docker buildx build \
           --platform linux/amd64,linux/arm64 \

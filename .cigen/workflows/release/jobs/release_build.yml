@@ -1,6 +1,10 @@
 # Dynamic runs-on from matrix
 image: ${{ matrix.os }}
 
+checkout:
+  fetch-depth: 0
+  fetch-tags: true
+
 strategy:
   fail-fast: false
   matrix:
@@ -22,12 +26,6 @@ strategy:
         use-cross: true
 
 steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
-      fetch-tags: true
-
   - name: Wait for required checks
     uses: actions/github-script@v7
     with:
@@ -39,6 +37,14 @@ steps:
     uses: dtolnay/rust-toolchain@stable
     with:
       targets: ${{ matrix.target }}
+
+  - run:
+      name: Install Linux build dependencies
+      command: |
+        set -e
+        sudo apt-get update
+        sudo apt-get install -y protobuf-compiler
+    if: runner.os == 'Linux'
 
   - name: Install cross (for cross-compilation)
     if: matrix.use-cross

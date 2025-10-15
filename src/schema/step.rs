@@ -28,6 +28,10 @@ pub struct RunStepOptions {
     /// Environment variables for this step
     #[serde(default)]
     pub env: HashMap<String, String>,
+
+    /// Conditional execution
+    #[serde(default, rename = "if")]
+    pub condition: Option<String>,
 }
 
 /// Uses step (module invocation)
@@ -39,6 +43,10 @@ pub struct UsesStep {
     /// Module parameters
     #[serde(default)]
     pub with: HashMap<String, serde_yaml::Value>,
+
+    /// Conditional execution
+    #[serde(default, rename = "if")]
+    pub condition: Option<String>,
 }
 
 /// Artifact definition

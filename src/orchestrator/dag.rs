@@ -254,12 +254,15 @@ mod tests {
             packages: vec![],
             services: vec![],
             env: HashMap::new(),
+            checkout: None,
             steps: vec![],
+            source_files: vec![],
             skip_if: None,
             trigger: None,
             image: "ubuntu-latest".to_string(),
             runner: None,
             artifacts: vec![],
+            extra: HashMap::new(),
             workflow: None,
         }
     }
@@ -273,10 +276,12 @@ mod tests {
             project: None,
             providers: vec![],
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs,
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let dag = JobDAG::build(&config).unwrap();
@@ -302,10 +307,12 @@ mod tests {
             project: None,
             providers: vec![],
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs,
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let dag = JobDAG::build(&config).unwrap();
@@ -368,10 +375,12 @@ mod tests {
             project: None,
             providers: vec![],
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs,
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let dag = JobDAG::build(&config).unwrap();
@@ -407,10 +416,12 @@ mod tests {
             project: None,
             providers: vec![],
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs,
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let result = JobDAG::build(&config);
@@ -435,10 +446,12 @@ mod tests {
             project: None,
             providers: vec![],
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs,
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let result = JobDAG::build(&config);

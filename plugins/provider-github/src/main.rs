@@ -1,6 +1,8 @@
 /// GitHub Actions Provider Plugin for CIGen
-use anyhow::Result;
-use cigen::plugin::protocol::{plugin_server::Plugin, *};
+use anyhow::{Context, Result};
+use cigen::plugin::protocol::{diagnostic, plugin_server::Plugin, *};
+use serde_yaml::{Mapping, Value};
+use std::collections::{BTreeMap, HashMap};
 use tonic::{Request, Response, Status};
 
 /// Plugin version and metadata
@@ -218,320 +220,780 @@ fn main() -> Result<()> {
     // Message loop: handle Plan and Generate requests
     tracing::info!("Entering message loop...");
 
-    let _provider = GitHubProvider::default();
     let mut stdin = stdin().lock();
     let mut stdout = stdout().lock();
 
-    // Simple protocol: alternating Plan -> Generate
-    // 1. Receive PlanRequest
-    match receive_message::<PlanRequest, _>(&mut stdin) {
-        Ok(_plan_req) => {
-            tracing::info!("Received PlanRequest");
+    loop {
+        match receive_message::<PlanRequest, _>(&mut stdin) {
+            Ok(_plan_req) => {
+                tracing::info!("Received PlanRequest");
 
-            let plan_result = PlanResult {
-                resources: vec![],
-                deps: vec![],
-                diagnostics: vec![],
-            };
+                let plan_result = PlanResult {
+                    resources: vec![],
+                    deps: vec![],
+                    diagnostics: vec![],
+                };
 
-            send_message(&plan_result, &mut stdout)?;
-            tracing::info!("Sent PlanResult");
+                send_message(&plan_result, &mut stdout)?;
+                tracing::info!("Sent PlanResult");
+            }
+            Err(e) => {
+                tracing::warn!("Stopping plugin loop: {e}");
+                break;
+            }
         }
-        Err(e) => {
-            tracing::warn!("Failed to receive PlanRequest (plugin may be shutting down): {e}");
-            return Ok(());
-        }
-    }
 
-    // 2. Receive GenerateRequest
-    match receive_message::<GenerateRequest, _>(&mut stdin) {
-        Ok(gen_req) => {
-            tracing::info!("Received GenerateRequest for target: {}", gen_req.target);
+        match receive_message::<GenerateRequest, _>(&mut stdin) {
+            Ok(gen_req) => {
+                tracing::info!("Received GenerateRequest for target: {}", gen_req.target);
 
-            // Generate workflow files (one per workflow directory)
-            let fragments = generate_workflow_files(&gen_req);
+                let gen_result = build_generate_result(&gen_req);
 
-            let gen_result = GenerateResult {
-                fragments,
-                diagnostics: vec![],
-            };
-
-            send_message(&gen_result, &mut stdout)?;
-            tracing::info!(
-                "Sent GenerateResult with {} fragments",
-                gen_result.fragments.len()
-            );
-        }
-        Err(e) => {
-            tracing::warn!("Failed to receive GenerateRequest: {e}");
-            return Ok(());
+                tracing::info!(
+                    "Sending GenerateResult with {} fragment(s)",
+                    gen_result.fragments.len()
+                );
+                send_message(&gen_result, &mut stdout)?;
+            }
+            Err(e) => {
+                tracing::warn!("Failed to receive GenerateRequest: {e}");
+                break;
+            }
         }
     }
 
-    tracing::info!("Shutting down after completing workflow");
+    tracing::info!("Plugin loop terminated");
     Ok(())
 }
 
-/// Generate multiple workflow files (one per workflow directory)
-fn generate_workflow_files(req: &GenerateRequest) -> Vec<Fragment> {
-    use std::collections::HashMap;
-
+fn build_generate_result(req: &GenerateRequest) -> GenerateResult {
     let schema = match &req.schema {
-        Some(s) => s,
-        None => return vec![],
+        Some(schema) => schema,
+        None => {
+            return GenerateResult {
+                fragments: vec![],
+                diagnostics: vec![make_diagnostic(
+                    "unknown",
+                    anyhow::anyhow!("GenerateRequest missing schema"),
+                )],
+            };
+        }
     };
+    let (fragments, diagnostics) = build_workflow_fragments(schema);
+    GenerateResult {
+        fragments,
+        diagnostics,
+    }
+}
 
-    // Group jobs by workflow
-    let mut workflows: HashMap<String, Vec<&cigen::plugin::protocol::JobDefinition>> =
-        HashMap::new();
+fn build_workflow_fragments(schema: &CigenSchema) -> (Vec<Fragment>, Vec<Diagnostic>) {
+    let mut diagnostics = Vec::new();
+
+    let workflow_metadata = parse_workflow_metadata(schema, &mut diagnostics);
+    let mut jobs_by_workflow: BTreeMap<String, Vec<JobDefinition>> = BTreeMap::new();
     for job in &schema.jobs {
-        let workflow_name = if job.workflow.is_empty() {
+        let workflow = if job.workflow.is_empty() {
             "ci"
         } else {
             &job.workflow
         };
-        workflows
-            .entry(workflow_name.to_string())
+        jobs_by_workflow
+            .entry(workflow.to_string())
             .or_default()
-            .push(job);
+            .push(job.clone());
     }
 
-    // Generate a fragment for each workflow
     let mut fragments = Vec::new();
-    for (workflow_name, jobs) in workflows {
-        let content = generate_workflow_yaml_for_jobs(&workflow_name, jobs);
-        fragments.push(Fragment {
-            path: format!(".github/workflows/{}.yml", workflow_name),
-            content,
-            strategy: MergeStrategy::Replace as i32,
-            order: 0,
-            format: "yaml".to_string(),
-        });
+
+    for (workflow_name, mut jobs) in jobs_by_workflow {
+        jobs.sort_by(|a, b| a.id.cmp(&b.id));
+        let metadata = workflow_metadata.get(&workflow_name);
+        match render_workflow_file(&workflow_name, &jobs, metadata) {
+            Ok(content) => fragments.push(Fragment {
+                path: format!(".github/workflows/{workflow_name}.yml"),
+                content,
+                strategy: MergeStrategy::Replace as i32,
+                order: 0,
+                format: "yaml".to_string(),
+            }),
+            Err(error) => diagnostics.push(make_diagnostic(&workflow_name, error)),
+        }
     }
 
-    fragments
+    (fragments, diagnostics)
 }
 
-/// Generate a GitHub Actions workflow YAML for a specific set of jobs
-fn generate_workflow_yaml_for_jobs(
-    workflow_name: &str,
-    jobs: Vec<&cigen::plugin::protocol::JobDefinition>,
-) -> String {
-    use std::collections::HashMap;
-
-    // Import GitHub Actions schema types from the plugin's own copy
-    // These are copied from cigen's src/providers/github_actions/schema.rs
-    #[derive(serde::Serialize)]
-    #[allow(dead_code)]
-    struct Workflow {
-        name: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        on: Option<WorkflowTrigger>,
-        jobs: HashMap<String, Job>,
-    }
-
-    #[derive(serde::Serialize)]
-    #[serde(untagged)]
-    #[allow(dead_code)]
-    enum WorkflowTrigger {
-        Detailed(HashMap<String, TriggerConfig>),
-    }
-
-    #[derive(serde::Serialize)]
-    #[allow(dead_code)]
-    struct TriggerConfig {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        branches: Option<Vec<String>>,
-    }
-
-    #[derive(serde::Serialize)]
-    #[allow(dead_code)]
-    struct Job {
-        #[serde(skip_serializing_if = "Option::is_none", rename = "runs-on")]
-        runs_on: Option<RunsOn>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        needs: Option<Vec<String>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        container: Option<Container>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        steps: Option<Vec<Step>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        env: Option<HashMap<String, String>>,
-    }
-
-    #[derive(serde::Serialize)]
-    #[serde(untagged)]
-    #[allow(dead_code)]
-    enum RunsOn {
-        Single(String),
-    }
-
-    #[derive(serde::Serialize)]
-    #[allow(dead_code)]
-    struct Container {
-        image: String,
-    }
-
-    #[derive(serde::Serialize)]
-    #[allow(dead_code)]
-    struct Step {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        uses: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        run: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        with: Option<HashMap<String, serde_json::Value>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        env: Option<HashMap<String, String>>,
-    }
-
-    // Build workflow structure
-    let mut jobs_map = HashMap::new();
-
-    for job_def in jobs {
-        let mut steps = Vec::new();
-
-        tracing::info!("Processing job {}: image = '{}'", job_def.id, job_def.image);
-
-        // Determine if we need a container
-        let (runs_on, container) =
-            if job_def.image.starts_with("ubuntu") || job_def.image.starts_with("macos") {
-                // Native runner - no container
-                let runs_on = if job_def.image.starts_with("ubuntu") {
-                    RunsOn::Single("ubuntu-latest".to_string())
-                } else {
-                    RunsOn::Single("macos-latest".to_string())
-                };
-                tracing::info!("Job {}: native runner, no container", job_def.id);
-                (runs_on, None)
-            } else {
-                // Docker image - run in container
-                tracing::info!(
-                    "Job {}: using container image {}",
-                    job_def.id,
-                    job_def.image
-                );
-                let container = Container {
-                    image: job_def.image.clone(),
-                };
-                (RunsOn::Single("ubuntu-latest".to_string()), Some(container))
-            };
-
-        // Add checkout step
-        steps.push(Step {
-            name: Some("Checkout code".to_string()),
-            uses: Some("actions/checkout@v4".to_string()),
-            run: None,
-            with: None,
-            env: None,
-        });
-
-        // Add user-defined steps
-        for step in &job_def.steps {
-            if let Some(step_type) = &step.step_type {
-                match step_type {
-                    cigen::plugin::protocol::step::StepType::RestoreCache(_) => {
-                        // TODO: Implement cache restoration
-                    }
-                    cigen::plugin::protocol::step::StepType::SaveCache(_) => {
-                        // TODO: Implement cache saving
-                    }
-                    cigen::plugin::protocol::step::StepType::Run(run) => {
-                        steps.push(Step {
-                            name: if run.name.is_empty() {
-                                None
-                            } else {
-                                Some(run.name.clone())
-                            },
-                            uses: None,
-                            run: Some(run.command.clone()),
-                            with: None,
-                            env: if run.env.is_empty() {
-                                None
-                            } else {
-                                Some(run.env.clone())
-                            },
-                        });
-                    }
-                    cigen::plugin::protocol::step::StepType::Uses(uses) => {
-                        // Convert with parameters (String values) to JSON values
-                        let with_params = if uses.with.is_empty() {
-                            None
-                        } else {
-                            Some(
-                                uses.with
-                                    .iter()
-                                    .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
-                                    .collect(),
-                            )
-                        };
-
-                        steps.push(Step {
-                            name: if uses.name.is_empty() {
-                                None
-                            } else {
-                                Some(uses.name.clone())
-                            },
-                            uses: Some(uses.module.clone()),
-                            run: None,
-                            with: with_params,
-                            env: None,
-                        });
-                    }
-                }
+fn parse_workflow_metadata(
+    schema: &CigenSchema,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> HashMap<String, Mapping> {
+    let mut result = HashMap::new();
+    for workflow in &schema.workflows {
+        match serde_yaml::from_str::<Value>(&workflow.yaml) {
+            Ok(Value::Mapping(mapping)) => {
+                result.insert(workflow.id.clone(), mapping);
             }
+            Ok(other) => diagnostics.push(make_diagnostic(
+                &workflow.id,
+                anyhow::anyhow!(
+                    "Expected mapping for workflow metadata but found {:?}",
+                    other
+                ),
+            )),
+            Err(err) => diagnostics.push(make_diagnostic(
+                &workflow.id,
+                anyhow::anyhow!("Failed to parse workflow metadata: {err}"),
+            )),
         }
+    }
+    result
+}
 
-        let job = Job {
-            runs_on: Some(runs_on),
-            needs: if job_def.needs.is_empty() {
-                None
-            } else {
-                Some(job_def.needs.clone())
-            },
-            container,
-            steps: Some(steps),
-            env: if job_def.env.is_empty() {
-                None
-            } else {
-                Some(job_def.env.clone())
-            },
-        };
+fn render_workflow_file(
+    workflow_name: &str,
+    jobs: &[JobDefinition],
+    metadata: Option<&Mapping>,
+) -> anyhow::Result<String> {
+    let mut workflow_map = metadata.cloned().unwrap_or_else(Mapping::new);
+    let jobs_key = Value::String("jobs".into());
+    workflow_map.remove(&jobs_key);
 
-        jobs_map.insert(job_def.id.clone(), job);
+    let name_key = Value::String("name".into());
+    if !workflow_map.contains_key(&name_key) {
+        workflow_map.insert(
+            name_key.clone(),
+            Value::String(workflow_name.to_uppercase()),
+        );
     }
 
-    // Build workflow triggers
-    let mut triggers = HashMap::new();
-    triggers.insert(
-        "push".to_string(),
-        TriggerConfig {
-            branches: Some(vec!["main".to_string()]),
-        },
-    );
-    triggers.insert("pull_request".to_string(), TriggerConfig { branches: None });
+    let on_key = Value::String("on".into());
+    if !workflow_map.contains_key(&on_key) {
+        workflow_map.insert(on_key, default_on_value());
+    }
 
-    let workflow = Workflow {
-        name: workflow_name.to_uppercase(),
-        on: Some(WorkflowTrigger::Detailed(triggers)),
-        jobs: jobs_map,
-    };
+    let jobs_mapping = build_jobs_mapping(workflow_name, jobs)?;
+    workflow_map.insert(Value::String("jobs".into()), Value::Mapping(jobs_mapping));
 
-    // Serialize to YAML
     let mut yaml = String::from("# DO NOT EDIT - This file is generated by cigen\n");
     yaml.push_str("# Source: .cigen/workflows/\n");
-    yaml.push_str("# Regenerate with: cargo run -- --config .cigen generate\n");
+    yaml.push_str("# Regenerate with: cargo run -- generate --file .cigen\n");
     yaml.push_str("#\n");
-    match serde_yaml::to_string(&workflow) {
-        Ok(workflow_yaml) => {
-            yaml.push_str(&workflow_yaml);
-            yaml
+
+    let rendered = serde_yaml::to_string(&workflow_map)
+        .with_context(|| format!("Failed to serialize workflow {workflow_name}"))?;
+    yaml.push_str(&rendered);
+    Ok(yaml)
+}
+
+fn default_on_value() -> Value {
+    let mut push_mapping = Mapping::new();
+    push_mapping.insert(
+        Value::String("branches".into()),
+        Value::Sequence(vec![Value::String("main".into())]),
+    );
+
+    let mut on_mapping = Mapping::new();
+    on_mapping.insert(
+        Value::String("pull_request".into()),
+        Value::Mapping(Mapping::new()),
+    );
+    on_mapping.insert(Value::String("push".into()), Value::Mapping(push_mapping));
+    Value::Mapping(on_mapping)
+}
+
+fn build_jobs_mapping(workflow_name: &str, jobs: &[JobDefinition]) -> anyhow::Result<Mapping> {
+    let mut mapping = Mapping::new();
+    let has_builder = jobs.iter().any(|job| job.id == "build_cigen");
+    for job in jobs {
+        let rendered = render_job(job, workflow_name, has_builder)?;
+        mapping.insert(Value::String(job.id.clone()), Value::Mapping(rendered));
+    }
+    Ok(mapping)
+}
+
+fn render_job(
+    job: &JobDefinition,
+    _workflow_name: &str,
+    has_builder: bool,
+) -> anyhow::Result<Mapping> {
+    let mut job_map = Mapping::new();
+
+    for (key, value_yaml) in &job.extra {
+        job_map.insert(Value::String(key.clone()), parse_yaml_value(value_yaml));
+    }
+
+    let runs_on_key = Value::String("runs-on".into());
+    if !job_map.contains_key(&runs_on_key) {
+        let (runs_on, container) = determine_runner(&job.image);
+        if let Some(runs_on_value) = runs_on {
+            job_map.insert(runs_on_key.clone(), runs_on_value);
         }
-        Err(e) => {
-            tracing::error!("Failed to serialize workflow: {}", e);
-            format!("# Error: Failed to serialize workflow: {e}\n")
+        if let Some(container_value) = container {
+            job_map.insert(Value::String("container".into()), container_value);
         }
+    }
+
+    if !job.needs.is_empty() {
+        job_map.insert(
+            Value::String("needs".into()),
+            Value::Sequence(job.needs.iter().cloned().map(Value::String).collect()),
+        );
+    }
+
+    if has_builder && job.id != "build_cigen" {
+        let needs_key = Value::String("needs".into());
+        match job_map.get_mut(&needs_key) {
+            Some(Value::Sequence(seq)) => {
+                if !seq
+                    .iter()
+                    .any(|value| matches!(value, Value::String(s) if s == "build_cigen"))
+                {
+                    seq.push(Value::String("build_cigen".into()));
+                }
+            }
+            _ => {
+                job_map.insert(
+                    needs_key,
+                    Value::Sequence(vec![Value::String("build_cigen".into())]),
+                );
+            }
+        }
+    }
+
+    if !job.env.is_empty() {
+        let env_key = Value::String("env".into());
+        if !job_map.contains_key(&env_key) {
+            job_map.insert(env_key, map_from_string_map(&job.env));
+        }
+    }
+
+    tracing::debug!("Job {} source_files: {:?}", job.id, job.source_files);
+    let skip_flow = if job.id == "build_cigen" {
+        None
+    } else {
+        Some(build_skip_flow(&job.id))
+    };
+
+    let package_cache_steps = build_package_cache_steps(job);
+
+    let mut requires_node_runtime = skip_flow.is_some() || !package_cache_steps.is_empty();
+    if !requires_node_runtime {
+        for step in &job.steps {
+            if let Some(step_type) = &step.step_type
+                && step_requires_node(step_type)
+            {
+                requires_node_runtime = true;
+                break;
+            }
+        }
+    }
+
+    let mut steps: Vec<Value> = Vec::new();
+
+    if requires_node_runtime {
+        steps.push(Value::Mapping(install_node_runtime_step()));
+    }
+
+    if job.id != "build_cigen" {
+        steps.push(Value::Mapping(install_protobuf_step()));
+    }
+
+    let checkout_step = build_checkout_step(job);
+    steps.push(Value::Mapping(checkout_step));
+
+    if skip_flow.is_some() && job.id != "build_cigen" {
+        steps.push(Value::Mapping(download_cigen_step()));
+        steps.push(Value::Mapping(make_cigen_executable_step()));
+    }
+
+    if let Some(flow) = &skip_flow {
+        steps.push(Value::Mapping(flow.compute_step.clone()));
+        steps.push(Value::Mapping(flow.restore_step.clone()));
+        steps.push(Value::Mapping(flow.skip_step.clone()));
+    }
+
+    let skip_condition = skip_flow.as_ref().map(|flow| flow.condition.as_str());
+
+    for mut cache_step in package_cache_steps.into_iter() {
+        if let Some(condition) = skip_condition {
+            apply_condition(&mut cache_step, condition);
+        }
+        steps.push(Value::Mapping(cache_step));
+    }
+
+    for step in &job.steps {
+        if let Some(step_type) = &step.step_type {
+            let mut rendered = match step_type {
+                step::StepType::Run(run) => convert_run_step(run),
+                step::StepType::Uses(uses) => convert_uses_step(uses),
+                step::StepType::RestoreCache(_) | step::StepType::SaveCache(_) => {
+                    continue;
+                }
+            };
+            if let Some(condition) = skip_condition {
+                apply_condition(&mut rendered, condition);
+            }
+            steps.push(Value::Mapping(rendered));
+        }
+    }
+
+    if let Some(flow) = skip_flow {
+        steps.push(Value::Mapping(flow.record_step));
+    }
+
+    job_map.insert(Value::String("steps".into()), Value::Sequence(steps));
+
+    Ok(job_map)
+}
+
+fn determine_runner(image: &str) -> (Option<Value>, Option<Value>) {
+    if image.trim().is_empty() {
+        return (Some(Value::String("ubuntu-latest".into())), None);
+    }
+
+    if image.trim().starts_with("${{") {
+        return (Some(Value::String(image.to_string())), None);
+    }
+
+    if image.starts_with("ubuntu") || image.starts_with("macos") || image.starts_with("windows") {
+        return (Some(Value::String(image.to_string())), None);
+    }
+
+    let mut container = Mapping::new();
+    container.insert(
+        Value::String("image".into()),
+        Value::String(image.to_string()),
+    );
+    (
+        Some(Value::String("ubuntu-latest".into())),
+        Some(Value::Mapping(container)),
+    )
+}
+
+struct SkipFlow {
+    compute_step: Mapping,
+    restore_step: Mapping,
+    skip_step: Mapping,
+    record_step: Mapping,
+    condition: String,
+}
+
+fn build_skip_flow(job_id: &str) -> SkipFlow {
+    let compute_script = format!(
+        concat!(
+            "set -euo pipefail\n",
+            "mkdir -p .cigen/skip-cache\n",
+            "mkdir -p .cigen/cache\n",
+            "./.cigen/bin/cigen hash \\\n",
+            "  --job {job_id} \\\n",
+            "  --config .cigen \\\n",
+            "  --base-dir . \\\n",
+            "  --output job_hash \\\n",
+            "  --cache .cigen/cache/file-hashes.json\n"
+        ),
+        job_id = job_id
+    );
+
+    let mut compute_step = Mapping::new();
+    compute_step.insert(
+        Value::String("name".into()),
+        Value::String("Compute source hash".into()),
+    );
+    compute_step.insert(
+        Value::String("id".into()),
+        Value::String("compute_hash".into()),
+    );
+    compute_step.insert(Value::String("run".into()), Value::String(compute_script));
+
+    let mut cache_with = Mapping::new();
+    cache_with.insert(
+        Value::String("path".into()),
+        Value::String(format!(".cigen/skip-cache/{job_id}")),
+    );
+    cache_with.insert(
+        Value::String("key".into()),
+        Value::String(format!(
+            "job-skip-${{ runner.os }}-{job_id}-${{ steps.compute_hash.outputs.job_hash }}"
+        )),
+    );
+    cache_with.insert(
+        Value::String("restore-keys".into()),
+        Value::String(format!("job-skip-${{ runner.os }}-{job_id}-")),
+    );
+
+    let mut restore_step = Mapping::new();
+    restore_step.insert(
+        Value::String("name".into()),
+        Value::String("Restore skip cache".into()),
+    );
+    restore_step.insert(
+        Value::String("id".into()),
+        Value::String("job_skip_cache".into()),
+    );
+    restore_step.insert(
+        Value::String("uses".into()),
+        Value::String("actions/cache@v4".into()),
+    );
+    restore_step.insert(Value::String("with".into()), Value::Mapping(cache_with));
+    restore_step.insert(
+        Value::String("if".into()),
+        Value::String("${{ env.ACT != 'true' }}".into()),
+    );
+
+    let condition = "steps.job_skip_cache.outputs.cache-hit != 'true'".to_string();
+
+    let mut record_step = Mapping::new();
+    record_step.insert(
+        Value::String("name".into()),
+        Value::String("Record job completion".into()),
+    );
+    record_step.insert(
+        Value::String("if".into()),
+        Value::String(format!("success() && {condition}")),
+    );
+    record_step.insert(
+        Value::String("run".into()),
+        Value::String(format!(
+            "set -e
+HASH=\"${{JOB_HASH}}\"
+if [ -z \"$HASH\" ]; then
+  echo 'JOB_HASH missing' >&2
+  exit 1
+fi
+MARKER=.cigen/skip-cache/{job_id}/$HASH
+mkdir -p \"$(dirname \"$MARKER\")\"
+date > \"$MARKER\"
+"
+        )),
+    );
+
+    let mut record_env = Mapping::new();
+    record_env.insert(
+        Value::String("JOB_HASH".into()),
+        Value::String("${{ steps.compute_hash.outputs.job_hash }}".into()),
+    );
+    record_step.insert(Value::String("env".into()), Value::Mapping(record_env));
+
+    let mut skip_step = Mapping::new();
+    skip_step.insert(
+        Value::String("name".into()),
+        Value::String("Skip job (cached)".into()),
+    );
+    skip_step.insert(
+        Value::String("if".into()),
+        Value::String("steps.job_skip_cache.outputs.cache-hit == 'true'".into()),
+    );
+    skip_step.insert(
+        Value::String("run".into()),
+        Value::String("echo 'Job cache hit; skipping remaining steps.' && exit 0".into()),
+    );
+
+    SkipFlow {
+        compute_step,
+        restore_step,
+        skip_step,
+        record_step,
+        condition,
+    }
+}
+
+fn build_checkout_step(job: &JobDefinition) -> Mapping {
+    let mut step = Mapping::new();
+    step.insert(
+        Value::String("name".into()),
+        Value::String("Checkout repository".into()),
+    );
+    step.insert(
+        Value::String("uses".into()),
+        Value::String("actions/checkout@v4".into()),
+    );
+
+    if !job.checkout.is_empty() {
+        let mut with_mapping = Mapping::new();
+        for (key, value) in &job.checkout {
+            with_mapping.insert(Value::String(key.clone()), parse_yaml_value(value));
+        }
+        step.insert(Value::String("with".into()), Value::Mapping(with_mapping));
+    }
+
+    step
+}
+
+fn download_cigen_step() -> Mapping {
+    let mut step = Mapping::new();
+    step.insert(
+        Value::String("name".into()),
+        Value::String("Download cigen binary".into()),
+    );
+    step.insert(
+        Value::String("uses".into()),
+        Value::String("actions/download-artifact@v4".into()),
+    );
+    let mut with = Mapping::new();
+    with.insert(
+        Value::String("name".into()),
+        Value::String("cigen-bin".into()),
+    );
+    with.insert(
+        Value::String("path".into()),
+        Value::String(".cigen/bin".into()),
+    );
+    step.insert(Value::String("with".into()), Value::Mapping(with));
+    step
+}
+
+fn make_cigen_executable_step() -> Mapping {
+    let mut step = Mapping::new();
+    step.insert(
+        Value::String("name".into()),
+        Value::String("Prepare cigen binary".into()),
+    );
+    step.insert(
+        Value::String("run".into()),
+        Value::String("set -e\nmkdir -p .cigen/bin\nchmod +x .cigen/bin/cigen\n".into()),
+    );
+    step
+}
+
+fn install_node_runtime_step() -> Mapping {
+    let mut step = Mapping::new();
+    step.insert(
+        Value::String("name".into()),
+        Value::String("Prepare Node runtime for actions".into()),
+    );
+    step.insert(
+        Value::String("if".into()),
+        Value::String("${{ env.ACT == 'true' }}".into()),
+    );
+    step.insert(
+        Value::String("run".into()),
+        Value::String(
+            "set -e\nif ! command -v node >/dev/null 2>&1 || ! command -v protoc >/dev/null 2>&1; then\n  apt-get update\n  apt-get install -y nodejs npm protobuf-compiler\nfi\n"
+                .into(),
+        ),
+    );
+    step
+}
+
+fn install_protobuf_step() -> Mapping {
+    let mut step = Mapping::new();
+    step.insert(
+        Value::String("name".into()),
+        Value::String("Install protobuf compiler".into()),
+    );
+    step.insert(
+        Value::String("if".into()),
+        Value::String("runner.os == 'Linux'".into()),
+    );
+    step.insert(
+        Value::String("run".into()),
+        Value::String(
+            "set -e\nsudo apt-get update\nsudo apt-get install -y protobuf-compiler\n".into(),
+        ),
+    );
+    step
+}
+
+fn build_package_cache_steps(job: &JobDefinition) -> Vec<Mapping> {
+    let mut steps = Vec::new();
+
+    if job.packages.iter().any(|pkg| pkg == "rust") {
+        let mut with = Mapping::new();
+        with.insert(
+            Value::String("path".into()),
+            Value::String("~/.cargo/registry\n~/.cargo/git\ntarget".into()),
+        );
+        with.insert(
+            Value::String("key".into()),
+            Value::String("${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}".into()),
+        );
+        with.insert(
+            Value::String("restore-keys".into()),
+            Value::String("${{ runner.os }}-cargo-".into()),
+        );
+
+        let mut step = Mapping::new();
+        step.insert(
+            Value::String("name".into()),
+            Value::String("Restore cargo cache".into()),
+        );
+        step.insert(
+            Value::String("uses".into()),
+            Value::String("actions/cache@v4".into()),
+        );
+        step.insert(Value::String("with".into()), Value::Mapping(with));
+        steps.push(step);
+    }
+
+    if job.packages.iter().any(|pkg| pkg == "node") {
+        let mut with = Mapping::new();
+        with.insert(
+            Value::String("path".into()),
+            Value::String("~/.pnpm-store\nnode_modules".into()),
+        );
+        with.insert(
+            Value::String("key".into()),
+            Value::String("${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}".into()),
+        );
+        with.insert(
+            Value::String("restore-keys".into()),
+            Value::String("${{ runner.os }}-pnpm-".into()),
+        );
+
+        let mut step = Mapping::new();
+        step.insert(
+            Value::String("name".into()),
+            Value::String("Restore pnpm cache".into()),
+        );
+        step.insert(
+            Value::String("uses".into()),
+            Value::String("actions/cache@v4".into()),
+        );
+        step.insert(Value::String("with".into()), Value::Mapping(with));
+        steps.push(step);
+    }
+
+    steps
+}
+
+fn convert_run_step(run: &RunStep) -> Mapping {
+    let mut mapping = Mapping::new();
+    if !run.name.is_empty() {
+        mapping.insert(
+            Value::String("name".into()),
+            Value::String(run.name.clone()),
+        );
+    }
+    mapping.insert(
+        Value::String("run".into()),
+        Value::String(run.command.clone()),
+    );
+    if !run.env.is_empty() {
+        mapping.insert(Value::String("env".into()), map_from_string_map(&run.env));
+    }
+    if !run.r#if.is_empty() {
+        mapping.insert(Value::String("if".into()), Value::String(run.r#if.clone()));
+    }
+    mapping
+}
+
+fn convert_uses_step(uses: &UsesStep) -> Mapping {
+    let mut mapping = Mapping::new();
+    if !uses.name.is_empty() {
+        mapping.insert(
+            Value::String("name".into()),
+            Value::String(uses.name.clone()),
+        );
+    }
+    mapping.insert(
+        Value::String("uses".into()),
+        Value::String(uses.module.clone()),
+    );
+    if !uses.with.is_empty() {
+        let mut with_mapping = Mapping::new();
+        for (key, value) in &uses.with {
+            with_mapping.insert(Value::String(key.clone()), parse_yaml_value(value));
+        }
+        mapping.insert(Value::String("with".into()), Value::Mapping(with_mapping));
+    }
+    if !uses.r#if.is_empty() {
+        mapping.insert(Value::String("if".into()), Value::String(uses.r#if.clone()));
+    }
+    mapping
+}
+
+fn apply_condition(step: &mut Mapping, condition: &str) {
+    let key = Value::String("if".into());
+    if let Some(existing) = step.get(&key).and_then(Value::as_str) {
+        let combined = format!("({existing}) && ({condition})");
+        step.insert(key, Value::String(combined));
+    } else {
+        step.insert(
+            Value::String("if".into()),
+            Value::String(condition.to_string()),
+        );
+    }
+}
+
+fn parse_yaml_value(input: &str) -> Value {
+    serde_yaml::from_str(input).unwrap_or_else(|_| Value::String(input.to_string()))
+}
+
+fn step_requires_node(step_type: &step::StepType) -> bool {
+    match step_type {
+        step::StepType::Uses(uses) => is_node_action(&uses.module),
+        _ => false,
+    }
+}
+
+fn is_node_action(module: &str) -> bool {
+    module.starts_with("actions/cache@")
+        || module.starts_with("actions/download-artifact@")
+        || module.starts_with("actions/upload-artifact@")
+        || module.starts_with("actions/github-script@")
+        || module.starts_with("actions/configure-pages@")
+        || module.starts_with("actions/deploy-pages@")
+        || module.starts_with("actions/setup-node@")
+}
+
+fn map_from_string_map(map: &HashMap<String, String>) -> Value {
+    let mut mapping = Mapping::new();
+    for (key, value) in map {
+        mapping.insert(Value::String(key.clone()), Value::String(value.clone()));
+    }
+    Value::Mapping(mapping)
+}
+
+fn make_diagnostic(workflow: &str, error: anyhow::Error) -> Diagnostic {
+    Diagnostic {
+        level: diagnostic::Level::Error as i32,
+        code: "GITHUB_GENERATE_ERROR".to_string(),
+        title: format!("Failed to generate workflow '{workflow}'"),
+        message: error.to_string(),
+        fix_hint: String::new(),
+        loc: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn job_with_sources(id: &str, sources: &[&str]) -> JobDefinition {
+        JobDefinition {
+            id: id.to_string(),
+            image: "rust:latest".to_string(),
+            source_files: sources.iter().map(|s| s.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn builder_job_does_not_receive_download_step() {
+        let job = job_with_sources("build_cigen", &[]);
+        let rendered = render_job(&job, "ci", true).unwrap();
+
+        let steps_key = Value::String("steps".into());
+        let step_values: Vec<Value> = rendered
+            .get(&steps_key)
+            .and_then(Value::as_sequence)
+            .cloned()
+            .unwrap_or_default();
+
+        let name_key = Value::String("name".into());
+        let names: Vec<String> = step_values
+            .iter()
+            .filter_map(Value::as_mapping)
+            .filter_map(|mapping| mapping.get(&name_key))
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect();
+
+        assert!(names.contains(&"Checkout repository".to_string()));
+        assert!(
+            !names
+                .iter()
+                .any(|name| name == "Download cigen binary" || name == "Prepare cigen binary")
+        );
     }
 }

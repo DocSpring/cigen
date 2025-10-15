@@ -74,6 +74,17 @@ message CigenSchema {
   map<string, CacheDefinition> caches = 5;
   map<string, RunnerDefinition> runners = 6;
   repeated OutputConfig outputs = 7;
+  repeated WorkflowDefinition workflows = 8;
+  map<string, StringList> source_file_groups = 9;
+}
+
+message WorkflowDefinition {
+  string id = 1;
+  string yaml = 2;
+}
+
+message StringList {
+  repeated string values = 1;
 }
 
 message ProjectConfig {
@@ -92,6 +103,9 @@ message JobDefinition {
   map<string, string> env = 8;         // Environment variables
   string image = 9;                    // Docker image or runner (e.g., "rust:latest")
   string workflow = 10;                // Workflow this job belongs to (e.g., "ci", "release")
+  map<string, string> checkout = 11;   // Checkout overrides (serialized values)
+  map<string, string> extra = 12;      // Additional metadata (serialized values)
+  repeated string source_files = 13;   // Expanded source file patterns
 }
 
 message MatrixValue {
@@ -111,12 +125,14 @@ message RunStep {
   string name = 1;
   string command = 2;
   map<string, string> env = 3;
+  string if = 4;
 }
 
 message UsesStep {
   string name = 1;
   string module = 2;                   // e.g., "lang/ruby@~1.2"
   map<string, string> with = 3;        // Parameters
+  string if = 4;
 }
 
 message RestoreCacheStep {

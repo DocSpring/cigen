@@ -1,4 +1,6 @@
+use serde::de::Deserializer;
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
 
 use super::step::{Artifact, Step};
@@ -26,9 +28,21 @@ pub struct Job {
     #[serde(default)]
     pub env: HashMap<String, String>,
 
+    /// Checkout configuration overrides (applied to the auto checkout step)
+    #[serde(default)]
+    pub checkout: Option<HashMap<String, Value>>,
+
     /// Job steps
     #[serde(default)]
     pub steps: Vec<Step>,
+
+    /// Source files that trigger this job (for skip logic)
+    #[serde(
+        default,
+        deserialize_with = "deserialize_source_files",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub source_files: Vec<String>,
 
     /// Skip conditions
     #[serde(default)]
@@ -50,9 +64,32 @@ pub struct Job {
     #[serde(default)]
     pub artifacts: Vec<Artifact>,
 
+    /// Additional unspecified job fields to preserve pass-through metadata
+    #[serde(default, flatten)]
+    pub extra: HashMap<String, Value>,
+
     /// Workflow this job belongs to (set by loader)
     #[serde(default, skip_serializing)]
     pub workflow: Option<String>,
+}
+
+fn deserialize_source_files<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum SourceFilesInput {
+        Single(String),
+        Multiple(Vec<String>),
+    }
+
+    let value = Option::<SourceFilesInput>::deserialize(deserializer)?;
+    Ok(match value {
+        Some(SourceFilesInput::Single(pattern)) => vec![pattern],
+        Some(SourceFilesInput::Multiple(patterns)) => patterns,
+        None => Vec::new(),
+    })
 }
 
 fn default_image() -> String {

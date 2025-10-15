@@ -10,6 +10,8 @@ use crate::schema::{CigenConfig, Job};
 struct LegacyConfig {
     provider: Option<String>,
     providers: Option<Vec<String>>,
+    #[serde(default)]
+    source_file_groups: HashMap<String, Vec<String>>,
 }
 
 /// Load split config from .cigen/ directory
@@ -39,10 +41,12 @@ pub fn load_split_config(config_dir: &Path) -> Result<CigenConfig> {
         project: None,
         providers,
         packages: vec![],
+        source_file_groups: legacy.source_file_groups,
         jobs: HashMap::new(),
         caches: HashMap::new(),
         runners: HashMap::new(),
         provider_config: HashMap::new(),
+        workflows: HashMap::new(),
     };
 
     // Load jobs from workflows directory
@@ -82,10 +86,42 @@ pub fn load_split_config(config_dir: &Path) -> Result<CigenConfig> {
                             // Set the workflow this job belongs to
                             job.workflow = Some(workflow_name.to_string());
 
+                            // Support `requires` key (legacy name for `needs`)
+                            if job.needs.is_empty()
+                                && let Some(requires_value) = job.extra.remove("requires")
+                                && let Some(seq) = requires_value.as_sequence()
+                            {
+                                let mut needs = Vec::new();
+                                for item in seq {
+                                    if let Some(s) = item.as_str() {
+                                        needs.push(s.to_string());
+                                    }
+                                }
+                                if !needs.is_empty() {
+                                    job.needs = needs;
+                                }
+                            }
+
                             config.jobs.insert(job_name, job);
                         }
                     }
                 }
+            } else if workflow_path
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|ext| ext == "yml" || ext == "yaml")
+                .unwrap_or(false)
+            {
+                let workflow_name = workflow_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .context("Invalid workflow filename")?
+                    .to_string();
+
+                let contents = fs::read_to_string(&workflow_path)?;
+                let value: serde_yaml::Value = serde_yaml::from_str(&contents)
+                    .with_context(|| format!("Failed to parse {}", workflow_path.display()))?;
+                config.workflows.insert(workflow_name, value);
             }
         }
     }

@@ -48,6 +48,42 @@ If you need to modify CI behavior:
 3. Test with `act` before committing
 4. Commit both the source `.cigen/` files AND generated `.github/` files together
 
+## Working With `act`
+
+Fast local feedback depends on using the same runner image and artifact flow as GitHub Actions. Follow this recipe:
+
+- Build the local runner image (defaults to `linux/arm64`; override with `CI_RUNNER_PLATFORM=linux/amd64` if needed):
+
+  ```bash
+  ./scripts/build-ci-runner.sh
+  ```
+
+- Run jobs with `act`, mapping runner architecture and storing artifacts locally so download/upload steps succeed:
+
+  ```bash
+  act --artifact-server-path tmp/artifacts \
+      --pull=false --action-offline-mode \
+      --container-architecture linux/arm64 \
+      -j fmt
+  ```
+
+  - `--pull=false` and `--action-offline-mode` force Docker to reuse the locally built image instead of hitting Docker Hub.
+  - The artifact server directory must exist; `act` will persist uploaded artifacts there so downstream jobs can download them.
+  - Use the shell `timeout 600 -- act ...` wrapper (or similar) to enforce the 10-minute cap on local runs.
+
+- To make these options the default, add them to `~/.actrc`:
+
+  ```
+  --artifact-server-path tmp/artifacts
+  --pull=false
+  --action-offline-mode
+  --container-architecture linux/arm64
+  ```
+
+- Cleaning up the artifact directory between runs (`rm -r tmp/artifacts`) prevents stale caches from masking issues.
+
+Rebuild the runner image whenever dependencies change (e.g., adding packages to `docker/ci-runner/Dockerfile`), then rerun `act` to validate the workflows end-to-end.
+
 ## Project Overview
 
 `cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It integrates with Nx monorepo tooling and supports multiple CI providers starting with CircleCI.

@@ -6,6 +6,9 @@ dynamic: true # Generate separate workflow files
 source_file_groups:
   rust:
     - "src/**/*.rs"
+    - "plugins/**/*.rs"
+    - "build.rs"
+    - "proto/**/*.proto"
     - "Cargo.toml"
     - "Cargo.lock"
 

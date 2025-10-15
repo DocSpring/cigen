@@ -5,7 +5,7 @@ requires:
 
 environment:
   name: github-pages
-  url: ${{ steps.deployment.outputs.page_url }}
+  url: https://docspring.github.io/cigen/
 
 steps:
   - name: Deploy to GitHub Pages

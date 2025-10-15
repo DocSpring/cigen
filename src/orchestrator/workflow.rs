@@ -119,11 +119,16 @@ impl WorkflowOrchestrator {
 
     /// Detect which providers are needed from the configuration
     fn detect_providers(&self, config: &CigenConfig) -> Vec<String> {
-        config
-            .get_providers()
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
+        if !config.providers.is_empty() {
+            return config.providers.clone();
+        }
+
+        let mut providers = self.available_providers();
+        if providers.is_empty() {
+            // Fallback to GitHub provider to match legacy behaviour
+            providers.push("github".to_string());
+        }
+        providers
     }
 
     /// Spawn all provider plugins
@@ -147,6 +152,23 @@ impl WorkflowOrchestrator {
         }
 
         Ok(plugin_ids)
+    }
+}
+
+impl WorkflowOrchestrator {
+    fn available_providers(&self) -> Vec<String> {
+        let mut providers = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(&self.plugin_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(file_name) = path.file_name().and_then(|s| s.to_str())
+                    && let Some(stripped) = file_name.strip_prefix("cigen-provider-")
+                {
+                    providers.push(stripped.to_string());
+                }
+            }
+        }
+        providers
     }
 }
 
@@ -262,10 +284,12 @@ mod tests {
             project: None,
             providers: vec!["github".to_string(), "circleci".to_string()],
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let orchestrator = WorkflowOrchestrator::new(PathBuf::from("plugins"));
@@ -280,15 +304,17 @@ mod tests {
             project: None,
             providers: vec![], // Empty - should use defaults
             packages: vec![],
+            source_file_groups: HashMap::new(),
             jobs: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
+            workflows: HashMap::new(),
         };
 
         let orchestrator = WorkflowOrchestrator::new(PathBuf::from("plugins"));
         let providers = orchestrator.detect_providers(&config);
 
-        assert_eq!(providers, vec!["github", "circleci", "buildkite"]);
+        assert_eq!(providers, vec!["github"]);
     }
 }

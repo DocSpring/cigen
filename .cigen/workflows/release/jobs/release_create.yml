@@ -3,26 +3,19 @@ image: ubuntu-latest
 requires:
   - release_build
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-    with:
-      fetch-depth: 0
-      fetch-tags: true
+checkout:
+  fetch-depth: 0
+  fetch-tags: true
 
+steps:
   - name: Download artifacts
     uses: actions/download-artifact@v4
     with:
       path: artifacts
 
-  - id: version
-    name: Get version from Cargo.toml
+  - name: Get version from Cargo.toml
     run: |
       VERSION=$(grep -E '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-      {
-        echo "version=$VERSION"
-      } >> "$GITHUB_OUTPUT"
-
       if [ "${{ github.event_name }}" = "push" ]; then
         TAG="${GITHUB_REF#refs/tags/}"
         EXPECTED_TAG="v$VERSION"
@@ -30,14 +23,11 @@ steps:
           echo "Error: Tag $TAG doesn't match expected $EXPECTED_TAG from Cargo.toml" >&2
           exit 1
         fi
-        {
-          echo "tag=$TAG"
-        } >> "$GITHUB_OUTPUT"
+        echo "RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
       else
-        {
-          echo "tag=v$VERSION"
-        } >> "$GITHUB_OUTPUT"
+        echo "RELEASE_TAG=v$VERSION" >> "$GITHUB_ENV"
       fi
+      echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
   - run:
       name: Generate checksums
@@ -69,20 +59,20 @@ steps:
             curl -fsSL https://docspring.github.io/cigen/install.sh | sh
 
         ### Direct downloads
-        - macOS (Intel): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-amd64.tar.gz
-        - macOS (Apple Silicon): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-macos-arm64.tar.gz
-        - Linux (x86_64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-amd64.tar.gz
-        - Linux (ARM64): https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.tag }}/cigen-linux-arm64.tar.gz
+        - macOS (Intel): https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/cigen-macos-amd64.tar.gz
+        - macOS (Apple Silicon): https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/cigen-macos-arm64.tar.gz
+        - Linux (x86_64): https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/cigen-linux-amd64.tar.gz
+        - Linux (ARM64): https://github.com/${{ github.repository }}/releases/download/${{ env.RELEASE_TAG }}/cigen-linux-arm64.tar.gz
         EOF
 
   - name: Create GitHub Release
     uses: softprops/action-gh-release@v2
     with:
-      tag_name: ${{ steps.version.outputs.tag }}
-      name: CIGen v${{ steps.version.outputs.version }}
+      tag_name: ${{ env.RELEASE_TAG }}
+      name: CIGen v${{ env.RELEASE_VERSION }}
       body_path: changelog.md
       draft: false
-      prerelease: ${{ contains(steps.version.outputs.tag, '-') }}
+      prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
       files: |
         artifacts/**/*.tar.gz
         artifacts/**/*.sha256

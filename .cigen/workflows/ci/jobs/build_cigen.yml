@@ -1,0 +1,32 @@
+image: rust:latest
+
+steps:
+  - run:
+      name: Install build dependencies
+      command: |
+        set -e
+        apt-get update
+        apt-get install -y nodejs npm protobuf-compiler
+
+  - name: Restore target cache
+    uses: actions/cache@v4
+    with:
+      path: |
+        target/release
+      key: target-release-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+  - run:
+      name: Build cigen binary
+      command: cargo build --release --bin cigen
+
+  - run:
+      name: Prepare artifact bundle
+      command: |
+        set -e
+        mkdir -p .cigen/bin
+        cp target/release/cigen .cigen/bin/cigen
+
+  - uses: actions/upload-artifact@v4
+    with:
+      name: cigen-bin
+      path: .cigen/bin/cigen

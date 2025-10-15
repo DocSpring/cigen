@@ -18,6 +18,10 @@ pub struct CigenConfig {
     #[serde(default)]
     pub packages: Vec<String>,
 
+    /// Named source file groups (for skip logic)
+    #[serde(default)]
+    pub source_file_groups: HashMap<String, Vec<String>>,
+
     /// Job definitions (required)
     pub jobs: HashMap<String, Job>,
 
@@ -32,6 +36,10 @@ pub struct CigenConfig {
     /// Provider-specific configuration
     #[serde(default)]
     pub provider_config: HashMap<String, serde_yaml::Value>,
+
+    /// Workflow metadata (triggers, permissions, etc.) keyed by workflow id
+    #[serde(default)]
+    pub workflows: HashMap<String, serde_yaml::Value>,
 }
 
 /// Project configuration
