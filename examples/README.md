@@ -40,7 +40,7 @@ Perfect if you have:
 
 Perfect if you have:
 
-- Nx or Turborepo setup
+- Turborepo-style or large pnpm workspace
 - 10+ apps/libraries
 - Need selective job execution
 - Want 10x faster CI
@@ -77,7 +77,6 @@ Perfect if you want to:
 | Skip logic           | ✅ (auto) | ✅        | ✅ (advanced) | ✅             |
 | Docker builds        | ❌        | ✅        | ❌            | ✅             |
 | Deployments          | ❌        | ✅        | ✅            | ❌             |
-| Nx integration       | ❌        | ❌        | ✅            | ❌             |
 | Multiple providers   | ❌        | ❌        | ❌            | ✅             |
 
 ## Feature Showcase

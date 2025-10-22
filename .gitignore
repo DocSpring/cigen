@@ -10,6 +10,7 @@ integration_tests/**/build/
 
 /.circleci/
 /build/
+tmp/
 
 # Nx
 .nx/

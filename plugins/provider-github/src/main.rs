@@ -785,10 +785,8 @@ fn install_protobuf_step() -> Mapping {
         Value::String("if".into()),
         Value::String("runner.os == 'Linux'".into()),
     );
-    step.insert(
-        Value::String("run".into()),
-        Value::String("set -e\napt-get update\napt-get install -y protobuf-compiler\n".into()),
-    );
+    let script = "set -e\nif command -v sudo >/dev/null 2>&1; then\n  sudo apt-get update\n  sudo apt-get install -y protobuf-compiler\nelse\n  apt-get update\n  apt-get install -y protobuf-compiler\nfi\n";
+    step.insert(Value::String("run".into()), Value::String(script.into()));
     step
 }
 

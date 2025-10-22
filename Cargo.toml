@@ -25,7 +25,7 @@ description = "A CLI tool that generates CI pipeline configurations from templat
 license = "MIT"
 repository = "https://github.com/DocSpring/cigen"
 readme = "README.md"
-keywords = ["cli", "ci", "nx", "circleci", "devops"]
+keywords = ["cli", "ci", "github-actions", "circleci", "devops"]
 categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]

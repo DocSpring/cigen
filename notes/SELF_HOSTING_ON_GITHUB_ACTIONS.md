@@ -11,11 +11,11 @@ This document outlines the complete plan to:
 
 ## Current State
 
-- **CI Platform**: GitHub Actions (`.github/workflows/ci.yml`)
-- **Hand-written workflow**: Single test job with Rust, Node.js/pnpm, Nx integration
-- **Caching**: Uses GitHub Actions native `actions/cache@v4`
-- **Package management**: Manual steps for pnpm, cargo, rustfmt/clippy
-- **No cigen integration yet**: No `.cigen/` directory exists
+- **CI Platform**: GitHub Actions (generated workflows: `ci.yml`, `docs.yml`, `release.yml`)
+- **Workflow generation**: `.cigen/` split config rendered through the GitHub provider plugin — the old workspace-specific scaffolding has been removed
+- **Caching**: Uses the skip-cache flow (via `actions/cache@v4`) plus a small build artifact for the `cigen` binary
+- **Package management**: Rust toolchain managed through rustup inside the `rust:latest` container; Node/pnpm steps only run when `act` needs them
+- **Plugin architecture**: Core spawns `cigen-provider-github` during `cargo run -- generate --file .cigen`
 
 ## Goals
 
@@ -26,6 +26,7 @@ This document outlines the complete plan to:
 5. **Job Skipping**: Implement source-file-based job skipping for GitHub Actions
 6. **Self-Hosted Runner Support**: Enable switching to self-hosted runners with one config change
 7. **Custom Cache Backend**: Support in-house caching (S3/MinIO) for self-hosted runners
+8. **Turborepo Workspace Awareness**: Replace the old monorepo assumptions with Turborepo project graph ingestion once the module system lands
 
 ## Architecture Comparison: CircleCI vs GitHub Actions
 
@@ -707,7 +708,7 @@ jobs:
 # .cigen/workflows/test/jobs/cargo_test.yml
 packages:
   - rust
-  - node # For Nx
+  - node # For future Turborepo/JS workspace tasks
 
 cache:
   - cargo
@@ -799,10 +800,10 @@ steps:
    - [ ] Add source_files to each job for skip cache
    - [ ] Test skip behavior on successive runs
 
-5. **Nx Integration**
-   - [ ] Ensure Nx commands work (`nx run cigen:test`)
-   - [ ] Add Nx cache to cache definitions
-   - [ ] Support running via Nx or direct cargo
+5. **Turborepo Integration (Future)**
+   - [ ] Ensure Turbo tasks can invoke Rust targets once the workspace is defined
+   - [ ] Add Turborepo outputs to cache definitions
+   - [ ] Support running via `turbo run` or direct cargo
 
 6. **Migration**
    - [ ] Generate `.github/workflows/ci.yml` with cigen
@@ -844,11 +845,11 @@ cache_definitions:
     paths:
       - node_modules
 
-  nx:
+  turbo_cache:
     checksum_sources:
-      - nx.json
+      - turbo.json
     paths:
-      - .nx
+      - .turbo
 
 source_file_groups:
   rust:
@@ -858,8 +859,8 @@ source_file_groups:
 
   config:
     - '.cigen/**/*'
-    - 'nx.json'
-    - 'project.json'
+    - 'turbo.json'
+    - 'package.json'
 
 workflows:
   ci:
@@ -895,14 +896,14 @@ steps:
 ```yaml
 # .cigen/workflows/ci/jobs/test.yml
 packages: [rust, node]
-cache: [cargo, node_modules, nx]
+cache: [cargo, node_modules, turbo_cache]
 source_files:
   - '@rust'
   - '@config'
 
 steps:
-  - name: Run tests via Nx
-    run: nx run cigen:test
+  - name: Run tests
+    run: cargo test --all-features
 ```
 
 **Success Criteria:**
@@ -910,7 +911,7 @@ steps:
 - `cigen generate` produces valid `.github/workflows/ci.yml`
 - Generated workflow runs successfully in GitHub Actions
 - All jobs pass (format, lint, test, build)
-- Caches work correctly (cargo, node_modules, nx)
+- Caches work correctly (cargo, node_modules, turbo_cache)
 - Job skipping works (skip jobs when files unchanged)
 - Can commit generated workflow to replace hand-written version
 
@@ -1205,11 +1206,11 @@ packages:
 cache:
   - cargo
   - node_modules
-  - nx
+  - turbo_cache
 
 source_file_groups:
   rust: ['src/**/*.rs', 'Cargo.*']
-  config: ['.cigen/**/*', 'nx.json', 'project.json']
+  config: ['.cigen/**/*', 'turbo.json', 'package.json']
 
 # Provider-specific settings
 circleci:

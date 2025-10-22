@@ -13,26 +13,34 @@ This is a **10x speedup** for typical PRs that touch 1-2 projects.
 
 ## How It Works
 
-### 1. Nx Integration
+### 1. Workspace Graph (Future)
 
-CIGen reads your Nx configuration:
+CIGen will ingest your workspace metadata (e.g., `turbo.json` plus `package.json` pipelines) to discover project relationships:
 
 ```json
-// nx.json
+// turbo.json
 {
-  "affected": {
-    "defaultBase": "main"
+  "pipeline": {
+    "test": {
+      "outputs": ["dist/**"],
+      "dependsOn": ["^test"],
+      "cache": true
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "cache": true
+    }
   }
 }
 ```
 
 ```json
-// apps/api/project.json
+// apps/api/package.json
 {
-  "name": "api",
-  "targets": {
-    "test": { "executor": "@nx/jest:jest" },
-    "build": { "executor": "@nx/webpack:webpack" }
+  "name": "@example/api",
+  "scripts": {
+    "test": "pnpm jest",
+    "build": "pnpm webpack"
   }
 }
 ```
@@ -140,7 +148,7 @@ Job: test (api)
 
   Signature includes:
     - 42 source files in apps/api/src/**
-    - 3 dependencies: @nx/jest, jest, typescript
+    - 3 dependencies: @swc/jest, jest, typescript
     - 2 env vars: NODE_ENV, DATABASE_URL
     - CI config: test command unchanged
 ```
@@ -165,18 +173,18 @@ Job: test (api)
 
 **90% reduction** in CI time for typical PRs.
 
-## Comparison to Turborepo/Nx Remote Cache
+## Comparison to Turborepo Remote Cache
 
-| Feature              | Turborepo/Nx | CIGen                |
-| -------------------- | ------------ | -------------------- |
-| Local caching        | ✅           | ✅ (via tool)        |
-| Remote caching       | ✅           | ✅ (work signatures) |
-| Affected detection   | ✅           | ✅                   |
-| Multi-provider       | ❌           | ✅                   |
-| Job skipping in CI   | ❌\*         | ✅                   |
-| Path-based filtering | Partial      | ✅                   |
+| Feature              | Turborepo | CIGen                |
+| -------------------- | --------- | -------------------- |
+| Local caching        | ✅        | ✅ (via tool)        |
+| Remote caching       | ✅        | ✅ (work signatures) |
+| Affected detection   | ✅        | ✅                   |
+| Multi-provider       | ❌        | ✅                   |
+| Job skipping in CI   | ❌\*      | ✅                   |
+| Path-based filtering | Partial   | ✅                   |
 
-\*Turborepo/Nx run tasks but use cache. CIGen **skips jobs entirely** (faster, cheaper).
+\*Turborepo runs tasks but relies on caching. CIGen **skips jobs entirely** (faster, cheaper).
 
 ## Usage
 

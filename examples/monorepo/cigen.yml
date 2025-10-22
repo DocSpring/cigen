@@ -1,9 +1,9 @@
-# Monorepo Example (Nx-style)
+# Monorepo Example (Turborepo-style)
 # Demonstrates selective job execution based on affected projects
 
 project:
   name: monorepo
-  type: nx # Uses Nx graph for affected detection
+  type: turborepo # Uses workspace graph for affected detection (future)
 
 # Global packages available to all jobs
 packages:
@@ -14,7 +14,7 @@ jobs:
   # Lint all affected projects
   lint:
     steps:
-      - run: nx affected --target=lint --parallel=3
+      - run: pnpm turbo run lint --filter="..." --parallel=3
 
   # Test all affected projects
   test:
@@ -25,7 +25,7 @@ jobs:
         - "18"
         - "20"
     steps:
-      - run: nx affected --target=test --parallel=3
+      - run: pnpm turbo run test --filter="..." --parallel=3
     skip_if:
       # Skip if no source files changed in any project
       paths_unmodified:
@@ -39,7 +39,7 @@ jobs:
     needs:
       - test
     steps:
-      - run: nx affected --target=build --parallel=3
+      - run: pnpm turbo run build --filter="..." --parallel=3
     artifacts:
       - path: dist/**
         retention: 7d
@@ -55,7 +55,7 @@ jobs:
     services:
       - postgres:15
     steps:
-      - run: nx affected --target=e2e --parallel=1
+      - run: pnpm turbo run e2e --filter="..." --parallel=1
     skip_if:
       paths_unmodified:
         - apps/**/src/**
@@ -67,11 +67,11 @@ jobs:
       - e2e
     trigger: manual
     steps:
-      - run: nx affected --target=deploy --args="--env=staging"
+      - run: pnpm turbo run deploy --filter="..." -- --env=staging
 # Per-project skip configuration (advanced)
-# This is parsed from project.json files in each app/lib
+# This is derived from turbo.json plus package.json in each app/lib
 # CIGen automatically:
-# - Reads nx.json and project.json
+# - Reads turbo.json and workspace package metadata
 # - Computes affected projects
 # - Only runs jobs for changed projects
 # - Generates skip logic based on project dependencies

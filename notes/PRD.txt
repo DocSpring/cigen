@@ -43,10 +43,10 @@ Create **cigen**, a blazing‑fast Rust CLI that compiles concise, template‑ba
 
 ### Project Graph
 
-* Parse `project.json` files (`name`, `deps`, `targets`, `namedInputs`) **using the same conventions as Nx** so that `cigen` works seamlessly with the `nx` CLI and **Nx Cloud** (e.g., `nx affected`, remote cache).
-* **No source code** from the Nx project is embedded; compatibility is achieved solely by adhering to the public specification.
+* Parse Turborepo workspace metadata (`turbo.json`, package.json scripts, dependency graph) so that `cigen` understands project relationships and can compute affected tasks.
+* **No source code** from the workspace is embedded; compatibility is achieved solely by using published Turborepo conventions.
 * Build a DAG to determine affected jobs and optimise CI workflows.
-* **Additional templates & settings** live in a dedicated **`.cigen/`**\*\* directory\*\* within the repo, keeping `cigen`‑specific configuration separate from standard Nx files.
+* **Additional templates & settings** live in a dedicated **`.cigen/`**\*\* directory\*\* within the repo, keeping `cigen`‑specific configuration separate from standard workspace files.
 
 ### Multi‑Architecture
 
@@ -188,9 +188,9 @@ With this separation, teams declare *what* to cache (e.g., `vendor/bundle`) and 
 
 ## Out of Scope (Will **Never** Be Added)
 
-* Web UI / visualizer – `cigen` delegates visualization to the existing **Nx** web UI.
+* Web UI / visualizer – `cigen` will rely on existing Turborepo graph tooling (or other workspace visualizers) instead of building a bespoke UI.
 * Real‑time CI dashboard – users should rely on their CI provider’s native dashboards.
-* Automatic migration from existing YAML – teams are expected to adopt `cigen` templates directly and use Nx config files (project.json files, nx.json)
+* Automatic migration from existing YAML – teams are expected to adopt `cigen` templates directly and use workspace config files (`turbo.json`, package manifests)
 
 ---
 

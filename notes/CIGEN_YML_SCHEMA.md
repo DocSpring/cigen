@@ -16,7 +16,7 @@ CIGen looks for configuration in this order:
 # Project metadata (optional)
 project:
   name: string
-  type: nx | turborepo | default # Monorepo type detection
+  type: turborepo | default # Monorepo type detection
 
 # Provider configuration (optional)
 providers:
@@ -123,7 +123,7 @@ project:
   name: string
 
   # Project type for special handling
-  type: nx | turborepo | default
+  type: turborepo | default
 
   # Default runner for all jobs (optional)
   default_runner: string

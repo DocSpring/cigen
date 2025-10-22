@@ -29,3 +29,11 @@
 - Hashing uses `git ls-files` to gather tracked files and de-dupes shared patterns across groups
 - Each job hash also fingerprints the canonical job definition and workflow metadata, so config-only changes bust caches
 - GitHub provider emits a single CLI call (`./.cigen/bin/cigen hash --job ...`) instead of inlining pattern lists per job
+
+## Current Status (January 2025)
+
+- GitHub Actions is now generated via the `cigen-provider-github` plugin. CircleCI support has not yet been ported onto the plugin system.
+- The CI pipeline builds `cigen` once (`build_cigen` job) and shares the binary across fmt/clippy/test for skip-cache hashing.
+- Skip cache works in GitHub Actions via `actions/cache`; the preflight hook is still a TODO for cross-provider reuse.
+- The prior workspace-specific integration has been removed; future workspace awareness will come from Turborepo metadata once the module system lands.
+- Plugin manager handles spawn/handshake/send/receive, but plugin discovery and detect/plan phases remain stubs.

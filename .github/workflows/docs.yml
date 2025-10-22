@@ -35,8 +35,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download cigen binary
@@ -149,8 +154,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download cigen binary
@@ -226,8 +236,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download cigen binary

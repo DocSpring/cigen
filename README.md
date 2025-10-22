@@ -1,28 +1,25 @@
 # CIGen
 
-CIGen generates CI configuration from a small set of reusable, provider-agnostic files. It currently targets CircleCI and focuses on correctness, validation, and convention-over-configuration.
+CIGen generates CI configuration from reusable, provider-agnostic files. The project is undergoing a major migration to a Terraform-style plugin architecture: the new Rust core spawns provider binaries over a length-prefixed stdio transport, and those plugins emit provider-specific YAML.
 
-The tool can generate both static CircleCI configs and setup/dynamic configs. The CLI includes utilities for validation, graph visualization, and template-based multi-output generation.
+Today the GitHub Actions provider plugin powers our own CI (`cargo run -- generate --file .cigen`), while the legacy CircleCI emitter is being rebuilt on top of the same plugin system. The CLI still provides the templating, schema validation, and hashing utilities that powered the earlier monolithic implementation.
 
 ## Features (Current)
 
-- CircleCI provider support (config generation and validation)
-- Rust implementation for reliability and performance
-- Template-based multi-output generation (Jinja-like via MiniJinja)
-- Built-in defaults for package/version detection (extensible via YAML)
-- Package installation step generation and job deduplication
-- Basic automatic cache step injection when `job.cache` is declared
-- Architecture variants per job (e.g., `build_amd64`, `build_arm64`)
-- Advanced git checkout: shallow clone by default with configurable clone/fetch options, host key scanning, and path overrides
-- Descriptive error messages and schema/data validation ([miette], JSON Schema)
-- Opt-in Docker builds with a single BASE_HASH and image DAG
+- Plugin manager (`src/plugin/`) with framing helpers, handshake workflow, and async request batching
+- GitHub Actions provider plugin (`plugins/provider-github`) that generates the workflows under `.github/workflows/`
+- Source file grouping and job-hash based skipping backed by `actions/cache`
+- Template-based multi-output generation (MiniJinja) for additional artefacts
+- Rich schema validation using JSON Schema + miette diagnostics
+- Command-line utilities: `cigen generate`, `cigen hash`, and split-config loader (`.cigen/`)
 
 ## Not Yet Implemented / In Progress
 
-- GitHub Actions and other providers
-- Persistent job-status cache for skipping jobs across runs
-- OR-dependencies and approval-status patching via APIs
-- Self-hosted runner-specific optimizations and resource-class mapping
+- Reintroducing CircleCI (and additional providers) as standalone plugins
+- Detect/plan phases that share facts across plugins (currently stubbed)
+- Persistent work-signature storage feeding a real preflight hook
+- Registry/lockfile support for third-party plugins
+- Turborepo-aware project graph ingestion (replacing the previous workspace-specific focus)
 
 ## Why did we build this?
 
@@ -36,9 +33,9 @@ We had built our own internal CI config generation system in Ruby, but it had st
 
 `cigen` simplifies CI/CD configuration management by:
 
-- Generating CI pipeline configurations from reusable templates
+- Generating pipelines from reusable templates and structured config (`.cigen/` split config)
 - Validating configuration (schema + data-level) with helpful spans
-- Emitting native CircleCI 2.1 YAML, including workflows, jobs, and commands
+- Emitting provider-native YAML through pluggable emitters (GitHub Actions today, CircleCI next)
 
 ## Philosophy
 
@@ -50,17 +47,13 @@ We automatically add a highly-optimized git checkout step to the beginning of ea
 
 #### Job skipping
 
-The codebase contains an initial scaffold for job skipping using a source-file hash and a local marker file. This is experimental and not yet wired to a persistent cache backend, so it does not skip across separate runs. A robust, persistent job-status cache is planned.
+Jobs that declare `source_files` automatically receive a skip cache flow. On GitHub Actions this uses `cigen hash` plus `actions/cache`; jobs exit early when nothing changed and record a marker when they succeed. The preflight hook and remote signature storage are still planned so that other providers can share the same mechanism.
 
 #### Cross-platform CI config
 
 CI providers often solve the same problem in different ways. e.g. to avoid duplication in your config, GitHub actions has "reusable workflows" while CircleCI supports "commands".
 
-`cigen` takes the best ideas from each provider and supports our own set of core features. You write your config once, then we compile it to use your chosen CI provider's native features. This avoids vendor lock-in and makes it easier to migrate to other CI providers.
-
-#### You can still use native CI provider features
-
-You can still use native CircleCI features (e.g., orbs). Other providers will come later; unsupported features are validated with clear errors.
+`cigen` takes the best ideas from each provider and supports our own set of core features. You write your config once, then we compile it to use your chosen CI provider's native features. As more providers move onto the plugin system, migrations become a matter of switching emitters instead of rewriting YAML.
 
 ---
 

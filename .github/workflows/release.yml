@@ -33,8 +33,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -144,13 +149,18 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           fetch-tags: true
+          fetch-depth: 0
       - name: Download cigen binary
         uses: actions/download-artifact@v4
         with:
@@ -255,8 +265,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -350,11 +365,11 @@ jobs:
         if: steps.job_skip_cache.outputs.cache-hit != 'true'
       - uses: softprops/action-gh-release@v2
         with:
-          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+          draft: false
           body_path: changelog.md
+          prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
           name: CIGen v${{ env.RELEASE_VERSION }}
           tag_name: ${{ env.RELEASE_TAG }}
-          draft: false
           files: |
             artifacts/**/*.tar.gz
             artifacts/**/*.sha256

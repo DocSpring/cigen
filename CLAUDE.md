@@ -97,7 +97,7 @@ Skipping or reordering these steps is not acceptable—they keep our feedback lo
 
 ## Project Overview
 
-`cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It integrates with Nx monorepo tooling and supports multiple CI providers starting with CircleCI.
+`cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It is migrating to a plugin-based architecture that currently targets GitHub Actions for our self-hosting work, with CircleCI support being rebuilt on top of the same system.
 
 See `PRD.txt` for the complete product requirements and specifications.
 
@@ -352,7 +352,7 @@ You can also reference `/Users/ndbroadbent/code/docspring/lib/tools/generate_cir
 
 ## Use Our Own Tool
 
-The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We must have `nx.json` and `project.json` file in the root of the repository, a `.cigen/` directory, and a `.cigen/config.yml` file.
+The goal is to eventually become 'self-hosting' for our own CI pipeline on GitHub Actions. We already keep `turbo.json` and other workspace metadata in the repo alongside `.cigen/` so that the CLI can evolve toward Turborepo-aware features.
 
 We will start by hand-writing our own GitHub Actions workflow files, but eventually migrate to using `cigen` to generate our CI configuration.
 
@@ -395,6 +395,6 @@ We MUST use split config for large configuration sections:
 
 ## Key Concepts
 
-- The tool reads Nx `project.json` files to understand project dependencies and file groups
+- The tool no longer relies on the old workspace-specific metadata that was tied to previous experiments. Future monorepo integrations will be driven by the plugin system (e.g., Turborepo) once the orchestration layer is complete.
 - Templates and configuration live in the `.cigen/` directory
 - The tool supports plugin-based cache backends and CI provider emitters

@@ -4,10 +4,6 @@ source_files:
   - "@tests"
   - "@examples"
 
-requires:
-  - fmt
-  - clippy
-
 steps:
   - run:
       name: Run tests

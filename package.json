@@ -4,13 +4,11 @@
   "description": "A blazing-fast Rust CLI that compiles template-based definitions into complete CI pipelines",
   "private": true,
   "scripts": {
-    "nx": "nx",
     "format": "pnpm exec ultracite fix && pnpm exec prettier --write '**/*.{yml,yaml,md}'",
     "check": "pnpm exec ultracite check && pnpm exec prettier --check '**/*.{yml,yaml,md}'"
   },
   "devDependencies": {
     "lefthook": "^1.12.2",
-    "nx": "21.2.2",
     "@biomejs/biome": "2.2.2",
     "prettier": "^3.6.2",
     "ultracite": "^5.2.10"

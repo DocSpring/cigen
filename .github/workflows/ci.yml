@@ -43,8 +43,8 @@ jobs:
           cp target/release/cigen .cigen/bin/cigen
       - uses: actions/upload-artifact@v4
         with:
-          path: .cigen/bin/cigen
           name: cigen-bin
+          path: .cigen/bin/cigen
   clippy:
     runs-on: ubuntu-latest
     container:
@@ -64,8 +64,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download cigen binary
@@ -140,8 +145,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download cigen binary
@@ -202,8 +212,6 @@ jobs:
     container:
       image: rust:latest
     needs:
-      - fmt
-      - clippy
       - build_cigen
     steps:
       - name: Prepare Node runtime for actions
@@ -218,8 +226,13 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           set -e
-          sudo apt-get update
-          sudo apt-get install -y protobuf-compiler
+          if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y protobuf-compiler
+          else
+            apt-get update
+            apt-get install -y protobuf-compiler
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Download cigen binary

@@ -61,8 +61,6 @@ pub struct ProjectConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectType {
-    /// Nx monorepo
-    Nx,
     /// Turborepo monorepo
     Turborepo,
     /// Default/standard project
@@ -182,7 +180,7 @@ jobs:
         let yaml = r#"
 project:
   name: myapp
-  type: nx
+  type: turborepo
 
 jobs:
   test:
@@ -194,7 +192,7 @@ jobs:
         assert_eq!(config.project.as_ref().unwrap().name, "myapp");
         assert_eq!(
             config.project.as_ref().unwrap().r#type,
-            Some(ProjectType::Nx)
+            Some(ProjectType::Turborepo)
         );
     }
 
