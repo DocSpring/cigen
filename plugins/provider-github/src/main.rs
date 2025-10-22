@@ -787,9 +787,7 @@ fn install_protobuf_step() -> Mapping {
     );
     step.insert(
         Value::String("run".into()),
-        Value::String(
-            "set -e\nsudo apt-get update\nsudo apt-get install -y protobuf-compiler\n".into(),
-        ),
+        Value::String("set -e\napt-get update\napt-get install -y protobuf-compiler\n".into()),
     );
     step
 }

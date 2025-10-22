@@ -84,6 +84,17 @@ Fast local feedback depends on using the same runner image and artifact flow as 
 
 Rebuild the runner image whenever dependencies change (e.g., adding packages to `docker/ci-runner/Dockerfile`), then rerun `act` to validate the workflows end-to-end.
 
+### Required Local Validation Workflow
+
+You **must** follow this exact sequence whenever you touch CI-related code or generated workflows:
+
+1. Run the job's core command locally (e.g., `cargo fmt -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, or `cargo test --workspace`). Pick the job that will exercise your change.
+2. Run `task ci` and ensure it passes with no warnings.
+3. Re-run that same job via `act` (`timeout 600 act ... -j <job-name>`), using the local runner image so we mirror GitHub Actions.
+4. Only after the above succeed may you commit and push to GitHub.
+
+Skipping or reordering these steps is not acceptable—they keep our feedback loop fast and avoid 10+ minute CI retries.
+
 ## Project Overview
 
 `cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It integrates with Nx monorepo tooling and supports multiple CI providers starting with CircleCI.
