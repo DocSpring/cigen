@@ -1,4 +1,6 @@
-image: ubuntu-latest
+image: rust:latest
+
+source_files: "@docs"
 
 requires:
   - ci_gate

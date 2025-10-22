@@ -20,6 +20,8 @@ name: DOCS
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: rust:latest
     needs:
       - ci_gate
     steps:
@@ -49,6 +51,16 @@ jobs:
         with:
           name: cigen-bin
           path: .cigen/bin
+        continue-on-error: true
+      - name: Ensure cigen binary
+        run: |
+          set -e
+          if [ ! -x .cigen/bin/cigen ]; then
+            echo 'cigen binary not found; building from source'
+            cargo build --release --bin cigen
+            mkdir -p .cigen/bin
+            cp target/release/cigen .cigen/bin/cigen
+          fi
       - name: Prepare cigen binary
         run: |
           set -e
@@ -163,59 +175,11 @@ jobs:
           fi
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Download cigen binary
-        uses: actions/download-artifact@v4
-        with:
-          name: cigen-bin
-          path: .cigen/bin
-      - name: Prepare cigen binary
-        run: |
-          set -e
-          mkdir -p .cigen/bin
-          chmod +x .cigen/bin/cigen
-      - name: Compute source hash
-        id: compute_hash
-        run: |
-          set -euo pipefail
-          mkdir -p .cigen/skip-cache
-          mkdir -p .cigen/cache
-          ./.cigen/bin/cigen hash \
-            --job ci_gate \
-            --config .cigen \
-            --base-dir . \
-            --output job_hash \
-            --cache .cigen/cache/file-hashes.json
-      - name: Restore skip cache
-        id: job_skip_cache
-        uses: actions/cache@v4
-        with:
-          path: .cigen/skip-cache/ci_gate
-          key: job-skip-${ runner.os }-ci_gate-${ steps.compute_hash.outputs.job_hash }
-          restore-keys: job-skip-${ runner.os }-ci_gate-
-        if: ${{ env.ACT != 'true' }}
-      - name: Skip job (cached)
-        if: steps.job_skip_cache.outputs.cache-hit == 'true'
-        run: echo 'Job cache hit; skipping remaining steps.' && exit 0
       - uses: actions/github-script@v7
         with:
           script: |
             const wait = require('./.github/wait-for-checks.js');
             await wait({ github, context, core, checks: ["test"] });
-        if: steps.job_skip_cache.outputs.cache-hit != 'true'
-      - name: Record job completion
-        if: success() && steps.job_skip_cache.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          HASH="${JOB_HASH}"
-          if [ -z "$HASH" ]; then
-            echo 'JOB_HASH missing' >&2
-            exit 1
-          fi
-          MARKER=.cigen/skip-cache/ci_gate/$HASH
-          mkdir -p "$(dirname "$MARKER")"
-          date > "$MARKER"
-        env:
-          JOB_HASH: ${{ steps.compute_hash.outputs.job_hash }}
   deploy:
     environment:
       name: github-pages
@@ -245,52 +209,4 @@ jobs:
           fi
       - name: Checkout repository
         uses: actions/checkout@v4
-      - name: Download cigen binary
-        uses: actions/download-artifact@v4
-        with:
-          name: cigen-bin
-          path: .cigen/bin
-      - name: Prepare cigen binary
-        run: |
-          set -e
-          mkdir -p .cigen/bin
-          chmod +x .cigen/bin/cigen
-      - name: Compute source hash
-        id: compute_hash
-        run: |
-          set -euo pipefail
-          mkdir -p .cigen/skip-cache
-          mkdir -p .cigen/cache
-          ./.cigen/bin/cigen hash \
-            --job deploy \
-            --config .cigen \
-            --base-dir . \
-            --output job_hash \
-            --cache .cigen/cache/file-hashes.json
-      - name: Restore skip cache
-        id: job_skip_cache
-        uses: actions/cache@v4
-        with:
-          path: .cigen/skip-cache/deploy
-          key: job-skip-${ runner.os }-deploy-${ steps.compute_hash.outputs.job_hash }
-          restore-keys: job-skip-${ runner.os }-deploy-
-        if: ${{ env.ACT != 'true' }}
-      - name: Skip job (cached)
-        if: steps.job_skip_cache.outputs.cache-hit == 'true'
-        run: echo 'Job cache hit; skipping remaining steps.' && exit 0
       - uses: actions/deploy-pages@v4
-        if: steps.job_skip_cache.outputs.cache-hit != 'true'
-      - name: Record job completion
-        if: success() && steps.job_skip_cache.outputs.cache-hit != 'true'
-        run: |
-          set -e
-          HASH="${JOB_HASH}"
-          if [ -z "$HASH" ]; then
-            echo 'JOB_HASH missing' >&2
-            exit 1
-          fi
-          MARKER=.cigen/skip-cache/deploy/$HASH
-          mkdir -p "$(dirname "$MARKER")"
-          date > "$MARKER"
-        env:
-          JOB_HASH: ${{ steps.compute_hash.outputs.job_hash }}

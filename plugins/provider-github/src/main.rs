@@ -468,7 +468,8 @@ fn render_job(
     }
 
     tracing::debug!("Job {} source_files: {:?}", job.id, job.source_files);
-    let skip_flow = if job.id == "build_cigen" {
+    let has_source_files = !job.source_files.is_empty();
+    let skip_flow = if job.id == "build_cigen" || !has_source_files {
         None
     } else {
         Some(build_skip_flow(&job.id))
@@ -503,6 +504,7 @@ fn render_job(
 
     if skip_flow.is_some() && job.id != "build_cigen" {
         steps.push(Value::Mapping(download_cigen_step()));
+        steps.push(Value::Mapping(ensure_cigen_binary_step()));
         steps.push(Value::Mapping(make_cigen_executable_step()));
     }
 
@@ -739,6 +741,26 @@ fn download_cigen_step() -> Mapping {
         Value::String(".cigen/bin".into()),
     );
     step.insert(Value::String("with".into()), Value::Mapping(with));
+    step.insert(Value::String("continue-on-error".into()), Value::Bool(true));
+    step
+}
+
+fn ensure_cigen_binary_step() -> Mapping {
+    let mut step = Mapping::new();
+    step.insert(
+        Value::String("name".into()),
+        Value::String("Ensure cigen binary".into()),
+    );
+    let script = concat!(
+        "set -e\n",
+        "if [ ! -x .cigen/bin/cigen ]; then\n",
+        "  echo 'cigen binary not found; building from source'\n",
+        "  cargo build --release --bin cigen\n",
+        "  mkdir -p .cigen/bin\n",
+        "  cp target/release/cigen .cigen/bin/cigen\n",
+        "fi\n",
+    );
+    step.insert(Value::String("run".into()), Value::String(script.into()));
     step
 }
 

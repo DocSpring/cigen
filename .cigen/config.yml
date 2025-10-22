@@ -23,5 +23,5 @@ source_file_groups:
 
   docs:
     - "*.md"
-    - "docs/**/*.md"
+    - "docs/**/*"
     - "notes/**/*.md"

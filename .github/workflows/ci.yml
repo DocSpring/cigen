@@ -43,8 +43,8 @@ jobs:
           cp target/release/cigen .cigen/bin/cigen
       - uses: actions/upload-artifact@v4
         with:
-          name: cigen-bin
           path: .cigen/bin/cigen
+          name: cigen-bin
   clippy:
     runs-on: ubuntu-latest
     container:
@@ -78,6 +78,16 @@ jobs:
         with:
           name: cigen-bin
           path: .cigen/bin
+        continue-on-error: true
+      - name: Ensure cigen binary
+        run: |
+          set -e
+          if [ ! -x .cigen/bin/cigen ]; then
+            echo 'cigen binary not found; building from source'
+            cargo build --release --bin cigen
+            mkdir -p .cigen/bin
+            cp target/release/cigen .cigen/bin/cigen
+          fi
       - name: Prepare cigen binary
         run: |
           set -e
@@ -159,6 +169,16 @@ jobs:
         with:
           name: cigen-bin
           path: .cigen/bin
+        continue-on-error: true
+      - name: Ensure cigen binary
+        run: |
+          set -e
+          if [ ! -x .cigen/bin/cigen ]; then
+            echo 'cigen binary not found; building from source'
+            cargo build --release --bin cigen
+            mkdir -p .cigen/bin
+            cp target/release/cigen .cigen/bin/cigen
+          fi
       - name: Prepare cigen binary
         run: |
           set -e
@@ -240,6 +260,16 @@ jobs:
         with:
           name: cigen-bin
           path: .cigen/bin
+        continue-on-error: true
+      - name: Ensure cigen binary
+        run: |
+          set -e
+          if [ ! -x .cigen/bin/cigen ]; then
+            echo 'cigen binary not found; building from source'
+            cargo build --release --bin cigen
+            mkdir -p .cigen/bin
+            cp target/release/cigen .cigen/bin/cigen
+          fi
       - name: Prepare cigen binary
         run: |
           set -e
