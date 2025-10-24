@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_yaml::Value;
 use std::collections::HashMap;
 
 /// Job step
@@ -13,6 +14,17 @@ pub enum Step {
 
     /// Run step with options (matches { run: { name, command } })
     RunWithOptions { run: RunStepOptions },
+
+    /// CircleCI restore_cache step
+    RestoreCache {
+        restore_cache: RestoreCacheDefinition,
+    },
+
+    /// CircleCI save_cache step
+    SaveCache { save_cache: SaveCacheDefinition },
+
+    /// Any other step type - preserved as raw YAML value
+    Custom(Value),
 }
 
 /// Run step options (for complex run steps)
@@ -58,6 +70,41 @@ pub struct Artifact {
     /// Retention period (e.g., "7d", "30d")
     #[serde(default)]
     pub retention: Option<String>,
+}
+
+/// restore_cache step options
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RestoreCacheDefinition {
+    #[serde(default)]
+    pub name: Option<String>,
+
+    #[serde(default)]
+    pub key: Option<String>,
+
+    #[serde(default)]
+    pub keys: Vec<String>,
+
+    #[serde(default)]
+    pub restore_keys: Vec<String>,
+
+    #[serde(default, flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+/// save_cache step options
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SaveCacheDefinition {
+    #[serde(default)]
+    pub name: Option<String>,
+
+    #[serde(default)]
+    pub key: Option<String>,
+
+    #[serde(default)]
+    pub paths: Vec<String>,
+
+    #[serde(default, flatten)]
+    pub extra: HashMap<String, Value>,
 }
 
 #[cfg(test)]
@@ -124,5 +171,40 @@ retention: 7d
         let artifact: Artifact = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(artifact.path, "dist/**");
         assert_eq!(artifact.retention, Some("7d".to_string()));
+    }
+
+    #[test]
+    fn test_restore_cache_step() {
+        let yaml = r#"
+restore_cache:
+  name: restore gems
+  keys:
+    - gems-v1
+"#;
+
+        let step: Step = serde_yaml::from_str(yaml).unwrap();
+        match step {
+            Step::RestoreCache { restore_cache } => {
+                assert_eq!(restore_cache.name.as_deref(), Some("restore gems"));
+                assert_eq!(restore_cache.keys, vec!["gems-v1"]);
+            }
+            _ => panic!("Expected RestoreCache"),
+        }
+    }
+
+    #[test]
+    fn test_custom_step() {
+        let yaml = r#"
+store_artifacts:
+  path: log
+"#;
+
+        let step: Step = serde_yaml::from_str(yaml).unwrap();
+        match step {
+            Step::Custom(value) => {
+                assert!(matches!(value, Value::Mapping(_)));
+            }
+            _ => panic!("Expected Custom"),
+        }
     }
 }

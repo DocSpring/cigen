@@ -531,6 +531,7 @@ fn render_job(
                 step::StepType::RestoreCache(_) | step::StepType::SaveCache(_) => {
                     continue;
                 }
+                step::StepType::Custom(_) => continue,
             };
             if let Some(condition) = skip_condition {
                 apply_condition(&mut rendered, condition);

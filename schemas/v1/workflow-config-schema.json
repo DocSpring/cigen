@@ -49,6 +49,13 @@
           "additionalProperties": false
         }
       ]
+    },
+    "run_when": {
+      "type": "array",
+      "description": "Conditions that must be satisfied for this workflow to run",
+      "items": {
+        "$ref": "./definitions.json#/definitions/workflowCondition"
+      }
     }
   },
   "additionalProperties": false

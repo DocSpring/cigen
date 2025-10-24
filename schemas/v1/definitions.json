@@ -276,6 +276,43 @@
           "additionalProperties": false
         }
       }
+    },
+    "workflowCondition": {
+      "type": "object",
+      "description": "Condition controlling when a workflow runs",
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Restrict this condition to a specific provider"
+        },
+        "parameter": {
+          "type": "string",
+          "description": "Pipeline parameter name to evaluate"
+        },
+        "variable": {
+          "type": "string",
+          "description": "Pipeline variable name to evaluate"
+        },
+        "env": {
+          "type": "string",
+          "description": "Environment variable to evaluate"
+        },
+        "expression": {
+          "type": "string",
+          "description": "Provider-specific expression evaluated to determine workflow execution"
+        },
+        "equals": {
+          "description": "Value that the parameter/variable/env must equal",
+          "type": ["boolean", "string", "number", "object", "array"]
+        }
+      },
+      "additionalProperties": false,
+      "anyOf": [
+        { "required": ["parameter"] },
+        { "required": ["variable"] },
+        { "required": ["env"] },
+        { "required": ["expression"] }
+      ]
     }
   }
 }

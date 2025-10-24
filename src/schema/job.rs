@@ -1,9 +1,44 @@
-use serde::de::Deserializer;
+use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 use std::collections::HashMap;
 
 use super::step::{Artifact, Step};
+
+/// Package requirement for a job
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PackageSpec {
+    /// Logical package name (e.g., ruby, node)
+    pub name: String,
+
+    /// Optional package manager override
+    #[serde(default)]
+    pub manager: Option<String>,
+
+    /// Directory to install or use the package manager from
+    #[serde(default)]
+    pub path: Option<String>,
+
+    /// Explicit version requirement
+    #[serde(default)]
+    pub version: Option<String>,
+
+    /// Preserve any additional keys for provider-specific behaviour
+    #[serde(default, flatten)]
+    pub extra: HashMap<String, Value>,
+}
+
+impl PackageSpec {
+    pub fn from_name(name: String) -> Self {
+        Self {
+            name,
+            manager: None,
+            path: None,
+            version: None,
+            extra: HashMap::new(),
+        }
+    }
+}
 
 /// Job definition
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -17,16 +52,16 @@ pub struct Job {
     pub matrix: HashMap<String, MatrixDimension>,
 
     /// Package managers to use
-    #[serde(default)]
-    pub packages: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_packages")]
+    pub packages: Vec<PackageSpec>,
 
     /// Service containers
     #[serde(default)]
     pub services: Vec<String>,
 
     /// Environment variables
-    #[serde(default)]
-    pub env: HashMap<String, String>,
+    #[serde(default, alias = "env")]
+    pub environment: HashMap<String, String>,
 
     /// Checkout configuration overrides (applied to the auto checkout step)
     #[serde(default)]
@@ -71,6 +106,37 @@ pub struct Job {
     /// Workflow this job belongs to (set by loader)
     #[serde(default, skip_serializing)]
     pub workflow: Option<String>,
+}
+
+fn deserialize_packages<'de, D>(deserializer: D) -> Result<Vec<PackageSpec>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<Value>::deserialize(deserializer)?;
+    match value {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::String(name)) => Ok(vec![PackageSpec::from_name(name)]),
+        Some(Value::Sequence(seq)) => {
+            let mut specs = Vec::new();
+            for item in seq {
+                specs.push(value_to_package(item).map_err(de::Error::custom)?);
+            }
+            Ok(specs)
+        }
+        Some(Value::Mapping(map)) => value_to_package(Value::Mapping(map))
+            .map(|spec| vec![spec])
+            .map_err(de::Error::custom),
+        Some(other) => Err(de::Error::custom(format!(
+            "Unsupported packages format: {other:?}"
+        ))),
+    }
+}
+
+fn value_to_package(value: Value) -> Result<PackageSpec, serde_yaml::Error> {
+    match value {
+        Value::String(name) => Ok(PackageSpec::from_name(name)),
+        other => serde_yaml::from_value(other),
+    }
 }
 
 fn deserialize_source_files<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
@@ -167,8 +233,37 @@ steps:
 "#;
 
         let job: Job = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(job.packages, vec!["ruby"]);
+        assert_eq!(job.packages.len(), 1);
+        assert_eq!(job.packages[0].name, "ruby");
         assert_eq!(job.steps.len(), 1);
+    }
+
+    #[test]
+    fn test_packages_string() {
+        let yaml = r#"
+packages: ruby
+steps: []
+"#;
+
+        let job: Job = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(job.packages.len(), 1);
+        assert_eq!(job.packages[0].name, "ruby");
+    }
+
+    #[test]
+    fn test_packages_objects() {
+        let yaml = r#"
+packages:
+  - name: node
+    path: docs
+  - ruby
+"#;
+
+        let job: Job = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(job.packages.len(), 2);
+        assert_eq!(job.packages[0].name, "node");
+        assert_eq!(job.packages[0].path.as_deref(), Some("docs"));
+        assert_eq!(job.packages[1].name, "ruby");
     }
 
     #[test]
@@ -238,10 +333,11 @@ trigger:
 "#;
 
         let job: Job = serde_yaml::from_str(yaml).unwrap();
-        if let Some(JobTrigger::Complex(trigger)) = job.trigger {
-            assert_eq!(trigger.tags, Some("v*".to_string()));
-        } else {
-            panic!("Expected complex trigger");
+        match job.trigger {
+            Some(JobTrigger::Complex(trigger)) => {
+                assert_eq!(trigger.tags.as_deref(), Some("v*"));
+            }
+            other => panic!("Unexpected trigger {:?}", other),
         }
     }
 }

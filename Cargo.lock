@@ -353,6 +353,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "cigen-provider-circleci"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cigen",
+ "clap",
+ "prost",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "thiserror",
+ "tonic",
+ "tonic-prost",
+ "tracing",
+ "tracing-subscriber",
+ "yaml-spanned",
+]
+
+[[package]]
 name = "cigen-provider-github"
 version = "0.1.0"
 dependencies = [

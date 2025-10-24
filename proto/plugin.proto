@@ -76,11 +76,31 @@ message CigenSchema {
   repeated OutputConfig outputs = 7;
   repeated WorkflowDefinition workflows = 8;
   map<string, StringList> source_file_groups = 9;
+  map<string, CommandDefinition> commands = 10;
+  map<string, string> provider_config = 11;
+  string raw_config_yaml = 12;
 }
 
 message WorkflowDefinition {
   string id = 1;
   string yaml = 2;
+  repeated WorkflowCondition run_when = 3;
+}
+
+message WorkflowCondition {
+  WorkflowConditionKind kind = 1;
+  string key = 2;
+  string equals_yaml = 3;
+  string provider = 4;
+  string expression = 5;
+}
+
+enum WorkflowConditionKind {
+  WORKFLOW_CONDITION_KIND_UNSPECIFIED = 0;
+  WORKFLOW_CONDITION_KIND_PARAMETER = 1;
+  WORKFLOW_CONDITION_KIND_VARIABLE = 2;
+  WORKFLOW_CONDITION_KIND_ENV = 3;
+  WORKFLOW_CONDITION_KIND_EXPRESSION = 4;
 }
 
 message StringList {
@@ -106,6 +126,8 @@ message JobDefinition {
   map<string, string> checkout = 11;   // Checkout overrides (serialized values)
   map<string, string> extra = 12;      // Additional metadata (serialized values)
   repeated string source_files = 13;   // Expanded source file patterns
+  repeated PackageSpec package_specs = 14;
+  repeated string services = 15;       // Declared service containers
 }
 
 message MatrixValue {
@@ -118,6 +140,7 @@ message Step {
     UsesStep uses = 2;
     RestoreCacheStep restore_cache = 3;
     SaveCacheStep save_cache = 4;
+    CustomStep custom = 5;
   }
 }
 
@@ -138,13 +161,21 @@ message UsesStep {
 message RestoreCacheStep {
   string name = 1;
   string key = 2;
-  repeated string restore_keys = 3;
+  repeated string keys = 3;
+  repeated string restore_keys = 4;
+  map<string, string> extra = 5;
 }
 
 message SaveCacheStep {
   string name = 1;
   string key = 2;
   repeated string paths = 3;
+  map<string, string> extra = 4;
+}
+
+message CustomStep {
+  string kind = 1;
+  string yaml = 2;
 }
 
 message SkipConfig {
@@ -161,6 +192,28 @@ message CacheDefinition {
 
 message RunnerDefinition {
   map<string, string> provider_config = 1;  // Provider-specific config
+}
+
+message PackageSpec {
+  string name = 1;
+  string manager = 2;
+  string path = 3;
+  string version = 4;
+  map<string, string> extra = 5;
+}
+
+message CommandDefinition {
+  string description = 1;
+  map<string, CommandParameter> parameters = 2;
+  repeated Step steps = 3;
+  map<string, string> extra = 4;
+}
+
+message CommandParameter {
+  string type = 1;
+  string description = 2;
+  string default_yaml = 3;
+  map<string, string> extra = 4;
 }
 
 message OutputConfig {

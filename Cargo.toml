@@ -2,6 +2,7 @@
 members = [
     ".",
     "plugins/provider-github",
+    "plugins/provider-circleci",
 ]
 resolver = "2"
 

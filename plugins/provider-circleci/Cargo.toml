@@ -1,0 +1,24 @@
+[package]
+name = "cigen-provider-circleci"
+version = "0.1.0"
+edition = "2024"
+description = "CircleCI provider plugin for cigen"
+license = "MIT"
+authors = ["DocSpring Inc"]
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { version = "4.5.41", features = ["derive"] }
+serde = { workspace = true }
+serde_yaml = "0.9.34"
+tonic = { workspace = true }
+prost = { workspace = true }
+tonic-prost = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
+serde_json = { workspace = true }
+thiserror = "2.0.12"
+yaml-spanned = "0.0.2"
+
+[dependencies.cigen]
+path = "../../"

@@ -1,5 +1,7 @@
 FROM rust:latest
 
+ARG CIGEN_VERSION=0.1.0
+
 # Install system dependencies required for GitHub Actions runners and cigen builds.
 # We keep this minimal while covering:
 #   - Node/npm for JavaScript-based actions (actions/cache, download/upload-artifact)
@@ -25,6 +27,27 @@ RUN set -euxo pipefail \
 # Enable Corepack (bundled with modern Node) so pnpm/yarn are available without
 # additional installs in individual jobs.
 RUN corepack enable
+
+ENV CIGEN_PLUGIN_DIR=/usr/local/lib/cigen/plugins
+
+RUN set -euxo pipefail; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64) asset_suffix="linux_amd64" ;; \
+      aarch64) asset_suffix="linux_arm64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    tarball="cigen_${CIGEN_VERSION}_${asset_suffix}.tar.gz"; \
+    curl -fsSL -o "/tmp/${tarball}" "https://github.com/DocSpring/cigen/releases/download/v${CIGEN_VERSION}/${tarball}"; \
+    curl -fsSL -o "/tmp/${tarball}.sha256" "https://github.com/DocSpring/cigen/releases/download/v${CIGEN_VERSION}/${tarball}.sha256"; \
+    (cd /tmp && sha256sum -c "${tarball}.sha256"); \
+    mkdir -p /tmp/cigen-dist; \
+    tar -xzf "/tmp/${tarball}" -C /tmp/cigen-dist; \
+    install -m0755 /tmp/cigen-dist/cigen /usr/local/bin/cigen; \
+    mkdir -p "$CIGEN_PLUGIN_DIR"; \
+    install -m0755 /tmp/cigen-dist/cigen-provider-circleci "$CIGEN_PLUGIN_DIR"/cigen-provider-circleci; \
+    install -m0755 /tmp/cigen-dist/cigen-provider-github "$CIGEN_PLUGIN_DIR"/cigen-provider-github; \
+    rm -rf /tmp/${tarball} /tmp/${tarball}.sha256 /tmp/cigen-dist
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \

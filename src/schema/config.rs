@@ -1,7 +1,11 @@
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
+use serde_yaml::{Mapping, Value};
 use std::collections::HashMap;
 
+use super::command::CommandDefinition;
 use super::job::Job;
+use super::workflow::{WorkflowConditionKind, WorkflowConfig};
 
 /// Main cigen.yml configuration
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -25,6 +29,10 @@ pub struct CigenConfig {
     /// Job definitions (required)
     pub jobs: HashMap<String, Job>,
 
+    /// Reusable command definitions
+    #[serde(default)]
+    pub commands: HashMap<String, CommandDefinition>,
+
     /// Cache definitions (optional, overrides defaults)
     #[serde(default)]
     pub caches: HashMap<String, CacheDefinition>,
@@ -39,7 +47,11 @@ pub struct CigenConfig {
 
     /// Workflow metadata (triggers, permissions, etc.) keyed by workflow id
     #[serde(default)]
-    pub workflows: HashMap<String, serde_yaml::Value>,
+    pub workflows: HashMap<String, WorkflowConfig>,
+
+    /// Raw merged configuration (for provider-specific logic)
+    #[serde(skip)]
+    pub raw: Mapping,
 }
 
 /// Project configuration
@@ -107,7 +119,8 @@ pub struct RunnerDefinition {
 impl CigenConfig {
     /// Load configuration from YAML string
     pub fn from_yaml(yaml: &str) -> anyhow::Result<Self> {
-        let config: CigenConfig = serde_yaml::from_str(yaml)?;
+        let mut config: CigenConfig = serde_yaml::from_str(yaml)?;
+        config.raw = extract_mapping(yaml)?;
         config.validate()?;
         Ok(config)
     }
@@ -137,6 +150,48 @@ impl CigenConfig {
             }
         }
 
+        let providers = self.get_providers();
+        for (workflow_id, workflow) in &self.workflows {
+            for condition in &workflow.run_when {
+                condition.validate().with_context(|| {
+                    format!(
+                        "Invalid condition in workflow '{}': {:?}",
+                        workflow_id, condition
+                    )
+                })?;
+                if matches!(condition.kind(), Some(WorkflowConditionKind::Expression))
+                    && condition
+                        .expression
+                        .as_ref()
+                        .map(|s| s.trim().is_empty())
+                        .unwrap_or(true)
+                {
+                    anyhow::bail!(
+                        "Workflow '{}' has an expression condition with an empty expression",
+                        workflow_id
+                    );
+                }
+
+                let target_providers: Vec<&str> =
+                    if let Some(provider) = condition.provider.as_deref() {
+                        vec![provider]
+                    } else {
+                        providers.clone()
+                    };
+
+                for provider in target_providers {
+                    if !provider_supports_condition(provider, condition.kind()) {
+                        anyhow::bail!(
+                            "Workflow '{}' uses a {:?} condition that is not supported by provider '{}'",
+                            workflow_id,
+                            condition.kind().unwrap_or(WorkflowConditionKind::Parameter),
+                            provider
+                        );
+                    }
+                }
+            }
+        }
+
         // TODO: Detect circular dependencies
         // TODO: Validate provider names
         // TODO: Validate runner references
@@ -151,6 +206,31 @@ impl CigenConfig {
             vec!["github", "circleci", "buildkite"]
         } else {
             self.providers.iter().map(|s| s.as_str()).collect()
+        }
+    }
+}
+
+fn provider_supports_condition(provider: &str, kind: Option<WorkflowConditionKind>) -> bool {
+    let kind = kind.unwrap_or(WorkflowConditionKind::Parameter);
+    match provider {
+        "circleci" => matches!(kind, WorkflowConditionKind::Parameter),
+        "github" => matches!(kind, WorkflowConditionKind::Expression),
+        "buildkite" => {
+            // Buildkite currently has no workflow condition support; fail explicitly.
+            false
+        }
+        _ => false,
+    }
+}
+
+fn extract_mapping(yaml: &str) -> anyhow::Result<Mapping> {
+    let value: Value = serde_yaml::from_str(yaml)?;
+    match value {
+        Value::Mapping(map) => Ok(map),
+        other => {
+            let mut map = Mapping::new();
+            map.insert(Value::String("root".into()), other);
+            Ok(map)
         }
     }
 }

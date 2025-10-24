@@ -218,6 +218,19 @@ This ensures we always get the latest compatible version and properly updates Ca
 
 **CRITICAL**: Keep files small and modular. As soon as a file approaches 200-300 lines, break it up into modules and smaller files. DO NOT wait for the user to remind you. Proactively refactor large files into:
 
+## Releases (GitHub + Docker)
+
+1. Update versions:
+   - `Cargo.toml`
+   - `plugins/provider-circleci/Cargo.toml`
+   - `plugins/provider-github/Cargo.toml`
+2. Run `cargo update -p cigen`.
+3. Commit the version bump and any release notes.
+4. Tag with `git tag vX.Y.Z` (push tag to trigger workflow) or trigger `.github/workflows/release.yml` manually.
+   - The workflow builds archives for macOS/Linux and publishes them via `softprops/action-gh-release`.
+   - It also builds/pushes `docspringcom/cigen:<version>` and `:latest` from the repository `Dockerfile`.
+5. Update `docker/ci-runner/Dockerfile` (if it depends on the version) and rebuild/push via `scripts/build-ci-runner.sh` + `docker push docspring/cigen-ci-runner:latest`.
+
 - Separate modules for distinct functionality
 - Helper functions in their own files
 - Traits and implementations in separate files

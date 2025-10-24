@@ -11,7 +11,8 @@ fn test_parse_minimal_example() {
     assert!(config.jobs.contains_key("test"));
 
     let test_job = &config.jobs["test"];
-    assert_eq!(test_job.packages, vec!["ruby"]);
+    assert_eq!(test_job.packages.len(), 1);
+    assert_eq!(test_job.packages[0].name, "ruby");
     assert_eq!(test_job.steps.len(), 1);
 }
 

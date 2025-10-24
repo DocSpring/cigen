@@ -1,10 +1,16 @@
 /// CIGen schema types for cigen.yml
 ///
 /// This module defines the data structures for parsing and validating cigen.yml configuration files.
+mod command;
 mod config;
 mod job;
 mod step;
+mod workflow;
 
+pub use command::{CommandDefinition, CommandParameter};
 pub use config::{CacheDefinition, CigenConfig, ProjectConfig, RunnerDefinition};
-pub use job::{Job, JobTrigger, MatrixDimension, SkipConditions};
-pub use step::{Artifact, RunStepOptions, Step, UsesStep};
+pub use job::{Job, JobTrigger, MatrixDimension, PackageSpec, SkipConditions};
+pub use step::{
+    Artifact, RestoreCacheDefinition, RunStepOptions, SaveCacheDefinition, Step, UsesStep,
+};
+pub use workflow::{WorkflowCondition, WorkflowConditionKind, WorkflowConfig};

@@ -38,7 +38,25 @@ pub fn generate_command(file: Option<String>, output: Option<String>) -> Result<
 
     println!("\nGenerated {} file(s):", result.files.len());
     for (path, content) in &result.files {
-        let full_path = output_dir.join(path);
+        let mut relative_path = PathBuf::from(path);
+
+        if output_dir != PathBuf::from(".") && relative_path.is_relative() {
+            if let Some(output_name) = output_dir.file_name() {
+                if relative_path.starts_with(output_name) {
+                    if let Ok(stripped) = relative_path.strip_prefix(output_name) {
+                        relative_path = stripped.to_path_buf();
+                    }
+                }
+            }
+        }
+
+        let full_path = if output_dir == PathBuf::from(".") {
+            relative_path.clone()
+        } else if relative_path.as_os_str().is_empty() {
+            output_dir.clone()
+        } else {
+            output_dir.join(&relative_path)
+        };
 
         // Create parent directories if needed
         if let Some(parent) = full_path.parent() {

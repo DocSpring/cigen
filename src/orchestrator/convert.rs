@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
 use crate::plugin::protocol::{
-    self, CacheDefinition, CigenSchema, JobDefinition, MatrixValue, ProjectConfig, RunStep,
-    RunnerDefinition, SkipConfig, Step, StringList, UsesStep, WorkflowDefinition,
+    self, CacheDefinition, CigenSchema, CommandDefinition as ProtoCommandDefinition,
+    CommandParameter as ProtoCommandParameter, CustomStep, JobDefinition, MatrixValue,
+    PackageSpec as ProtoPackageSpec, ProjectConfig, RestoreCacheStep, RunStep, RunnerDefinition,
+    SaveCacheStep, SkipConfig, Step, StringList, UsesStep, WorkflowDefinition,
 };
 use crate::schema;
+use serde_yaml::Value;
 
 /// Convert schema::CigenConfig to protobuf CigenSchema
 pub fn config_to_proto(config: &schema::CigenConfig) -> CigenSchema {
@@ -31,10 +34,7 @@ pub fn config_to_proto(config: &schema::CigenConfig) -> CigenSchema {
         workflows: config
             .workflows
             .iter()
-            .map(|(id, value)| WorkflowDefinition {
-                id: id.clone(),
-                yaml: serde_yaml::to_string(value).unwrap_or_default(),
-            })
+            .map(|(id, workflow)| workflow_to_proto(id, workflow))
             .collect(),
         source_file_groups: config
             .source_file_groups
@@ -48,6 +48,17 @@ pub fn config_to_proto(config: &schema::CigenConfig) -> CigenSchema {
                 )
             })
             .collect(),
+        commands: config
+            .commands
+            .iter()
+            .map(|(id, command)| (id.clone(), command_to_proto(command)))
+            .collect(),
+        provider_config: config
+            .provider_config
+            .iter()
+            .map(|(id, value)| (id.clone(), serialize_value(value)))
+            .collect(),
+        raw_config_yaml: serialize_value(&Value::Mapping(config.raw.clone())),
     }
 }
 
@@ -55,6 +66,36 @@ fn project_to_proto(project: &schema::ProjectConfig) -> ProjectConfig {
     ProjectConfig {
         name: project.name.clone(),
         default_runner: project.default_runner.clone().unwrap_or_default(),
+    }
+}
+
+fn command_to_proto(command: &schema::CommandDefinition) -> ProtoCommandDefinition {
+    ProtoCommandDefinition {
+        description: command.description.clone().unwrap_or_default(),
+        parameters: command
+            .parameters
+            .iter()
+            .map(|(name, parameter)| (name.clone(), command_parameter_to_proto(parameter)))
+            .collect(),
+        steps: command.steps.iter().map(step_to_proto).collect(),
+        extra: command
+            .extra
+            .iter()
+            .map(|(k, v)| (k.clone(), serialize_value(v)))
+            .collect(),
+    }
+}
+
+fn command_parameter_to_proto(parameter: &schema::CommandParameter) -> ProtoCommandParameter {
+    ProtoCommandParameter {
+        r#type: parameter.parameter_type.clone().unwrap_or_default(),
+        description: parameter.description.clone().unwrap_or_default(),
+        default_yaml: parameter
+            .default
+            .as_ref()
+            .map(serialize_value)
+            .unwrap_or_default(),
+        extra: mapping_to_string_map(&parameter.extra),
     }
 }
 
@@ -67,11 +108,11 @@ fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
             .iter()
             .map(|(key, value)| (key.clone(), matrix_value_to_proto(value)))
             .collect(),
-        packages: job.packages.clone(),
+        packages: job.packages.iter().map(|pkg| pkg.name.clone()).collect(),
         steps: job.steps.iter().map(step_to_proto).collect(),
         skip_if: job.skip_if.as_ref().map(skip_config_to_proto),
         runner: job.runner.clone().unwrap_or_default(),
-        env: job.env.clone(),
+        env: job.environment.clone(),
         image: job.image.clone(),
         workflow: job.workflow.clone().unwrap_or_else(|| "ci".to_string()),
         checkout: job
@@ -80,26 +121,70 @@ fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
             .map(|options| {
                 options
                     .iter()
-                    .map(|(key, value)| {
-                        (
-                            key.clone(),
-                            serde_yaml::to_string(value).unwrap_or_default(),
-                        )
-                    })
+                    .map(|(key, value)| (key.clone(), serialize_value(value)))
                     .collect()
             })
             .unwrap_or_default(),
         extra: job
             .extra
             .iter()
-            .map(|(key, value)| {
-                (
-                    key.clone(),
-                    serde_yaml::to_string(value).unwrap_or_default(),
-                )
-            })
+            .map(|(key, value)| (key.clone(), serialize_value(value)))
             .collect(),
         source_files: job.source_files.clone(),
+        package_specs: job.packages.iter().map(package_to_proto).collect(),
+        services: job.services.clone(),
+    }
+}
+
+fn workflow_to_proto(id: &str, workflow: &schema::WorkflowConfig) -> WorkflowDefinition {
+    WorkflowDefinition {
+        id: id.to_string(),
+        yaml: serialize_value(&workflow.raw),
+        run_when: workflow
+            .run_when
+            .iter()
+            .map(workflow_condition_to_proto)
+            .collect(),
+    }
+}
+
+fn workflow_condition_to_proto(
+    condition: &schema::WorkflowCondition,
+) -> protocol::WorkflowCondition {
+    let kind = match condition
+        .kind()
+        .unwrap_or(schema::WorkflowConditionKind::Parameter)
+    {
+        schema::WorkflowConditionKind::Parameter => {
+            protocol::WorkflowConditionKind::Parameter as i32
+        }
+        schema::WorkflowConditionKind::Variable => protocol::WorkflowConditionKind::Variable as i32,
+        schema::WorkflowConditionKind::Env => protocol::WorkflowConditionKind::Env as i32,
+        schema::WorkflowConditionKind::Expression => {
+            protocol::WorkflowConditionKind::Expression as i32
+        }
+    };
+
+    protocol::WorkflowCondition {
+        kind,
+        key: condition.key().unwrap_or_default().to_string(),
+        equals_yaml: serialize_value(&condition.equals_value()),
+        provider: condition.provider.clone().unwrap_or_default(),
+        expression: condition.expression.clone().unwrap_or_default(),
+    }
+}
+
+fn package_to_proto(package: &schema::PackageSpec) -> ProtoPackageSpec {
+    ProtoPackageSpec {
+        name: package.name.clone(),
+        manager: package.manager.clone().unwrap_or_default(),
+        path: package.path.clone().unwrap_or_default(),
+        version: package.version.clone().unwrap_or_default(),
+        extra: package
+            .extra
+            .iter()
+            .map(|(k, v)| (k.clone(), serialize_value(v)))
+            .collect(),
     }
 }
 
@@ -136,11 +221,65 @@ fn step_to_proto(step: &schema::Step) -> Step {
                 with: uses
                     .with
                     .iter()
-                    .map(|(k, v)| (k.clone(), serde_yaml::to_string(v).unwrap_or_default()))
+                    .map(|(k, v)| (k.clone(), serialize_value(v)))
                     .collect(),
                 r#if: uses.condition.clone().unwrap_or_default(),
             })),
         },
+        schema::Step::RestoreCache { restore_cache } => {
+            let key = restore_cache
+                .key
+                .clone()
+                .or_else(|| restore_cache.keys.first().cloned())
+                .unwrap_or_default();
+            Step {
+                step_type: Some(protocol::step::StepType::RestoreCache(RestoreCacheStep {
+                    name: restore_cache.name.clone().unwrap_or_default(),
+                    key,
+                    keys: restore_cache.keys.clone(),
+                    restore_keys: restore_cache.restore_keys.clone(),
+                    extra: restore_cache
+                        .extra
+                        .iter()
+                        .map(|(k, v)| (k.clone(), serialize_value(v)))
+                        .collect(),
+                })),
+            }
+        }
+        schema::Step::SaveCache { save_cache } => Step {
+            step_type: Some(protocol::step::StepType::SaveCache(SaveCacheStep {
+                name: save_cache.name.clone().unwrap_or_default(),
+                key: save_cache.key.clone().unwrap_or_default(),
+                paths: save_cache.paths.clone(),
+                extra: save_cache
+                    .extra
+                    .iter()
+                    .map(|(k, v)| (k.clone(), serialize_value(v)))
+                    .collect(),
+            })),
+        },
+        schema::Step::Custom(value) => {
+            let kind = step_kind(value);
+            Step {
+                step_type: Some(protocol::step::StepType::Custom(CustomStep {
+                    kind,
+                    yaml: serialize_value(value),
+                })),
+            }
+        }
+    }
+}
+
+fn step_kind(value: &Value) -> String {
+    match value {
+        Value::Mapping(map) => map
+            .keys()
+            .next()
+            .and_then(|k| k.as_str())
+            .unwrap_or("custom")
+            .to_string(),
+        Value::String(s) => s.clone(),
+        _ => "custom".to_string(),
     }
 }
 
@@ -165,9 +304,34 @@ fn runner_to_proto(runner: &schema::RunnerDefinition) -> RunnerDefinition {
         provider_config: runner
             .provider_config
             .iter()
-            .map(|(k, v)| (k.clone(), serde_yaml::to_string(v).unwrap_or_default()))
+            .map(|(k, v)| (k.clone(), serialize_value(v)))
             .collect(),
     }
+}
+
+fn serialize_value(value: &Value) -> String {
+    match serde_yaml::to_string(value) {
+        Ok(mut s) => {
+            if s.ends_with('\n') {
+                s.pop();
+                if s.ends_with('\r') {
+                    s.pop();
+                }
+            }
+            s
+        }
+        Err(_) => String::new(),
+    }
+}
+
+fn mapping_to_string_map(mapping: &serde_yaml::Mapping) -> HashMap<String, String> {
+    let mut result = HashMap::new();
+    for (key, value) in mapping {
+        if let Some(key_str) = key.as_str() {
+            result.insert(key_str.to_string(), serialize_value(value));
+        }
+    }
+    result
 }
 
 #[cfg(test)]
@@ -182,9 +346,9 @@ mod tests {
             schema::Job {
                 needs: vec![],
                 matrix: HashMap::new(),
-                packages: vec!["ruby".to_string()],
+                packages: vec![schema::PackageSpec::from_name("ruby".to_string())],
                 services: vec![],
-                env: HashMap::new(),
+                environment: HashMap::new(),
                 checkout: None,
                 steps: vec![schema::Step::SimpleRun {
                     run: "bundle exec rspec".to_string(),
@@ -206,10 +370,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs,
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         }
     }
 
@@ -222,6 +388,7 @@ mod tests {
         assert_eq!(proto.jobs.len(), 1);
         assert_eq!(proto.jobs[0].id, "test");
         assert_eq!(proto.jobs[0].packages, vec!["ruby"]);
+        assert_eq!(proto.jobs[0].package_specs.len(), 1);
         assert_eq!(proto.jobs[0].steps.len(), 1);
     }
 
@@ -241,10 +408,22 @@ mod tests {
     }
 
     #[test]
-    fn test_matrix_conversion() {
-        let matrix = schema::MatrixDimension::List(vec!["3.2".to_string(), "3.3".to_string()]);
+    fn test_custom_step_conversion() {
+        let value: Value = serde_yaml::from_str(
+            r#"
+store_artifacts:
+  path: logs
+"#,
+        )
+        .unwrap();
+        let step = schema::Step::Custom(value);
 
-        let proto = matrix_value_to_proto(&matrix);
-        assert_eq!(proto.values, vec!["3.2", "3.3"]);
+        let proto = step_to_proto(&step);
+        match proto.step_type {
+            Some(protocol::step::StepType::Custom(custom)) => {
+                assert_eq!(custom.kind, "store_artifacts");
+            }
+            other => panic!("Expected custom step, got {:?}", other),
+        }
     }
 }

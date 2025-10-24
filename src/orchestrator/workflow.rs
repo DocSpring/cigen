@@ -286,10 +286,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs: HashMap::new(),
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let orchestrator = WorkflowOrchestrator::new(PathBuf::from("plugins"));
@@ -306,10 +308,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs: HashMap::new(),
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let orchestrator = WorkflowOrchestrator::new(PathBuf::from("plugins"));

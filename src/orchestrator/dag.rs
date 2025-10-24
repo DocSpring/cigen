@@ -253,7 +253,7 @@ mod tests {
             matrix: HashMap::new(),
             packages: vec![],
             services: vec![],
-            env: HashMap::new(),
+            environment: HashMap::new(),
             checkout: None,
             steps: vec![],
             source_files: vec![],
@@ -278,10 +278,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs,
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let dag = JobDAG::build(&config).unwrap();
@@ -309,10 +311,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs,
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let dag = JobDAG::build(&config).unwrap();
@@ -377,10 +381,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs,
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let dag = JobDAG::build(&config).unwrap();
@@ -418,10 +424,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs,
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let result = JobDAG::build(&config);
@@ -448,10 +456,12 @@ mod tests {
             packages: vec![],
             source_file_groups: HashMap::new(),
             jobs,
+            commands: HashMap::new(),
             caches: HashMap::new(),
             runners: HashMap::new(),
             provider_config: HashMap::new(),
             workflows: HashMap::new(),
+            raw: Default::default(),
         };
 
         let result = JobDAG::build(&config);
