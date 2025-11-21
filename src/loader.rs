@@ -154,43 +154,66 @@ fn load_jobs_and_workflows(config_dir: &Path, config: &mut CigenConfig) -> Resul
 
             let workflow_id = workflow_name.to_string();
             let workflow_config = load_workflow_config(&workflow_path)?;
-            if !config.workflows.contains_key(&workflow_id) {
-                config
-                    .workflows
-                    .insert(workflow_id.clone(), workflow_config);
-            }
+            // Insert workflow config if not already present (load_workflow_config returns default if not found)
+            // We want to insert it even if default to track the workflow existence.
+            // But we should check if we already loaded it from a file in the loop below?
+            // Actually, the loop handles directories first, then files.
+            // If we have a directory, we load config from inside it.
+            // If we check config.workflows first, we might skip loading/overwriting?
+            // Let's just insert/update.
+            config
+                .workflows
+                .insert(workflow_id.clone(), workflow_config.clone());
 
             let jobs_dir = workflow_path.join("jobs");
             if !jobs_dir.exists() {
                 continue;
             }
 
-            for job_file in fs::read_dir(&jobs_dir)? {
-                let job_file = job_file?;
-                let job_path = job_file.path();
+            // Stack for recursive traversal: (current_path, stage_name)
+            // If stage_name is None, we are at root jobs dir.
+            let mut stack = vec![(jobs_dir.clone(), None::<String>)];
 
-                if !matches!(
-                    job_path.extension().and_then(|s| s.to_str()),
-                    Some("yml" | "yaml")
-                ) {
-                    continue;
+            while let Some((dir, current_stage)) = stack.pop() {
+                for entry in fs::read_dir(&dir)? {
+                    let entry = entry?;
+                    let path = entry.path();
+
+                    if path.is_dir() {
+                        let dir_name = path
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        
+                        let next_stage = current_stage.clone().or(Some(dir_name));
+                        stack.push((path, next_stage));
+                    } else if matches!(
+                        path.extension().and_then(|s| s.to_str()),
+                        Some("yml" | "yaml")
+                    ) {
+                        let stage = current_stage.clone().unwrap_or_else(|| "default".to_string());
+                        
+                        // Use path relative to jobs_dir as job_id
+                        let relative_path = path.strip_prefix(&jobs_dir).unwrap_or(&path);
+                        let job_id = relative_path.with_extension("").to_string_lossy().to_string();
+
+                        let job_yaml = fs::read_to_string(&path)?;
+                        let mut job: Job = serde_yaml::from_str(&job_yaml)
+                            .with_context(|| format!("Failed to parse {}", path.display()))?;
+
+                        job.workflow = Some(workflow_name.to_string());
+                        job.stage = Some(stage.clone());
+                        migrate_requires_to_needs(&mut job);
+
+                        config.jobs.insert(job_id, job);
+                    }
                 }
-
-                let job_name = job_path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .context("Invalid job filename")?
-                    .to_string();
-
-                let job_yaml = fs::read_to_string(&job_path)?;
-                let mut job: Job = serde_yaml::from_str(&job_yaml)
-                    .with_context(|| format!("Failed to parse {}", job_path.display()))?;
-
-                job.workflow = Some(workflow_name.to_string());
-                migrate_requires_to_needs(&mut job);
-
-                config.jobs.insert(job_name, job);
             }
+            
+            // Resolve dependencies (siblings)
+            resolve_job_dependencies(&mut config.jobs);
+
         } else if matches!(
             workflow_path.extension().and_then(|s| s.to_str()),
             Some("yml" | "yaml")
@@ -210,6 +233,40 @@ fn load_jobs_and_workflows(config_dir: &Path, config: &mut CigenConfig) -> Resul
     }
 
     Ok(())
+}
+
+fn resolve_job_dependencies(jobs: &mut HashMap<String, Job>) {
+    let job_keys: Vec<String> = jobs.keys().cloned().collect();
+    
+    for (job_id, job) in jobs.iter_mut() {
+        for need in &mut job.needs {
+            // If need is already a valid key, skip
+            if job_keys.contains(need) {
+                continue;
+            }
+            
+            // Try to resolve as sibling
+            let parent_dir = Path::new(job_id).parent().unwrap_or(Path::new(""));
+            let sibling_path = parent_dir.join(need.as_str());
+            let sibling_key = sibling_path.to_string_lossy().to_string();
+            
+            if job_keys.contains(&sibling_key) {
+                *need = sibling_key;
+                continue;
+            }
+            
+            // Check if it's a simple name that exists elsewhere (ambiguous but maybe intended?)
+            // For now, only support siblings or full paths.
+        }
+    }
+}
+
+fn should_prefix_job(config: &WorkflowConfig, stage: &str) -> bool {
+    if stage == "default" {
+        config.default_stage_prefix
+    } else {
+        config.stage_prefix
+    }
 }
 
 fn load_workflow_config(workflow_path: &Path) -> Result<WorkflowConfig> {

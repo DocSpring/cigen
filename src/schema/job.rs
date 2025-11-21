@@ -47,9 +47,9 @@ pub struct Job {
     #[serde(default)]
     pub needs: Vec<String>,
 
-    /// Matrix build dimensions
+    /// Matrix build configuration
     #[serde(default)]
-    pub matrix: HashMap<String, MatrixDimension>,
+    pub matrix: Option<JobMatrix>,
 
     /// Package managers to use
     #[serde(default, deserialize_with = "deserialize_packages")]
@@ -106,6 +106,10 @@ pub struct Job {
     /// Workflow this job belongs to (set by loader)
     #[serde(default, skip_serializing)]
     pub workflow: Option<String>,
+
+    /// Stage this job belongs to (set by loader from directory structure)
+    #[serde(default, skip_serializing)]
+    pub stage: Option<String>,
 }
 
 fn deserialize_packages<'de, D>(deserializer: D) -> Result<Vec<PackageSpec>, D::Error>
@@ -162,11 +166,20 @@ fn default_image() -> String {
     "ubuntu-latest".to_string()
 }
 
-/// Matrix dimension values
+/// Matrix configuration
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum JobMatrix {
+    /// Standard Cartesian dimensions: { key: [v1, v2] }
+    Dimensions(HashMap<String, Vec<String>>),
+    /// Explicit rows: [ { key: v1 }, { key: v2 } ]
+    Explicit(Vec<HashMap<String, String>>),
+}
+
+// Deprecated: MatrixDimension was used inside HashMap
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum MatrixDimension {
-    /// Simple list of values
     List(Vec<String>),
 }
 

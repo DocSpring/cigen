@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use crate::plugin::protocol::{
     self, CacheDefinition, CigenSchema, CommandDefinition as ProtoCommandDefinition,
-    CommandParameter as ProtoCommandParameter, CustomStep, JobDefinition, MatrixValue,
+    CommandParameter as ProtoCommandParameter, CustomStep, JobDefinition, MatrixRow, MatrixValue,
     PackageSpec as ProtoPackageSpec, ProjectConfig, RestoreCacheStep, RunStep, RunnerDefinition,
-    SaveCacheStep, SkipConfig, Step, StringList, UsesStep, WorkflowDefinition,
+    SaveCacheStep, SkipConfig, Step, StringList, UsesStep, WorkflowConditionKind as ProtoWorkflowConditionKind, WorkflowDefinition,
 };
-use crate::schema;
+use crate::schema::{self, JobMatrix};
 use serde_yaml::Value;
 
 /// Convert schema::CigenConfig to protobuf CigenSchema
@@ -100,14 +100,27 @@ fn command_parameter_to_proto(parameter: &schema::CommandParameter) -> ProtoComm
 }
 
 fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
+    let (matrix_dimensions_map, matrix_rows_vec) = match &job.matrix {
+        Some(JobMatrix::Dimensions(dims)) => (
+            dims.iter()
+                .map(|(key, value)| (key.clone(), MatrixValue { values: value.clone() }))
+                .collect(),
+            Vec::new(),
+        ),
+        Some(JobMatrix::Explicit(rows)) => (
+            HashMap::new(),
+            rows.iter()
+                .map(|row| MatrixRow { values: row.clone() })
+                .collect(),
+        ),
+        None => (HashMap::new(), Vec::new()),
+    };
+
     JobDefinition {
         id: id.to_string(),
         needs: job.needs.clone(),
-        matrix: job
-            .matrix
-            .iter()
-            .map(|(key, value)| (key.clone(), matrix_value_to_proto(value)))
-            .collect(),
+        matrix: matrix_dimensions_map,
+        matrix_rows: matrix_rows_vec,
         packages: job.packages.iter().map(|pkg| pkg.name.clone()).collect(),
         steps: job.steps.iter().map(step_to_proto).collect(),
         skip_if: job.skip_if.as_ref().map(skip_config_to_proto),
@@ -133,6 +146,7 @@ fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
         source_files: job.source_files.clone(),
         package_specs: job.packages.iter().map(package_to_proto).collect(),
         services: job.services.clone(),
+        stage: job.stage.clone().unwrap_or_default(),
     }
 }
 
@@ -156,12 +170,12 @@ fn workflow_condition_to_proto(
         .unwrap_or(schema::WorkflowConditionKind::Parameter)
     {
         schema::WorkflowConditionKind::Parameter => {
-            protocol::WorkflowConditionKind::Parameter as i32
+            ProtoWorkflowConditionKind::Parameter as i32
         }
-        schema::WorkflowConditionKind::Variable => protocol::WorkflowConditionKind::Variable as i32,
-        schema::WorkflowConditionKind::Env => protocol::WorkflowConditionKind::Env as i32,
+        schema::WorkflowConditionKind::Variable => ProtoWorkflowConditionKind::Variable as i32,
+        schema::WorkflowConditionKind::Env => ProtoWorkflowConditionKind::Env as i32,
         schema::WorkflowConditionKind::Expression => {
-            protocol::WorkflowConditionKind::Expression as i32
+            ProtoWorkflowConditionKind::Expression as i32
         }
     };
 
@@ -188,13 +202,7 @@ fn package_to_proto(package: &schema::PackageSpec) -> ProtoPackageSpec {
     }
 }
 
-fn matrix_value_to_proto(value: &schema::MatrixDimension) -> MatrixValue {
-    match value {
-        schema::MatrixDimension::List(values) => MatrixValue {
-            values: values.clone(),
-        },
-    }
-}
+
 
 fn step_to_proto(step: &schema::Step) -> Step {
     match step {
@@ -345,7 +353,7 @@ mod tests {
             "test".to_string(),
             schema::Job {
                 needs: vec![],
-                matrix: HashMap::new(),
+                matrix: None, // Updated for Option<JobMatrix>
                 packages: vec![schema::PackageSpec::from_name("ruby".to_string())],
                 services: vec![],
                 environment: HashMap::new(),

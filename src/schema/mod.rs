@@ -9,8 +9,8 @@ mod workflow;
 
 pub use command::{CommandDefinition, CommandParameter};
 pub use config::{CacheDefinition, CigenConfig, ProjectConfig, RunnerDefinition};
-pub use job::{Job, JobTrigger, MatrixDimension, PackageSpec, SkipConditions};
+pub use job::{Job, JobMatrix, JobTrigger, MatrixDimension, PackageSpec, SkipConditions};
 pub use step::{
     Artifact, RestoreCacheDefinition, RunStepOptions, SaveCacheDefinition, Step, UsesStep,
 };
-pub use workflow::{WorkflowCondition, WorkflowConditionKind, WorkflowConfig};
+pub use workflow::{StageDefinition, WorkflowCondition, WorkflowConditionKind, WorkflowConfig};

@@ -4,6 +4,13 @@ use serde_yaml::{Mapping, Value};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StageDefinition {
+    pub name: String,
+    #[serde(default)]
+    pub needs: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
 pub struct WorkflowConfig {
     pub dynamic: bool,
@@ -12,10 +19,22 @@ pub struct WorkflowConfig {
     pub setup: bool,
     pub checkout: Option<Value>,
     pub run_when: Vec<WorkflowCondition>,
+    #[serde(default)]
+    pub stages: Vec<StageDefinition>,
+    #[serde(default)]
+    pub stage_prefix: bool,
+    #[serde(default)]
+    pub default_stage_prefix: bool,
+    #[serde(default = "default_stage_prefix_separator")]
+    pub stage_prefix_separator: String,
     #[serde(flatten)]
     pub extra: HashMap<String, Value>,
     #[serde(skip)]
     pub raw: Value,
+}
+
+fn default_stage_prefix_separator() -> String {
+    "_".to_string()
 }
 
 impl Default for WorkflowConfig {
@@ -27,6 +46,10 @@ impl Default for WorkflowConfig {
             setup: false,
             checkout: None,
             run_when: Vec::new(),
+            stages: Vec::new(),
+            stage_prefix: false,
+            default_stage_prefix: false,
+            stage_prefix_separator: default_stage_prefix_separator(),
             extra: HashMap::new(),
             raw: Value::Mapping(Mapping::new()),
         }

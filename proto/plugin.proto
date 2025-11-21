@@ -128,6 +128,12 @@ message JobDefinition {
   repeated string source_files = 13;   // Expanded source file patterns
   repeated PackageSpec package_specs = 14;
   repeated string services = 15;       // Declared service containers
+  repeated MatrixRow matrix_rows = 16; // Explicit matrix rows (alternative to dimensions)
+  string stage = 17;                   // Stage this job belongs to
+}
+
+message MatrixRow {
+  map<string, string> values = 1;
 }
 
 message MatrixValue {

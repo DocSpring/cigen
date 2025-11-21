@@ -71,249 +71,11 @@ struct JobVariant<'a> {
     base_id: &'a str,
     variant_name: String,
     job: &'a JobDefinition,
+    matrix_values: HashMap<String, String>,
+    stage: String,
 }
 
-struct CircleciContext<'a> {
-    schema: &'a CigenSchema,
-    raw_config: Value,
-    provider_config: Value,
-    services: HashMap<String, ServiceDefinition>,
-    setup_options: SetupOptions,
-    checkout: CheckoutConfig,
-    workflow_conditions: HashMap<String, Vec<WorkflowRunCondition>>,
-    workflow_configs: HashMap<String, WorkflowConfig>,
-}
-
-type WorkflowConditionMap = HashMap<String, Vec<WorkflowRunCondition>>;
-type WorkflowConfigMap = HashMap<String, WorkflowConfig>;
-
-impl<'a> CircleciContext<'a> {
-    fn from_schema(schema: &'a CigenSchema) -> Result<Self> {
-        let raw_config = if schema.raw_config_yaml.is_empty() {
-            Value::Mapping(Mapping::new())
-        } else {
-            serde_yaml::from_str(&schema.raw_config_yaml)
-                .with_context(|| "Failed to parse raw_config_yaml")?
-        };
-
-        let services = extract_services(&raw_config);
-        let setup_options = extract_setup_options(&raw_config)?;
-        let checkout = extract_checkout_config(&raw_config);
-
-        let provider_config = match schema.provider_config.get("circleci") {
-            Some(yaml) => match serde_yaml::from_str::<Value>(yaml) {
-                Ok(value) => value,
-                Err(err) => {
-                    bail!("Failed to parse circleci provider config: {err}")
-                }
-            },
-            None => Value::Mapping(Mapping::new()),
-        };
-
-        let (workflow_conditions, workflow_configs) = parse_workflow_metadata(schema)?;
-
-        Ok(Self {
-            schema,
-            raw_config,
-            provider_config,
-            services,
-            setup_options,
-            checkout,
-            workflow_conditions,
-            workflow_configs,
-        })
-    }
-
-    fn main_workflow_id(&self) -> String {
-        if let Some((id, _)) = self
-            .workflow_configs
-            .iter()
-            .find(|(_, cfg)| cfg.output_filename.as_deref() == Some("main.yml"))
-        {
-            return id.clone();
-        }
-
-        if self.workflow_configs.contains_key("main") {
-            return "main".to_string();
-        }
-
-        self.workflow_configs
-            .keys()
-            .next()
-            .cloned()
-            .unwrap_or_else(|| "main".to_string())
-    }
-}
-
-fn parse_workflow_metadata(
-    schema: &CigenSchema,
-) -> Result<(WorkflowConditionMap, WorkflowConfigMap)> {
-    let mut conditions: WorkflowConditionMap = HashMap::new();
-    let mut configs: WorkflowConfigMap = HashMap::new();
-
-    for definition in &schema.workflows {
-        let parsed_conditions = definition
-            .run_when
-            .iter()
-            .map(WorkflowRunCondition::from_proto)
-            .collect::<Result<Vec<_>>>()?;
-        conditions.insert(definition.id.clone(), parsed_conditions);
-
-        let config = if definition.yaml.trim().is_empty() {
-            WorkflowConfig::default()
-        } else {
-            let value: Value = serde_yaml::from_str(&definition.yaml).with_context(|| {
-                format!("Failed to parse workflow metadata for {}", definition.id)
-            })?;
-            WorkflowConfig::from_value(value)?
-        };
-        configs.insert(definition.id.clone(), config);
-    }
-
-    Ok((conditions, configs))
-}
-
-fn build_circleci_fragments(schema: &CigenSchema) -> Result<Vec<Fragment>> {
-    let context = CircleciContext::from_schema(schema)?;
-    let setup_yaml = render_setup_config(&context)?;
-    let main_yaml = render_main_config(&context)?;
-
-    Ok(vec![
-        Fragment {
-            path: ".circleci/config.yml".to_string(),
-            content: setup_yaml,
-            strategy: protocol::MergeStrategy::Replace as i32,
-            order: 0,
-            format: "yaml".to_string(),
-        },
-        Fragment {
-            path: ".circleci/main.yml".to_string(),
-            content: main_yaml,
-            strategy: protocol::MergeStrategy::Replace as i32,
-            order: 0,
-            format: "yaml".to_string(),
-        },
-    ])
-}
-
-fn render_setup_config(context: &CircleciContext) -> Result<String> {
-    let main_workflow_id = context.main_workflow_id();
-    let grouped_jobs = group_jobs_by_workflow(&context.schema.jobs);
-    let main_variants = collect_job_variants_for_workflow(context, &main_workflow_id)?;
-
-    let mut root = Mapping::new();
-    root.insert(Value::String("version".into()), Value::String("2.1".into()));
-
-    insert_common_sections(&mut root, context)?;
-    root.remove(&Value::String("setup".into()));
-
-    let commands = build_commands_map(context)?;
-    if !commands.is_empty() {
-        root.insert(Value::String("commands".into()), Value::Mapping(commands));
-    }
-
-    let mut jobs_mapping = Mapping::new();
-    let setup_job = build_setup_job(context, &main_workflow_id, &main_variants)?;
-    jobs_mapping.insert(Value::String("setup".into()), setup_job);
-
-    for (workflow_id, jobs) in &grouped_jobs {
-        if workflow_id == &main_workflow_id {
-            continue;
-        }
-        for job in jobs {
-            let job_value = convert_job(job, context)?;
-            jobs_mapping.insert(Value::String(job.id.clone()), job_value);
-        }
-    }
-    root.insert(Value::String("jobs".into()), Value::Mapping(jobs_mapping));
-
-    let workflows = build_setup_workflows_map(context, &grouped_jobs, &main_workflow_id)?;
-    root.insert(Value::String("workflows".into()), Value::Mapping(workflows));
-
-    let mut output = String::from("# DO NOT EDIT - Generated by cigen-provider-circleci\n");
-    output.push_str(&serde_yaml::to_string(&Value::Mapping(root))?);
-    Ok(output)
-}
-
-fn render_main_config(context: &CircleciContext) -> Result<String> {
-    let main_workflow_id = context.main_workflow_id();
-    let grouped_jobs = group_jobs_by_workflow(&context.schema.jobs);
-    let main_jobs = grouped_jobs
-        .get(&main_workflow_id)
-        .cloned()
-        .unwrap_or_default();
-
-    let mut root = Mapping::new();
-    root.insert(Value::String("version".into()), Value::String("2.1".into()));
-    root.insert(Value::String("setup".into()), Value::Bool(true));
-
-    insert_common_sections(&mut root, context)?;
-
-    let commands = build_commands_map(context)?;
-    if !commands.is_empty() {
-        root.insert(Value::String("commands".into()), Value::Mapping(commands));
-    }
-
-    let mut jobs_mapping = Mapping::new();
-    for job in &main_jobs {
-        let job_value = convert_job(job, context)?;
-        jobs_mapping.insert(Value::String(job.id.clone()), job_value);
-    }
-    root.insert(Value::String("jobs".into()), Value::Mapping(jobs_mapping));
-
-    let workflows = build_main_workflows_map(context, &main_workflow_id, &main_jobs)?;
-    root.insert(Value::String("workflows".into()), Value::Mapping(workflows));
-
-    root.remove(&Value::String("setup".into()));
-
-    let mut output = String::from("# DO NOT EDIT - Generated by cigen-provider-circleci\n");
-    output.push_str(&serde_yaml::to_string(&Value::Mapping(root))?);
-    Ok(output)
-}
-
-fn insert_common_sections(root: &mut Mapping, context: &CircleciContext) -> Result<()> {
-    if let Some(parameters) = extract_mapping(&context.raw_config, "parameters") {
-        root.insert(
-            Value::String("parameters".into()),
-            Value::Mapping(parameters),
-        );
-    }
-
-    if let Some(orbs) = extract_mapping(&context.raw_config, "orbs") {
-        root.insert(Value::String("orbs".into()), Value::Mapping(orbs));
-    }
-
-    if let Some(docker) = extract_mapping(&context.raw_config, "docker") {
-        root.insert(Value::String("docker".into()), Value::Mapping(docker));
-    }
-
-    if let Some(circleci_cfg) = context
-        .provider_config
-        .as_mapping()
-        .cloned()
-        .filter(|cfg| !cfg.is_empty())
-    {
-        root.insert(
-            Value::String("circleci".into()),
-            Value::Mapping(circleci_cfg),
-        );
-    }
-
-    Ok(())
-}
-
-fn group_jobs_by_workflow(jobs: &[JobDefinition]) -> HashMap<String, Vec<&JobDefinition>> {
-    let mut grouped: HashMap<String, Vec<&JobDefinition>> = HashMap::new();
-    for job in jobs {
-        let workflow = if job.workflow.is_empty() {
-            "ci"
-        } else {
-            &job.workflow
-        };
-        grouped.entry(workflow.to_string()).or_default().push(job);
-    }
-    grouped
-}
+// ...
 
 fn collect_job_variants_for_workflow<'a>(
     context: &'a CircleciContext<'a>,
@@ -330,25 +92,136 @@ fn collect_job_variants_for_workflow<'a>(
             continue;
         }
 
+        // 1. Handle architectures (legacy/specific behavior)
         let arches = parse_architectures(job)?;
-        if arches.is_empty() {
+        
+        // 2. Handle standard matrix
+        let matrix_combinations = expand_job_matrix(job);
+
+        if arches.is_empty() && matrix_combinations.is_empty() {
             variants.push(JobVariant {
                 base_id: &job.id,
-                variant_name: job.id.clone(),
+                variant_name: sanitize_job_name(&job.id),
                 job,
+                matrix_values: HashMap::new(),
+                stage: if job.stage.is_empty() { "default".to_string() } else { job.stage.clone() },
             });
         } else {
-            for arch in arches {
-                variants.push(JobVariant {
-                    base_id: &job.id,
-                    variant_name: format!("{}_{}", job.id, arch),
-                    job,
-                });
+            // Combine architectures and matrix
+            // If architectures are present, they act like another matrix dimension "arch"
+            
+            let mut dimensions = Vec::new();
+            if !arches.is_empty() {
+                dimensions.push(("arch".to_string(), arches));
+            }
+            
+            // Flatten matrix combinations back to dimensions for cartesian product if needed,
+            // or just treat the matrix combinations as one set of variants.
+            // For simplicity, let's assume standard matrix is used OR architectures, not both mixed deeply yet,
+            // or we strictly cross product them.
+            
+            // Let's iterate arches (if any) AND matrix combos.
+            
+            let arch_list = if arches.is_empty() { vec![String::new()] } else { arches };
+            let combo_list = if matrix_combinations.is_empty() { vec![HashMap::new()] } else { matrix_combinations };
+
+            for arch in &arch_list {
+                for combo in &combo_list {
+                    let mut final_matrix = combo.clone();
+                    // Sanitize job ID part of name
+                    let mut name_parts = vec![sanitize_job_name(&job.id)];
+                    
+                    // Append matrix values to name, sorted by key
+                    let mut sorted_keys: Vec<_> = combo.keys().collect();
+                    sorted_keys.sort();
+                    for key in sorted_keys {
+                        if let Some(v) = combo.get(key) {
+                            // Don't include stage in name parts if it's "stage" key?
+                            // Usually we include all matrix vars.
+                            // But if stage is used for grouping, maybe we don't want it in the suffix?
+                            // The user's example had `deploy_us_pre_release`.
+                            // If `stage` is `deploy_us` (from matrix), and we include it in name parts...
+                            // name parts: `pre_release`, `deploy_us`.
+                            // joined: `pre_release_deploy_us`.
+                            // Then prefix: `deploy_us_pre_release_deploy_us`.
+                            // This is redundant.
+                            // So we should EXCLUDE "stage" from name parts if we use it as prefix.
+                            if key != "stage" {
+                                name_parts.push(v.clone());
+                            }
+                        }
+                    }
+
+                    if !arch.is_empty() {
+                        final_matrix.insert("arch".to_string(), arch.clone());
+                        name_parts.push(arch.clone());
+                    }
+
+                    // Determine stage
+                    let stage = final_matrix.get("stage").cloned()
+                        .or_else(|| if job.stage.is_empty() { None } else { Some(job.stage.clone()) })
+                        .unwrap_or_else(|| "default".to_string());
+
+                    variants.push(JobVariant {
+                        base_id: &job.id,
+                        variant_name: name_parts.join("_"),
+                        job,
+                        matrix_values: final_matrix,
+                        stage,
+                    });
+                }
             }
         }
     }
     Ok(variants)
 }
+
+fn expand_job_matrix(job: &JobDefinition) -> Vec<HashMap<String, String>> {
+    // Priority 1: Explicit rows
+    if !job.matrix_rows.is_empty() {
+        return job.matrix_rows.iter().map(|r| r.values.clone()).collect();
+    }
+
+    // Priority 2: Dimensions for cartesian product
+    // Only proceed if dimensions actually exist
+    if !job.matrix.is_empty() { 
+        let mut dimensions: Vec<(String, Vec<String>)> = Vec::new();
+        for (key, value) in &job.matrix {
+            dimensions.push((key.clone(), value.values.clone()));
+        }
+        dimensions.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let combinations = cartesian_product(&dimensions);
+        
+        return combinations.into_iter().map(|combo| {
+            combo.into_iter().collect()
+        }).collect();
+    }
+
+    // No matrix defined
+    Vec::new()
+}
+
+fn cartesian_product(dimensions: &[(String, Vec<String>)]) -> Vec<Vec<(String, String)>> {
+    if dimensions.is_empty() {
+        return vec![vec![]];
+    }
+
+    let (key, values) = &dimensions[0];
+    let rest = cartesian_product(&dimensions[1..]);
+
+    let mut result = Vec::new();
+    for value in values {
+        for combo in &rest {
+            let mut new_combo = vec![(key.clone(), value.clone())];
+            new_combo.extend(combo.clone());
+            result.push(new_combo);
+        }
+    }
+
+    result
+}
+
 
 fn parse_architectures(job: &JobDefinition) -> Result<Vec<String>> {
     if let Some(raw) = job.extra.get("architectures") {
@@ -853,7 +726,8 @@ fn convert_command_parameter(parameter: &CommandParameter) -> Result<Value> {
     Ok(Value::Mapping(map))
 }
 
-fn convert_job(job: &JobDefinition, context: &CircleciContext) -> Result<Value> {
+fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Value> {
+    let job = variant.job;
     let mut map = Mapping::new();
 
     let mut docker_entries = Vec::new();
@@ -861,7 +735,7 @@ fn convert_job(job: &JobDefinition, context: &CircleciContext) -> Result<Value> 
         let mut image_map = Mapping::new();
         image_map.insert(
             Value::String("image".into()),
-            Value::String(job.image.clone()),
+            Value::String(substitute_matrix(&job.image, &variant.matrix_values)),
         );
         docker_entries.push(Value::Mapping(image_map));
     }
@@ -897,25 +771,42 @@ fn convert_job(job: &JobDefinition, context: &CircleciContext) -> Result<Value> 
         );
     }
 
+    let mut env_map = Mapping::new();
+    // Inject matrix values as environment variables
+    for (key, value) in &variant.matrix_values {
+        env_map.insert(
+            Value::String(key.clone()),
+            Value::String(value.clone()),
+        );
+    }
+    
     if !job.env.is_empty() {
-        let mut env_map = Mapping::new();
         for (key, value) in &job.env {
-            env_map.insert(Value::String(key.clone()), Value::String(value.clone()));
+            env_map.insert(
+                Value::String(key.clone()), 
+                Value::String(substitute_matrix(value, &variant.matrix_values))
+            );
         }
+    }
+    
+    if !env_map.is_empty() {
         map.insert(Value::String("environment".into()), Value::Mapping(env_map));
     }
 
     if !job.runner.is_empty() {
         map.insert(
             Value::String("executor".into()),
-            Value::String(job.runner.clone()),
+            Value::String(substitute_matrix(&job.runner, &variant.matrix_values)),
         );
     }
 
     if let Some(resource_class_value) = job.extra.get("resource_class") {
+        // Note: extra values are JSON serialized strings in the proto
+        let mut val = parse_yaml_value(resource_class_value)?;
+        substitute_matrix_in_value(&mut val, &variant.matrix_values);
         map.insert(
             Value::String("resource_class".into()),
-            parse_yaml_value(resource_class_value)?,
+            val,
         );
     }
 
@@ -930,7 +821,7 @@ fn convert_job(job: &JobDefinition, context: &CircleciContext) -> Result<Value> 
     if !job.source_files.is_empty() {
         steps.push(build_job_runtime_hash_step(job));
     }
-    steps.extend(convert_steps_list(&job.steps)?);
+    steps.extend(convert_steps_list(&job.steps, &variant.matrix_values)?);
     if !job.source_files.is_empty() {
         steps.push(build_job_completion_marker_step(job));
         steps.push(build_job_status_save_step(job));
@@ -938,6 +829,39 @@ fn convert_job(job: &JobDefinition, context: &CircleciContext) -> Result<Value> 
     map.insert(Value::String("steps".into()), Value::Sequence(steps));
 
     Ok(Value::Mapping(map))
+}
+
+fn substitute_matrix(input: &str, matrix: &HashMap<String, String>) -> String {
+    let mut result = input.to_string();
+    for (key, value) in matrix {
+        // Support ${{ matrix.key }}
+        let pattern = format!("${{{{ matrix.{} }}}}", key);
+        result = result.replace(&pattern, value);
+        // Also support ${{ key }} for convenience if unambiguous? 
+        // Stick to matrix namespace for now to avoid collisions.
+    }
+    result
+}
+
+fn sanitize_job_name(name: &str) -> String {
+    name.replace(['/', '\\'], "_")
+}
+
+fn substitute_matrix_in_value(value: &mut Value, matrix: &HashMap<String, String>) {
+    match value {
+        Value::String(s) => *s = substitute_matrix(s, matrix),
+        Value::Sequence(seq) => {
+            for item in seq {
+                substitute_matrix_in_value(item, matrix);
+            }
+        }
+        Value::Mapping(map) => {
+            for (_, v) in map.iter_mut() {
+                substitute_matrix_in_value(v, matrix);
+            }
+        }
+        _ => {}
+    }
 }
 
 fn build_checkout_invocation(config: &CheckoutConfig) -> Value {
@@ -993,15 +917,15 @@ fn build_checkout_invocation(config: &CheckoutConfig) -> Value {
     Value::Mapping(wrapper)
 }
 
-fn convert_steps_list(steps: &[Step]) -> Result<Vec<Value>> {
+fn convert_steps_list(steps: &[Step], matrix: &HashMap<String, String>) -> Result<Vec<Value>> {
     let mut converted = Vec::new();
     for step in steps {
-        converted.push(convert_step(step)?);
+        converted.push(convert_step(step, matrix)?);
     }
     Ok(converted)
 }
 
-fn convert_step(step: &Step) -> Result<Value> {
+fn convert_step(step: &Step, matrix: &HashMap<String, String>) -> Result<Value> {
     match step
         .step_type
         .as_ref()
@@ -1015,21 +939,24 @@ fn convert_step(step: &Step) -> Result<Value> {
         }) => {
             let mut run_map = Mapping::new();
             if !name.is_empty() {
-                run_map.insert(Value::String("name".into()), Value::String(name.clone()));
+                run_map.insert(Value::String("name".into()), Value::String(substitute_matrix(name, matrix)));
             }
             run_map.insert(
                 Value::String("command".into()),
-                Value::String(command.clone()),
+                Value::String(substitute_matrix(command, matrix)),
             );
             if !env.is_empty() {
                 let mut env_map = Mapping::new();
                 for (key, value) in env {
-                    env_map.insert(Value::String(key.clone()), Value::String(value.clone()));
+                    env_map.insert(
+                        Value::String(key.clone()), 
+                        Value::String(substitute_matrix(value, matrix))
+                    );
                 }
                 run_map.insert(Value::String("environment".into()), Value::Mapping(env_map));
             }
             if !r#if.is_empty() {
-                run_map.insert(Value::String("if".into()), Value::String(r#if.clone()));
+                run_map.insert(Value::String("if".into()), Value::String(substitute_matrix(r#if, matrix)));
             }
             let mut wrapper = Mapping::new();
             wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
@@ -1043,12 +970,14 @@ fn convert_step(step: &Step) -> Result<Value> {
             if !with.is_empty() {
                 let mut with_map = Mapping::new();
                 for (key, value) in with {
-                    with_map.insert(Value::String(key.clone()), parse_yaml_value(value)?);
+                    let mut val = parse_yaml_value(value)?;
+                    substitute_matrix_in_value(&mut val, matrix);
+                    with_map.insert(Value::String(key.clone()), val);
                 }
                 uses_map.insert(Value::String("with".into()), Value::Mapping(with_map));
             }
             if !r#if.is_empty() {
-                uses_map.insert(Value::String("if".into()), Value::String(r#if.clone()));
+                uses_map.insert(Value::String("if".into()), Value::String(substitute_matrix(r#if, matrix)));
             }
             Ok(Value::Mapping(uses_map))
         }
@@ -1057,14 +986,14 @@ fn convert_step(step: &Step) -> Result<Value> {
             if !step.name.is_empty() {
                 restore_map.insert(
                     Value::String("name".into()),
-                    Value::String(step.name.clone()),
+                    Value::String(substitute_matrix(&step.name, matrix)),
                 );
             }
-            restore_map.insert(Value::String("key".into()), Value::String(step.key.clone()));
+            restore_map.insert(Value::String("key".into()), Value::String(substitute_matrix(&step.key, matrix)));
             if !step.keys.is_empty() {
                 restore_map.insert(
                     Value::String("keys".into()),
-                    Value::Sequence(step.keys.iter().map(|k| Value::String(k.clone())).collect()),
+                    Value::Sequence(step.keys.iter().map(|k| Value::String(substitute_matrix(k, matrix))).collect()),
                 );
             }
             if !step.restore_keys.is_empty() {
@@ -1073,14 +1002,16 @@ fn convert_step(step: &Step) -> Result<Value> {
                     Value::Sequence(
                         step.restore_keys
                             .iter()
-                            .map(|k| Value::String(k.clone()))
+                            .map(|k| Value::String(substitute_matrix(k, matrix)))
                             .collect(),
                     ),
                 );
             }
             if !step.extra.is_empty() {
                 for (key, value) in &step.extra {
-                    restore_map.insert(Value::String(key.clone()), parse_yaml_value(value)?);
+                    let mut val = parse_yaml_value(value)?;
+                    substitute_matrix_in_value(&mut val, matrix);
+                    restore_map.insert(Value::String(key.clone()), val);
                 }
             }
             let mut wrapper = Mapping::new();
@@ -1095,24 +1026,26 @@ fn convert_step(step: &Step) -> Result<Value> {
             if !step.name.is_empty() {
                 save_map.insert(
                     Value::String("name".into()),
-                    Value::String(step.name.clone()),
+                    Value::String(substitute_matrix(&step.name, matrix)),
                 );
             }
-            save_map.insert(Value::String("key".into()), Value::String(step.key.clone()));
+            save_map.insert(Value::String("key".into()), Value::String(substitute_matrix(&step.key, matrix)));
             if !step.paths.is_empty() {
                 save_map.insert(
                     Value::String("paths".into()),
                     Value::Sequence(
                         step.paths
                             .iter()
-                            .map(|p| Value::String(p.clone()))
+                            .map(|p| Value::String(substitute_matrix(p, matrix)))
                             .collect(),
                     ),
                 );
             }
             if !step.extra.is_empty() {
                 for (key, value) in &step.extra {
-                    save_map.insert(Value::String(key.clone()), parse_yaml_value(value)?);
+                    let mut val = parse_yaml_value(value)?;
+                    substitute_matrix_in_value(&mut val, matrix);
+                    save_map.insert(Value::String(key.clone()), val);
                 }
             }
             let mut wrapper = Mapping::new();
@@ -1120,7 +1053,9 @@ fn convert_step(step: &Step) -> Result<Value> {
             Ok(Value::Mapping(wrapper))
         }
         cigen::plugin::protocol::step::StepType::Custom(CustomStep { yaml, .. }) => {
-            parse_yaml_value(yaml)
+            let mut val = parse_yaml_value(yaml)?;
+            substitute_matrix_in_value(&mut val, matrix);
+            Ok(val)
         }
     }
 }
@@ -1130,6 +1065,7 @@ fn build_setup_workflows_map(
     context: &CircleciContext,
     grouped_jobs: &HashMap<String, Vec<&JobDefinition>>,
     main_workflow_id: &str,
+    variant_map: &HashMap<String, Vec<String>>,
 ) -> Result<Mapping> {
     let mut workflows = Mapping::new();
 
@@ -1140,10 +1076,12 @@ fn build_setup_workflows_map(
     );
     workflows.insert(Value::String("setup".into()), Value::Mapping(setup_map));
 
-    for (workflow_id, jobs) in grouped_jobs {
+    for (workflow_id, _) in grouped_jobs {
         if workflow_id == main_workflow_id {
             continue;
         }
+        
+        let variants = collect_job_variants_for_workflow(context, workflow_id)?;
 
         let mut workflow_map = Mapping::new();
         if let Some(conditions) = context.workflow_conditions.get(workflow_id) {
@@ -1153,7 +1091,7 @@ fn build_setup_workflows_map(
         }
         workflow_map.insert(
             Value::String("jobs".into()),
-            Value::Sequence(build_workflow_jobs_sequence(jobs)),
+            Value::Sequence(build_workflow_jobs_sequence(&variants, variant_map)),
         );
         workflows.insert(
             Value::String(workflow_id.clone()),
@@ -1164,16 +1102,18 @@ fn build_setup_workflows_map(
     Ok(workflows)
 }
 
+
 #[allow(clippy::collapsible_if)]
 fn build_main_workflows_map(
     context: &CircleciContext,
     main_workflow_id: &str,
-    jobs: &[&JobDefinition],
+    main_variants: &[JobVariant], // Changed to main_variants
+    variant_map: &HashMap<String, Vec<String>>,
 ) -> Result<Mapping> {
     let mut workflow_map = Mapping::new();
     workflow_map.insert(
         Value::String("jobs".into()),
-        Value::Sequence(build_workflow_jobs_sequence(jobs)),
+        Value::Sequence(build_workflow_jobs_sequence(main_variants, variant_map)), // Pass variants
     );
 
     if let Some(conditions) = context.workflow_conditions.get(main_workflow_id) {
@@ -1190,20 +1130,29 @@ fn build_main_workflows_map(
     Ok(workflows)
 }
 
-fn build_workflow_jobs_sequence(jobs: &[&JobDefinition]) -> Vec<Value> {
+fn build_workflow_jobs_sequence(variants: &[JobVariant], variant_map: &HashMap<String, Vec<String>>) -> Vec<Value> {
     let mut entries = Vec::new();
-    for job in jobs {
+    for variant in variants {
+        let job = variant.job;
         if job.needs.is_empty() {
-            entries.push(Value::String(job.id.clone()));
+            entries.push(Value::String(variant.variant_name.clone()));
         } else {
             let mut requires = Vec::new();
             for need in &job.needs {
-                requires.push(Value::String(need.clone()));
+                let substituted_need = substitute_matrix(need, &variant.matrix_values);
+                if let Some(deps) = variant_map.get(&substituted_need) {
+                    for dep in deps {
+                        requires.push(Value::String(dep.clone()));
+                    }
+                } else {
+                    // Fallback if not found (shouldn't happen if validation passes, or if referring to specific variant)
+                    requires.push(Value::String(substituted_need));
+                }
             }
             let mut job_config = Mapping::new();
             job_config.insert(Value::String("requires".into()), Value::Sequence(requires));
             let mut wrapper = Mapping::new();
-            wrapper.insert(Value::String(job.id.clone()), Value::Mapping(job_config));
+            wrapper.insert(Value::String(variant.variant_name.clone()), Value::Mapping(job_config));
             entries.push(Value::Mapping(wrapper));
         }
     }
