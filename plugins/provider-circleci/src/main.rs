@@ -542,14 +542,6 @@ fn build_workflow_jobs_sequence(variants: &[JobVariant]) -> Vec<Value> {
 fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Option<Value>> {
     let job = variant.job;
 
-    if job.id == "ci/js_lint" {
-        eprintln!(
-            "DEBUG: convert_job ci/js_lint. source_files len: {}",
-            job.source_files.len()
-        );
-        eprintln!("DEBUG: source_files: {:?}", job.source_files);
-    }
-
     // Skip approval jobs in definition list (they only appear in workflows)
     if let Some(extra_type) = job.extra.get("type") {
         if let Ok(val) = parse_yaml_value(extra_type) {
