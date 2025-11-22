@@ -289,7 +289,11 @@ fn expand_matrix_job(
                     base_clean_name.clone()
                 };
 
-                let suffix = if let Some(s) = row.get("job_name_suffix") {
+                let suffix = if let Some(s) = row
+                    .get("job_name_suffix")
+                    .map(|s| s.as_str())
+                    .or_else(|| job.extra.get("job_name_suffix").and_then(|v| v.as_str()))
+                {
                     if s.is_empty() {
                         String::new()
                     } else {
@@ -364,7 +368,11 @@ fn expand_matrix_job(
                     base_clean_name.clone()
                 };
 
-                let suffix = if let Some(s) = matrix_values.get("job_name_suffix") {
+                let suffix = if let Some(s) = matrix_values
+                    .get("job_name_suffix")
+                    .map(|s| s.as_str())
+                    .or_else(|| job.extra.get("job_name_suffix").and_then(|v| v.as_str()))
+                {
                     if s.is_empty() {
                         String::new()
                     } else {

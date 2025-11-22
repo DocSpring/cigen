@@ -6,5 +6,8 @@ source_files:
 
 steps:
   - run:
+      name: Build workspace
+      command: cargo build --workspace --all-targets
+  - run:
       name: Run tests
       command: cargo test --all-features

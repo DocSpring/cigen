@@ -2,14 +2,17 @@
 
 use anyhow::{Context, Result, anyhow, bail};
 use cigen::plugin::protocol::{
-    CigenSchema, CommandDefinition, CommandParameter, CustomStep, Fragment, GenerateRequest,
+    self, CigenSchema, CommandDefinition, CommandParameter, CustomStep, Fragment, GenerateRequest,
     GenerateResult, Hello, JobDefinition, PlanRequest, PlanResult, PluginInfo, RunStep, Step,
     UsesStep, WorkflowCondition as ProtoWorkflowCondition,
     WorkflowConditionKind as ProtoWorkflowConditionKind,
 };
+use cigen::schema::WorkflowConfig;
 use serde_yaml::{Mapping, Value};
 use std::collections::HashMap;
 use std::convert::TryFrom;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 const PLUGIN_NAME: &str = "provider/circleci";
 const PLUGIN_VERSION: &str = "0.1.0";
@@ -80,8 +83,103 @@ struct CircleciContext<'a> {
     raw_config: Value,
 }
 
+fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("cigen_provider_circleci=info".parse()?),
+        )
+        .with_target(false)
+        .without_time()
+        .init();
+
+    tracing::info!("Starting {PLUGIN_NAME} v{PLUGIN_VERSION}");
+
+    use cigen::plugin::framing::{receive_message, send_message};
+    use std::io::{stdin, stdout};
+
+    let mut stdin = stdin().lock();
+    let mut stdout = stdout().lock();
+
+    let hello: Hello = receive_message(&mut stdin).context("Failed to read Hello message")?;
+    if hello.core_protocol != PROTOCOL_VERSION {
+        anyhow::bail!(
+            "Protocol version mismatch: core={}, plugin={PROTOCOL_VERSION}",
+            hello.core_protocol
+        );
+    }
+
+    let info = PluginInfo {
+        name: PLUGIN_NAME.to_string(),
+        version: PLUGIN_VERSION.to_string(),
+        protocol: PROTOCOL_VERSION,
+        capabilities: vec!["provider:circleci".to_string()],
+        requires: vec![],
+        conflicts_with: vec!["provider:*".to_string()],
+        metadata: HashMap::new(),
+    };
+
+    send_message(&info, &mut stdout).context("Failed to send PluginInfo")?;
+    tracing::info!("Handshake complete, entering message loop");
+
+    loop {
+        match receive_message::<PlanRequest, _>(&mut stdin) {
+            Ok(_plan_request) => {
+                let plan_result = PlanResult {
+                    resources: vec![],
+                    deps: vec![],
+                    diagnostics: vec![],
+                };
+                send_message(&plan_result, &mut stdout).context("Failed to send PlanResult")?;
+            }
+            Err(err) => {
+                tracing::warn!("Failed to receive PlanRequest: {err}");
+                break;
+            }
+        }
+
+        match receive_message::<GenerateRequest, _>(&mut stdin) {
+            Ok(generate_request) => {
+                tracing::info!(
+                    "Received GenerateRequest for target: {}",
+                    generate_request.target
+                );
+
+                let result = match generate_request.schema.as_ref() {
+                    Some(schema) => match build_circleci_fragments(schema) {
+                        Ok(fragments) => GenerateResult {
+                            fragments,
+                            diagnostics: vec![],
+                        },
+                        Err(error) => GenerateResult {
+                            fragments: vec![],
+                            diagnostics: vec![make_diagnostic("CIRCLECI_GENERATE_ERROR", error)],
+                        },
+                    },
+                    None => GenerateResult {
+                        fragments: vec![],
+                        diagnostics: vec![make_diagnostic(
+                            "CIRCLECI_GENERATE_ERROR",
+                            anyhow!("GenerateRequest missing schema"),
+                        )],
+                    },
+                };
+
+                send_message(&result, &mut stdout).context("Failed to send GenerateResult")?;
+            }
+            Err(err) => {
+                tracing::warn!("Exiting plugin loop: {err}");
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn build_circleci_fragments(schema: &CigenSchema) -> Result<Vec<Fragment>> {
-    let raw_config: Value = serde_yaml::from_str(&schema.raw_config)
+    let raw_config: Value = serde_yaml::from_str(&schema.raw_config_yaml)
         .context("Failed to parse raw configuration from schema")?;
 
     let context = CircleciContext {
@@ -97,33 +195,90 @@ fn build_circleci_fragments(schema: &CigenSchema) -> Result<Vec<Fragment>> {
 
     // 1. Generate .circleci/config.yml (setup workflow)
     let setup_config = generate_setup_config(&context)?;
+    let setup_yaml = serde_yaml::to_string(&setup_config)?;
+
+    if let Err(e) = validate_config_content(&setup_yaml) {
+        bail!("Validation failed for setup config\nError: {}", e);
+    }
+
     fragments.push(Fragment {
         path: ".circleci/config.yml".to_string(),
-        content: serde_yaml::to_string(&setup_config)?,
+        content: setup_yaml,
         strategy: 0, // Replace
+        format: "yaml".to_string(),
+        order: 0,
     });
 
     // 2. Generate .circleci/main.yml (main workflow)
     let main_config = generate_main_config(&context)?;
+    let main_yaml = serde_yaml::to_string(&main_config)?;
+    validate_config_content(&main_yaml).context("Validation failed for main config")?;
+
     fragments.push(Fragment {
         path: ".circleci/main.yml".to_string(),
-        content: serde_yaml::to_string(&main_config)?,
+        content: main_yaml,
         strategy: 0, // Replace
+        format: "yaml".to_string(),
+        order: 0,
     });
 
     Ok(fragments)
+}
+
+fn validate_config_content(content: &str) -> Result<()> {
+    tracing::info!("Starting validation for content length: {}", content.len());
+    // Check for circleci CLI
+    if Command::new("circleci")
+        .arg("version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_err()
+    {
+        tracing::warn!("[DEBUG] circleci CLI not found, skipping validation");
+        return Ok(()); // Skip if not installed
+    }
+
+    let mut child = Command::new("circleci")
+        .arg("config")
+        .arg("validate")
+        .arg("-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(content.as_bytes())?;
+    }
+
+    let output = child.wait_with_output()?;
+    tracing::info!("[DEBUG] CircleCI validate status: {:?}", output.status);
+
+    if !output.stdout.is_empty() {
+        tracing::warn!("{}", String::from_utf8_lossy(&output.stdout));
+    }
+    if !output.stderr.is_empty() {
+        tracing::warn!("{}", String::from_utf8_lossy(&output.stderr));
+    }
+
+    if !output.status.success() {
+        bail!("CircleCI validation failed");
+    }
+
+    Ok(())
 }
 
 fn extract_workflow_conditions(
     schema: &CigenSchema,
 ) -> Result<HashMap<String, Vec<WorkflowRunCondition>>> {
     let mut map = HashMap::new();
-    for (id, workflow) in &schema.workflows {
+    for workflow in &schema.workflows {
         let mut conditions = Vec::new();
-        for proto_cond in &workflow.when {
+        for proto_cond in &workflow.run_when {
             conditions.push(WorkflowRunCondition::from_proto(proto_cond)?);
         }
-        map.insert(id.clone(), conditions);
+        map.insert(workflow.id.clone(), conditions);
     }
     Ok(map)
 }
@@ -133,12 +288,40 @@ fn generate_setup_config(context: &CircleciContext) -> Result<Value> {
     root.insert(Value::String("version".into()), Value::String("2.1".into()));
     root.insert(Value::String("setup".into()), Value::Bool(true));
 
+    let mut parameters = if let Some(Value::Mapping(params)) =
+        context.raw_config.get(&Value::String("parameters".into()))
+    {
+        params.clone()
+    } else {
+        Mapping::new()
+    };
+
+    if !parameters.contains_key(&Value::String("skip_cache".into())) {
+        let mut def = Mapping::new();
+        def.insert(
+            Value::String("type".into()),
+            Value::String("boolean".into()),
+        );
+        def.insert(Value::String("default".into()), Value::Bool(false));
+        def.insert(
+            Value::String("description".into()),
+            Value::String("Disable job-status cache and rerun all jobs".into()),
+        );
+        parameters.insert(Value::String("skip_cache".into()), Value::Mapping(def));
+    }
+    root.insert(
+        Value::String("parameters".into()),
+        Value::Mapping(parameters),
+    );
+
     let orbs = build_orbs_map();
     root.insert(Value::String("orbs".into()), Value::Mapping(orbs));
 
-    // We need to collect variants for ALL workflows to generate the hash steps,
-    // but only those triggering the 'main' workflow are critical for the setup job logic usually.
-    // Here we collect them to ensure we have coverage of source files.
+    let commands = build_commands_map(context)?;
+    if !commands.is_empty() {
+        root.insert(Value::String("commands".into()), Value::Mapping(commands));
+    }
+
     let mut all_variants = Vec::new();
     let mut grouped_jobs: HashMap<String, Vec<&JobDefinition>> = HashMap::new();
 
@@ -150,12 +333,6 @@ fn generate_setup_config(context: &CircleciContext) -> Result<Value> {
         };
         grouped_jobs.entry(wf.to_string()).or_default().push(job);
     }
-
-    // We assume "main" or "ci" is the primary one?
-    // Actually cigen supports multiple workflows.
-    // The setup job typically triggers one continuation config which contains ALL workflows.
-    // So we need to know which workflow(s) to run.
-    // The `build_setup_job` logic handles generating hashes for jobs.
 
     for (wf_id, _) in &grouped_jobs {
         let variants = collect_job_variants_for_workflow(context, wf_id)?;
@@ -180,7 +357,7 @@ fn generate_setup_config(context: &CircleciContext) -> Result<Value> {
             Value::String("jobs".into()),
             Value::Sequence(vec![Value::String("setup".into())]),
         );
-        wf.insert(Value::String("setup".into()), Value::Mapping(setup_wf));
+        wf.insert(Value::String("main".into()), Value::Mapping(setup_wf));
         wf
     };
     root.insert(Value::String("workflows".into()), Value::Mapping(workflows));
@@ -197,7 +374,6 @@ fn generate_main_config(context: &CircleciContext) -> Result<Value> {
     }
 
     let mut orbs = build_orbs_map();
-    // Add user defined orbs
     if let Some(Value::Mapping(user_orbs)) = context.raw_config.get(&Value::String("orbs".into())) {
         for (k, v) in user_orbs {
             orbs.insert(k.clone(), v.clone());
@@ -205,13 +381,11 @@ fn generate_main_config(context: &CircleciContext) -> Result<Value> {
     }
     root.insert(Value::String("orbs".into()), Value::Mapping(orbs));
 
-    // Commands
     let commands = build_commands_map(context)?;
     if !commands.is_empty() {
         root.insert(Value::String("commands".into()), Value::Mapping(commands));
     }
 
-    // Group jobs by workflow
     let mut grouped_jobs: HashMap<String, Vec<&JobDefinition>> = HashMap::new();
     for job in &context.schema.jobs {
         let wf = if job.workflow.is_empty() {
@@ -222,7 +396,6 @@ fn generate_main_config(context: &CircleciContext) -> Result<Value> {
         grouped_jobs.entry(wf.to_string()).or_default().push(job);
     }
 
-    // Collect all variants
     let mut all_variants = Vec::new();
     let mut workflow_variants_map: HashMap<String, Vec<JobVariant>> = HashMap::new();
 
@@ -232,16 +405,14 @@ fn generate_main_config(context: &CircleciContext) -> Result<Value> {
         all_variants.extend(variants);
     }
 
-    // Jobs map
     let mut jobs_map = Mapping::new();
     for variant in &all_variants {
-        // Generate job definition
-        let job_def = convert_job(variant, context)?;
-        jobs_map.insert(Value::String(variant.variant_name.clone()), job_def);
+        if let Some(job_def) = convert_job(variant, context)? {
+            jobs_map.insert(Value::String(variant.variant_name.clone()), job_def);
+        }
     }
     root.insert(Value::String("jobs".into()), Value::Mapping(jobs_map));
 
-    // Workflows map
     let mut workflows_map = Mapping::new();
     for (wf_id, variants) in workflow_variants_map {
         let wf_def = build_workflow_def(context, &wf_id, &variants)?;
@@ -279,11 +450,8 @@ fn collect_job_variants_for_workflow<'a>(
             continue;
         }
 
-        // Jobs are already expanded by cigen core.
-        // instance_id is in job.id
         variants.push(JobVariant {
-            base_id: &job.id,
-            variant_name: job.id.clone(), // Already sanitized/unique
+            variant_name: job.id.clone(),
             job,
         });
     }
@@ -316,7 +484,18 @@ fn build_workflow_jobs_sequence(variants: &[JobVariant]) -> Vec<Value> {
     for variant in variants {
         let job = variant.job;
 
-        if job.type_ == "approval" {
+        // Check if job type is approval
+        let is_approval = if let Some(extra_type) = job.extra.get("type") {
+            if let Ok(val) = parse_yaml_value(extra_type) {
+                val.as_str() == Some("approval")
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if is_approval {
             let mut job_config = Mapping::new();
             job_config.insert(
                 Value::String("type".into()),
@@ -360,20 +539,25 @@ fn build_workflow_jobs_sequence(variants: &[JobVariant]) -> Vec<Value> {
     entries
 }
 
-fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Value> {
+fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Option<Value>> {
     let job = variant.job;
 
-    // Skip approval jobs in definition list (they only appear in workflows)
-    // Wait, CircleCI requires "type: approval" jobs to NOT be defined in "jobs:" section?
-    // Yes, approval jobs are only in workflows.
-    // So we should check if we should generate a job definition.
-    // But currently `main` calls `convert_job` for all variants.
-    // I should modify `generate_main_config` loop to skip approval jobs.
-    // Or return Value::Null here and filter?
+    if job.id == "ci/js_lint" {
+        eprintln!(
+            "DEBUG: convert_job ci/js_lint. source_files len: {}",
+            job.source_files.len()
+        );
+        eprintln!("DEBUG: source_files: {:?}", job.source_files);
+    }
 
-    // Actually, standard CircleCI jobs `type: approval` are defined IN WORKFLOWS, not in `jobs`.
-    // So `convert_job` shouldn't be called for them or should return something indicative.
-    // But let's handle it in `generate_main_config`.
+    // Skip approval jobs in definition list (they only appear in workflows)
+    if let Some(extra_type) = job.extra.get("type") {
+        if let Ok(val) = parse_yaml_value(extra_type) {
+            if val.as_str() == Some("approval") {
+                return Ok(None);
+            }
+        }
+    }
 
     let mut map = Mapping::new();
 
@@ -459,7 +643,7 @@ fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Value>
     }
     map.insert(Value::String("steps".into()), Value::Sequence(steps));
 
-    Ok(Value::Mapping(map))
+    Ok(Some(Value::Mapping(map)))
 }
 
 // ... (rest of the file: helper functions build_checkout_invocation, etc. - copied from original, no substitution logic)
@@ -528,7 +712,6 @@ fn convert_step(step: &Step) -> Result<Value> {
             }
             Ok(Value::Mapping(uses_map))
         }
-        // ... other steps ...
         cigen::plugin::protocol::step::StepType::RestoreCache(step) => {
             let mut restore_map = Mapping::new();
             if !step.name.is_empty() {
@@ -605,14 +788,195 @@ fn convert_step(step: &Step) -> Result<Value> {
     }
 }
 
-// ... helper functions from original ...
+fn build_setup_job(
+    context: &CircleciContext,
+    workflow_id: &str,
+    job_variants: &[JobVariant],
+) -> Result<Value> {
+    let mut job = Mapping::new();
+
+    let image = context
+        .setup_options
+        .image
+        .clone()
+        .unwrap_or_else(|| "cimg/rust:1.76".to_string());
+
+    let mut docker_entries = Vec::new();
+    let mut docker_map = Mapping::new();
+    docker_map.insert(Value::String("image".into()), Value::String(image));
+    docker_entries.push(Value::Mapping(docker_map));
+    job.insert(
+        Value::String("docker".into()),
+        Value::Sequence(docker_entries),
+    );
+
+    if let Some(resource_class) = &context.setup_options.resource_class {
+        job.insert(
+            Value::String("resource_class".into()),
+            Value::String(resource_class.clone()),
+        );
+    }
+
+    let mut steps = Vec::new();
+    steps.push(build_checkout_invocation(&context.checkout));
+
+    if context.setup_options.compile_cigen {
+        steps.push(build_compile_cigen_step(&context.setup_options));
+    }
+
+    if let Some(self_check) = context
+        .setup_options
+        .self_check
+        .as_ref()
+        .filter(|cfg| cfg.enabled)
+    {
+        steps.push(build_self_check_step(self_check));
+    }
+
+    steps.push(build_skip_cache_parameter_step());
+    steps.push(build_prepare_skip_list_step());
+
+    for variant in job_variants {
+        if variant.job.source_files.is_empty() {
+            continue;
+        }
+        steps.push(build_job_hash_step(variant));
+        steps.push(build_job_status_restore_step(variant));
+        steps.push(build_skip_list_append_step(variant, workflow_id));
+    }
+
+    steps.push(build_generate_main_step(workflow_id));
+    steps.push(build_continuation_step(&context.raw_config));
+
+    job.insert(Value::String("steps".into()), Value::Sequence(steps));
+
+    Ok(Value::Mapping(job))
+}
+
+fn build_compile_cigen_step(options: &SetupOptions) -> Value {
+    let mut lines = Vec::new();
+    lines.push("set -euo pipefail".to_string());
+
+    if let Some(repo) = &options.compile_repository {
+        let path = options
+            .compile_path
+            .clone()
+            .unwrap_or_else(|| "/tmp/cigen".to_string());
+        lines.push(format!("rm -rf {path}"));
+        lines.push(format!("git clone {repo} {path}"));
+        lines.push(format!("cd {path}"));
+        if let Some(rev) = &options.compile_ref {
+            lines.push(format!("git checkout {rev}"));
+        }
+        lines.push("cargo build --release".to_string());
+        lines.push(format!(
+            "echo \"export PATH=\\\"{path}/target/release:$PATH\\\"\" >> $BASH_ENV"
+        ));
+    } else {
+        lines.push("cargo build --release".to_string());
+        lines.push(
+            "echo \"export PATH=\\\"$(pwd)/target/release:$PATH\\\"\" >> $BASH_ENV".to_string(),
+        );
+    }
+
+    lines.push(String::new());
+    let command = lines.join("\n");
+
+    let mut run_map = Mapping::new();
+    run_map.insert(
+        Value::String("name".into()),
+        Value::String("Compile cigen".into()),
+    );
+    run_map.insert(Value::String("command".into()), Value::String(command));
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
+    Value::Mapping(wrapper)
+}
+
+fn build_self_check_step(options: &SelfCheckOptions) -> Value {
+    let mut lines = vec![
+        "set -euo pipefail".to_string(),
+        "cp -f .circleci/config.yml .circleci/config.yml.bak".to_string(),
+        "cigen generate".to_string(),
+        "if ! diff -q .circleci/config.yml .circleci/config.yml.bak > /dev/null 2>&1; then"
+            .to_string(),
+    ];
+    if options.commit_on_diff {
+        lines.push("  git config user.email \"ci@cigen.dev\"".to_string());
+        lines.push("  git config user.name \"CIGen\"".to_string());
+        lines.push("  git add .circleci/config.yml".to_string());
+        lines.push(
+            "  git commit -m \"ci: update .circleci/config.yml from cigen\" || true".to_string(),
+        );
+        lines.push("  git push || true".to_string());
+    }
+    lines.extend([
+        "  echo 'Detected config drift after regeneration'".to_string(),
+        "  exit 1".to_string(),
+        "fi".to_string(),
+        String::new(),
+    ]);
+    let command = lines.join("\n");
+
+    let mut run_map = Mapping::new();
+    run_map.insert(
+        Value::String("name".into()),
+        Value::String("Self-check entrypoint".into()),
+    );
+    run_map.insert(Value::String("command".into()), Value::String(command));
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
+    Value::Mapping(wrapper)
+}
+
+fn build_skip_cache_parameter_step() -> Value {
+    let command = [
+        "set -euo pipefail".to_string(),
+        "if [ \"<< pipeline.parameters.skip_cache >>\" = \"true\" ]; then".to_string(),
+        "  cigen generate main".to_string(),
+        "  circleci step halt".to_string(),
+        "fi".to_string(),
+        String::new(),
+    ]
+    .join("\n");
+
+    let mut run_map = Mapping::new();
+    run_map.insert(
+        Value::String("name".into()),
+        Value::String("Handle skip_cache parameter".into()),
+    );
+    run_map.insert(Value::String("command".into()), Value::String(command));
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
+    Value::Mapping(wrapper)
+}
+
+fn build_prepare_skip_list_step() -> Value {
+    let command =
+        "rm -rf /tmp/skip && mkdir -p /tmp/skip /tmp/cigen /tmp/cigen_job_exists\n".to_string();
+
+    let mut run_map = Mapping::new();
+    run_map.insert(
+        Value::String("name".into()),
+        Value::String("Prepare skip list".into()),
+    );
+    run_map.insert(Value::String("command".into()), Value::String(command));
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
+    Value::Mapping(wrapper)
+}
+
 fn build_job_hash_step(variant: &JobVariant) -> Value {
     let command = [
         "set -euo pipefail".to_string(),
         "mkdir -p /tmp/cigen".to_string(),
         format!(
             "JOB_HASH=$(cigen hash --job {} --config .cigen | tr -d '\\r')",
-            variant.base_id
+            variant.job.id
         ),
         "printf '%s' \"$JOB_HASH\" > /tmp/cigen/job_hash".to_string(),
         "echo \"export JOB_HASH=$JOB_HASH\" >> $BASH_ENV".to_string(),
@@ -714,13 +1078,13 @@ fn build_job_completion_marker_step(job: &JobDefinition) -> Value {
         Value::String("Record job completion".into()),
     );
     run_map.insert(Value::String("command".into()), Value::String(command));
-
-    let mut wrapper = Mapping::new();
-    wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
-    wrapper.insert(
+    run_map.insert(
         Value::String("when".into()),
         Value::String("on_success".into()),
     );
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(Value::String("run".into()), Value::Mapping(run_map));
     Value::Mapping(wrapper)
 }
 
@@ -738,13 +1102,13 @@ fn build_job_status_save_step(job: &JobDefinition) -> Value {
         Value::String("paths".into()),
         Value::Sequence(vec![Value::String("/tmp/cigen_job_exists".into())]),
     );
-
-    let mut wrapper = Mapping::new();
-    wrapper.insert(Value::String("save_cache".into()), Value::Mapping(save_map));
-    wrapper.insert(
+    save_map.insert(
         Value::String("when".into()),
         Value::String("on_success".into()),
     );
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(Value::String("save_cache".into()), Value::Mapping(save_map));
     Value::Mapping(wrapper)
 }
 
@@ -796,14 +1160,22 @@ fn build_continuation_step(raw_config: &Value) -> Value {
     let mut params = Mapping::new();
     params.insert(
         Value::String("configuration_path".into()),
-        Value::String(".circleci/main.into()".into()),
+        Value::String(".circleci/main.yml".into()),
     );
 
-    for parameter in extract_parameter_names(raw_config) {
-        params.insert(
-            Value::String(parameter.clone()),
-            Value::String(format!("<< pipeline.parameters.{parameter} >>")),
-        );
+    let parameters = extract_parameters(raw_config);
+    if !parameters.is_empty() {
+        let mut json_parts = Vec::new();
+        for (name, type_) in parameters {
+            let val = if type_ == "string" || type_ == "enum" {
+                format!("\"<< pipeline.parameters.{name} >>\"")
+            } else {
+                format!("<< pipeline.parameters.{name} >>")
+            };
+            json_parts.push(format!("\"{}\": {}", name, val));
+        }
+        let json_str = format!("{{ {} }}", json_parts.join(", "));
+        params.insert(Value::String("parameters".into()), Value::String(json_str));
     }
 
     let mut wrapper = Mapping::new();
@@ -814,16 +1186,24 @@ fn build_continuation_step(raw_config: &Value) -> Value {
     Value::Mapping(wrapper)
 }
 
-fn extract_parameter_names(raw: &Value) -> Vec<String> {
+fn extract_parameters(raw: &Value) -> Vec<(String, String)> {
     raw.as_mapping()
         .and_then(|map| map.get(&Value::String("parameters".into())))
         .and_then(Value::as_mapping)
         .map(|mapping| {
             mapping
-                .keys()
-                .filter_map(Value::as_str)
-                .map(|s| s.to_string())
-                .collect::<Vec<_>>()
+                .iter()
+                .filter_map(|(k, v)| {
+                    let name = k.as_str()?.to_string();
+                    let type_ = v
+                        .as_mapping()
+                        .and_then(|m| m.get(&Value::String("type".into())))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("string")
+                        .to_string();
+                    Some((name, type_))
+                })
+                .collect()
         })
         .unwrap_or_default()
 }
@@ -917,7 +1297,7 @@ fn parse_yaml_value(content: &str) -> Result<Value> {
 impl WorkflowRunCondition {
     fn from_proto(proto: &ProtoWorkflowCondition) -> Result<Self> {
         let kind = ProtoWorkflowConditionKind::try_from(proto.kind)
-            .map_err(|_| anyhow!("Unknown workflow condition kind value: {}", proto.kind)?);
+            .map_err(|_| anyhow!("Unknown workflow condition kind value: {}", proto.kind))?;
 
         Ok(Self {
             provider: if proto.provider.is_empty() {
@@ -958,98 +1338,317 @@ fn make_diagnostic(code: &str, error: anyhow::Error) -> cigen::plugin::protocol:
         loc: None,
     }
 }
+fn build_checkout_invocation(config: &CheckoutConfig) -> Value {
+    if !config.shallow
+        && config.fetch_options.is_none()
+        && config.tag_fetch_options.is_none()
+        && config.clone_options.is_none()
+        && !config.keyscan_github
+        && !config.keyscan_gitlab
+        && !config.keyscan_bitbucket
+    {
+        return Value::String("checkout".into());
+    }
 
-fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive("cigen_provider_circleci=info".parse()?),
-        )
-        .with_target(false)
-        .without_time()
-        .init();
+    let mut params = Mapping::new();
 
-    tracing::info!("Starting {PLUGIN_NAME} v{PLUGIN_VERSION}");
-
-    use cigen::plugin::framing::{receive_message, send_message};
-    use std::io::{stdin, stdout};
-
-    let mut stdin = stdin().lock();
-    let mut stdout = stdout().lock();
-
-    let hello: Hello = receive_message(&mut stdin).context("Failed to read Hello message")?;
-    if hello.core_protocol != PROTOCOL_VERSION {
-        anyhow::bail!(
-            "Protocol version mismatch: core={}, plugin={PROTOCOL_VERSION}",
-            hello.core_protocol
+    if let Some(clone) = &config.clone_options {
+        params.insert(
+            Value::String("clone_options".into()),
+            Value::String(clone.clone()),
         );
     }
 
-    let info = PluginInfo {
-        name: PLUGIN_NAME.to_string(),
-        version: PLUGIN_VERSION.to_string(),
-        protocol: PROTOCOL_VERSION,
-        capabilities: vec!["provider:circleci".to_string()],
-        requires: vec![],
-        conflicts_with: vec!["provider:*\\".to_string()],
-        metadata: HashMap::new(),
+    if let Some(fetch) = &config.fetch_options {
+        params.insert(
+            Value::String("fetch_options".into()),
+            Value::String(fetch.clone()),
+        );
+    }
+
+    if let Some(tag_fetch) = &config.tag_fetch_options {
+        params.insert(
+            Value::String("tag_fetch_options".into()),
+            Value::String(tag_fetch.clone()),
+        );
+    }
+
+    if config.keyscan_github {
+        params.insert(Value::String("keyscan_github".into()), Value::Bool(true));
+    }
+    if config.keyscan_gitlab {
+        params.insert(Value::String("keyscan_gitlab".into()), Value::Bool(true));
+    }
+    if config.keyscan_bitbucket {
+        params.insert(Value::String("keyscan_bitbucket".into()), Value::Bool(true));
+    }
+
+    let mut wrapper = Mapping::new();
+    wrapper.insert(
+        Value::String("cigen_shallow_checkout".into()),
+        Value::Mapping(params),
+    );
+    Value::Mapping(wrapper)
+}
+
+fn extract_services(raw_config: &Value) -> HashMap<String, ServiceDefinition> {
+    let mut services = HashMap::new();
+
+    let Value::Mapping(root) = raw_config else {
+        return services;
     };
 
-    send_message(&info, &mut stdout).context("Failed to send PluginInfo")?;
-    tracing::info!("Handshake complete, entering message loop");
+    let Some(Value::Mapping(service_map)) = root.get(&Value::String("services".into())) else {
+        return services;
+    };
 
-    loop {
-        match receive_message::<PlanRequest, _>(&mut stdin) {
-            Ok(_plan_request) => {
-                let plan_result = PlanResult {
-                    resources: vec![],
-                    deps: vec![],
-                    diagnostics: vec![],
-                };
-                send_message(&plan_result, &mut stdout).context("Failed to send PlanResult")?;
+    for (key, value) in service_map {
+        let Some(name) = key.as_str() else { continue };
+        let Value::Mapping(definition) = value else {
+            continue;
+        };
+
+        let Some(image_value) = definition.get(&Value::String("image".into())) else {
+            continue;
+        };
+
+        let Some(image) = image_value.as_str() else {
+            continue;
+        };
+
+        let environment = definition
+            .get(&Value::String("environment".into()))
+            .and_then(Value::as_mapping)
+            .cloned();
+
+        services.insert(
+            name.to_string(),
+            ServiceDefinition {
+                image: image.to_string(),
+                environment,
+            },
+        );
+    }
+
+    services
+}
+
+fn extract_setup_options(raw_config: &Value) -> Result<SetupOptions> {
+    let mut options = SetupOptions::default();
+
+    let Some(value) = raw_config
+        .as_mapping()
+        .and_then(|map| map.get(&Value::String("setup_options".into())))
+    else {
+        return Ok(options);
+    };
+
+    let Value::Mapping(map) = value else {
+        bail!("setup_options must be a mapping")
+    };
+
+    if let Some(image) = map
+        .get(&Value::String("image".into()))
+        .and_then(Value::as_str)
+    {
+        options.image = Some(image.to_string());
+    }
+
+    if let Some(resource_class) = map
+        .get(&Value::String("resource_class".into()))
+        .and_then(Value::as_str)
+    {
+        options.resource_class = Some(resource_class.to_string());
+    }
+
+    if let Some(compile) = map
+        .get(&Value::String("compile_cigen".into()))
+        .and_then(Value::as_bool)
+    {
+        options.compile_cigen = compile;
+    }
+
+    if let Some(repo) = map
+        .get(&Value::String("compile_repository".into()))
+        .and_then(Value::as_str)
+    {
+        options.compile_repository = Some(repo.to_string());
+    }
+
+    if let Some(rev) = map
+        .get(&Value::String("compile_ref".into()))
+        .and_then(Value::as_str)
+    {
+        options.compile_ref = Some(rev.to_string());
+    }
+
+    if let Some(path) = map
+        .get(&Value::String("compile_path".into()))
+        .and_then(Value::as_str)
+    {
+        options.compile_path = Some(path.to_string());
+    }
+
+    if let Some(Value::Mapping(self_map)) = map.get(&Value::String("self_check".into())) {
+        let enabled = self_map
+            .get(&Value::String("enabled".into()))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let commit_on_diff = self_map
+            .get(&Value::String("commit_on_diff".into()))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        options.self_check = Some(SelfCheckOptions {
+            enabled,
+            commit_on_diff,
+        });
+    }
+
+    if options.compile_cigen
+        && options.compile_repository.is_none()
+        && options.compile_path.is_none()
+        && options.compile_ref.is_none()
+    {
+        // Compiling from the current repository is acceptable, so no explicit repository is required.
+    }
+
+    Ok(options)
+}
+
+fn extract_checkout_config(raw_config: &Value) -> CheckoutConfig {
+    let mut config = CheckoutConfig::default();
+
+    let Some(value) = raw_config
+        .as_mapping()
+        .and_then(|map| map.get(&Value::String("checkout".into())))
+    else {
+        return config;
+    };
+
+    match value {
+        Value::Bool(false) => {
+            config.shallow = true;
+        }
+        Value::Mapping(map) => {
+            if let Some(shallow) = map
+                .get(&Value::String("shallow".into()))
+                .and_then(Value::as_bool)
+            {
+                config.shallow = shallow;
             }
-            Err(err) => {
-                tracing::warn!("Failed to receive PlanRequest: {err}");
-                break;
+
+            if let Some(fetch_options) = map
+                .get(&Value::String("fetch_options".into()))
+                .and_then(Value::as_str)
+            {
+                config.fetch_options = Some(fetch_options.to_string());
+            }
+
+            if let Some(tag_fetch_options) = map
+                .get(&Value::String("tag_fetch_options".into()))
+                .and_then(Value::as_str)
+            {
+                config.tag_fetch_options = Some(tag_fetch_options.to_string());
+            }
+
+            if let Some(clone_options) = map
+                .get(&Value::String("clone_options".into()))
+                .and_then(Value::as_str)
+            {
+                config.clone_options = Some(clone_options.to_string());
+            }
+
+            if let Some(keyscan) = map.get(&Value::String("keyscan".into()))
+                && let Value::Mapping(keyscan_map) = keyscan
+            {
+                if let Some(val) = keyscan_map
+                    .get(&Value::String("github".into()))
+                    .and_then(Value::as_bool)
+                {
+                    config.keyscan_github = val;
+                }
+                if let Some(val) = keyscan_map
+                    .get(&Value::String("gitlab".into()))
+                    .and_then(Value::as_bool)
+                {
+                    config.keyscan_gitlab = val;
+                }
+                if let Some(val) = keyscan_map
+                    .get(&Value::String("bitbucket".into()))
+                    .and_then(Value::as_bool)
+                {
+                    config.keyscan_bitbucket = val;
+                }
             }
         }
+        _ => {}
+    }
 
-        match receive_message::<GenerateRequest, _>(&mut stdin) {
-            Ok(generate_request) => {
-                tracing::info!(
-                    "Received GenerateRequest for target: {}",
-                    generate_request.target
-                );
+    config
+}
 
-                let result = match generate_request.schema.as_ref() {
-                    Some(schema) => match build_circleci_fragments(schema) {
-                        Ok(fragments) => GenerateResult {
-                            fragments,
-                            diagnostics: vec![],
-                        },
-                        Err(error) => GenerateResult {
-                            fragments: vec![],
-                            diagnostics: vec![make_diagnostic("CIRCLECI_GENERATE_ERROR", error)],
-                        },
-                    },
-                    None => GenerateResult {
-                        fragments: vec![],
-                        diagnostics: vec![make_diagnostic(
-                            "CIRCLECI_GENERATE_ERROR",
-                            anyhow!("GenerateRequest missing schema"),
-                        )],
-                    },
-                };
+fn extract_mapping(raw_config: &Value, key: &str) -> Option<Mapping> {
+    raw_config
+        .as_mapping()
+        .and_then(|map| map.get(&Value::String(key.into())))
+        .and_then(Value::as_mapping)
+        .cloned()
+}
 
-                send_message(&result, &mut stdout).context("Failed to send GenerateResult")?;
+fn build_circleci_when(conditions: &[WorkflowRunCondition]) -> Result<Option<Value>> {
+    let mut clauses = Vec::new();
+
+    for condition in conditions {
+        if let Some(provider) = condition.provider.as_deref()
+            && provider != "circleci"
+        {
+            continue;
+        }
+
+        match condition.kind {
+            WorkflowRunConditionKind::Parameter => {
+                let key = condition
+                    .key
+                    .as_deref()
+                    .ok_or_else(|| anyhow!("Workflow parameter condition missing key"))?;
+                let equals_value = parse_condition_equals(&condition.equals_yaml)?;
+                let mut equal_values = Vec::new();
+                equal_values.push(equals_value);
+                equal_values.push(Value::String(format!("<< pipeline.parameters.{key} >>")));
+                let mut equal_map = Mapping::new();
+                equal_map.insert(Value::String("equal".into()), Value::Sequence(equal_values));
+                clauses.push(Value::Mapping(equal_map));
             }
-            Err(err) => {
-                tracing::warn!("Exiting plugin loop: {err}");
-                break;
+            WorkflowRunConditionKind::Variable
+            | WorkflowRunConditionKind::Env
+            | WorkflowRunConditionKind::Expression => {
+                bail!(
+                    "Workflow condition type {:?} is not supported on CircleCI",
+                    condition.kind
+                );
             }
         }
     }
 
-    Ok(())
+    if clauses.is_empty() {
+        return Ok(None);
+    }
+
+    if clauses.len() == 1 {
+        Ok(Some(clauses.remove(0)))
+    } else {
+        let mut and_map = Mapping::new();
+        and_map.insert(Value::String("and".into()), Value::Sequence(clauses));
+        Ok(Some(Value::Mapping(and_map)))
+    }
+}
+
+fn parse_condition_equals(equals_yaml: &Option<String>) -> Result<Value> {
+    if let Some(yaml) = equals_yaml {
+        let value: Value = serde_yaml::from_str(yaml)
+            .with_context(|| format!("Failed to parse workflow condition value: {yaml}"))?;
+        Ok(value)
+    } else {
+        Ok(Value::Bool(true))
+    }
 }

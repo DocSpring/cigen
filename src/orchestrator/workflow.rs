@@ -101,6 +101,20 @@ impl WorkflowOrchestrator {
                 generate_result.fragments.len()
             );
 
+            if !generate_result.diagnostics.is_empty() {
+                let mut has_errors = false;
+                for diag in generate_result.diagnostics {
+                    eprintln!("Plugin diagnostic: [{}] {}", diag.code, diag.message);
+                    if diag.level == 1 {
+                        // Error
+                        has_errors = true;
+                    }
+                }
+                if has_errors {
+                    bail!("Plugin '{}' reported errors", plugin_id);
+                }
+            }
+
             // Collect fragments
             for fragment in generate_result.fragments {
                 let merge_strategy = match fragment.strategy() {

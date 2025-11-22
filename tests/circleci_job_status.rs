@@ -91,9 +91,8 @@ fn assert_has_job_status_steps(job_id: &str, job_value: &Value) {
                 .and_then(Value::as_str)
                 .map(|value| value.contains("job_status-exists-v1"))
                 .unwrap_or(false);
-            let when_matches = step
-                .as_mapping()
-                .and_then(|map| map.get(&Value::String("when".into())))
+            let when_matches = save_cache_map
+                .get(&Value::String("when".into()))
                 .and_then(Value::as_str)
                 == Some("on_success");
             if name_matches && key_matches && when_matches {
