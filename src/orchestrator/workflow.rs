@@ -27,21 +27,34 @@ impl WorkflowOrchestrator {
     }
 
     /// Execute the full workflow: detect → plan → generate → merge
-    pub async fn execute(&mut self, config: CigenConfig) -> Result<GenerationResult> {
-        // 1. Build DAG from job definitions
-        let _dag = JobDAG::build(&config)
+    pub async fn execute(&mut self, mut config: CigenConfig) -> Result<GenerationResult> {
+        // 1. Build DAG from job definitions (expands matrix and resolves dependencies)
+        let dag = JobDAG::build(&config)
             .context("Failed to build dependency graph from job definitions")?;
 
-        // 2. Convert config to protobuf
+        // 2. Reconstruct config with expanded jobs for the plugin
+        let mut expanded_jobs = HashMap::new();
+        for (instance_id, concrete_job) in dag.jobs() {
+            let mut job = concrete_job.job.clone();
+            // Ensure matrix is cleared so plugin doesn't try to expand it again
+            job.matrix = None;
+            // Ensure stage is set to the concrete stage
+            job.stage = Some(concrete_job.stage.clone());
+
+            expanded_jobs.insert(instance_id.clone(), job);
+        }
+        config.jobs = expanded_jobs;
+
+        // 3. Convert config to protobuf
         let proto_schema = config_to_proto(&config);
 
-        // 3. Detect which plugins are needed
+        // 4. Detect which plugins are needed
         let providers = self.detect_providers(&config);
 
-        // 4. Spawn plugins
+        // 5. Spawn plugins
         let plugin_ids = self.spawn_plugins(&providers).await?;
 
-        // 5. For each plugin, execute plan → generate workflow
+        // 6. For each plugin, execute plan → generate workflow
         let mut all_fragments = Vec::new();
         for plugin_id in &plugin_ids {
             // Send PlanRequest
@@ -105,13 +118,13 @@ impl WorkflowOrchestrator {
             }
         }
 
-        // 6. Shutdown all plugins
+        // 7. Shutdown all plugins
         self.plugin_manager
             .shutdown()
             .await
             .context("Failed to shutdown plugins")?;
 
-        // 7. Merge fragments and write files
+        // 8. Merge fragments and write files
         let files = merge_fragments(all_fragments)?;
 
         Ok(GenerationResult { files })

@@ -8,4 +8,3 @@ pub use workflow::{FileFragment, GenerationResult, MergeStrategy, WorkflowOrches
 
 use crate::schema::CigenConfig;
 use std::collections::HashMap;
-

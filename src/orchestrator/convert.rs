@@ -4,7 +4,8 @@ use crate::plugin::protocol::{
     self, CacheDefinition, CigenSchema, CommandDefinition as ProtoCommandDefinition,
     CommandParameter as ProtoCommandParameter, CustomStep, JobDefinition, MatrixRow, MatrixValue,
     PackageSpec as ProtoPackageSpec, ProjectConfig, RestoreCacheStep, RunStep, RunnerDefinition,
-    SaveCacheStep, SkipConfig, Step, StringList, UsesStep, WorkflowConditionKind as ProtoWorkflowConditionKind, WorkflowDefinition,
+    SaveCacheStep, SkipConfig, Step, StringList, UsesStep,
+    WorkflowConditionKind as ProtoWorkflowConditionKind, WorkflowDefinition,
 };
 use crate::schema::{self, JobMatrix};
 use serde_yaml::Value;
@@ -103,14 +104,23 @@ fn job_to_proto(id: &str, job: &schema::Job) -> JobDefinition {
     let (matrix_dimensions_map, matrix_rows_vec) = match &job.matrix {
         Some(JobMatrix::Dimensions(dims)) => (
             dims.iter()
-                .map(|(key, value)| (key.clone(), MatrixValue { values: value.clone() }))
+                .map(|(key, value)| {
+                    (
+                        key.clone(),
+                        MatrixValue {
+                            values: value.clone(),
+                        },
+                    )
+                })
                 .collect(),
             Vec::new(),
         ),
         Some(JobMatrix::Explicit(rows)) => (
             HashMap::new(),
             rows.iter()
-                .map(|row| MatrixRow { values: row.clone() })
+                .map(|row| MatrixRow {
+                    values: row.clone(),
+                })
                 .collect(),
         ),
         None => (HashMap::new(), Vec::new()),
@@ -169,14 +179,10 @@ fn workflow_condition_to_proto(
         .kind()
         .unwrap_or(schema::WorkflowConditionKind::Parameter)
     {
-        schema::WorkflowConditionKind::Parameter => {
-            ProtoWorkflowConditionKind::Parameter as i32
-        }
+        schema::WorkflowConditionKind::Parameter => ProtoWorkflowConditionKind::Parameter as i32,
         schema::WorkflowConditionKind::Variable => ProtoWorkflowConditionKind::Variable as i32,
         schema::WorkflowConditionKind::Env => ProtoWorkflowConditionKind::Env as i32,
-        schema::WorkflowConditionKind::Expression => {
-            ProtoWorkflowConditionKind::Expression as i32
-        }
+        schema::WorkflowConditionKind::Expression => ProtoWorkflowConditionKind::Expression as i32,
     };
 
     protocol::WorkflowCondition {
@@ -201,8 +207,6 @@ fn package_to_proto(package: &schema::PackageSpec) -> ProtoPackageSpec {
             .collect(),
     }
 }
-
-
 
 fn step_to_proto(step: &schema::Step) -> Step {
     match step {

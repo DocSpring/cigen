@@ -1,9 +1,9 @@
 use anyhow::{Result, bail};
 use petgraph::algo::{is_cyclic_directed, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::schema::{CigenConfig, Job, JobMatrix}; // Updated import
+use crate::schema::{CigenConfig, Job, JobMatrix, WorkflowConfig};
 
 /// A concrete job instance after matrix expansion
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +40,13 @@ impl JobDAG {
 
         // 1. Expand matrix jobs into concrete instances
         for (job_id, job) in &config.jobs {
-            let instances = expand_matrix_job(job_id, job)?;
+            // Find workflow config
+            let workflow_name = job.workflow.as_deref().unwrap_or("main");
+            let workflow_config = config.workflows.get(workflow_name);
+            let default_config = WorkflowConfig::default();
+            let wf_config = workflow_config.unwrap_or(&default_config);
+
+            let instances = expand_matrix_job(job_id, job, wf_config)?;
 
             for instance in instances {
                 let instance_id = instance.instance_id.clone();
@@ -50,67 +56,87 @@ impl JobDAG {
             }
         }
 
-        // 2. Inject Stage Dependencies
-        // Group jobs by (workflow, stage)
-        let mut stage_jobs: HashMap<(String, String), Vec<String>> = HashMap::new();
-        for (instance_id, job) in &jobs {
-            let workflow = job.job.workflow.clone().unwrap_or_else(|| "default".to_string());
-            let stage = job.stage.clone();
-            stage_jobs.entry((workflow, stage)).or_default().push(instance_id.clone());
-        }
+        // 2. Resolve Dependencies and Update Jobs
+        // We need to iterate keys to avoid borrowing issues
+        let instance_ids: Vec<String> = jobs.keys().cloned().collect();
 
-        // Iterate workflows and stages to add edges
-        for (workflow_id, workflow_config) in &config.workflows {
-            for stage_def in &workflow_config.stages {
-                let current_stage = &stage_def.name;
-                if let Some(current_instances) = stage_jobs.get(&(workflow_id.clone(), current_stage.clone())) {
-                    for needed_stage in &stage_def.needs {
-                        if let Some(needed_instances) = stage_jobs.get(&(workflow_id.clone(), needed_stage.clone())) {
-                            // Add edge: Every job in needed_stage -> Every job in current_stage
-                            for needed_id in needed_instances {
-                                for current_id in current_instances {
-                                    let needed_node = node_map[needed_id];
-                                    let current_node = node_map[current_id];
-                                    graph.update_edge(needed_node, current_node, ());
-                                }
+        for instance_id in instance_ids {
+            let dependent_node = node_map[&instance_id];
+
+            // We need to clone the job to read it, then we'll update it back
+            let mut concrete_job = jobs.get(&instance_id).unwrap().clone();
+
+            let workflow_name = concrete_job.job.workflow.as_deref().unwrap_or("main");
+            let default_config = WorkflowConfig::default();
+            let wf_config = config
+                .workflows
+                .get(workflow_name)
+                .unwrap_or(&default_config);
+
+            let mut new_needs = HashSet::new();
+
+            // 2a. Explicit Dependencies
+            for needed_job_id in &concrete_job.job.needs {
+                let mut found_match = false;
+                for (candidate_id, candidate) in &jobs {
+                    // Match exact instance ID
+                    if candidate_id == needed_job_id {
+                        new_needs.insert(candidate_id.clone());
+                        graph.update_edge(node_map[candidate_id], dependent_node, ());
+                        found_match = true;
+                        continue;
+                    }
+
+                    // Match base job ID (scoped to same stage if prefixing active)
+                    if &candidate.job_id == needed_job_id {
+                        if should_prefix(&concrete_job.stage, wf_config)
+                            && should_prefix(&candidate.stage, wf_config)
+                        {
+                            if concrete_job.stage == candidate.stage {
+                                new_needs.insert(candidate_id.clone());
+                                graph.update_edge(node_map[candidate_id], dependent_node, ());
+                                found_match = true;
+                            }
+                        } else {
+                            // Global match (e.g. no stage prefixing)
+                            new_needs.insert(candidate_id.clone());
+                            graph.update_edge(node_map[candidate_id], dependent_node, ());
+                            found_match = true;
+                        }
+                    }
+                }
+                if !found_match {
+                    bail!(
+                        "Job '{}' depends on '{}', but no matching job instance exists",
+                        instance_id,
+                        needed_job_id
+                    );
+                }
+            }
+
+            // 2b. Stage Dependencies (Implicit)
+            if let Some(stage_def) = wf_config
+                .stages
+                .iter()
+                .find(|s| s.name == concrete_job.stage)
+            {
+                for needed_stage_name in &stage_def.needs {
+                    for (candidate_id, candidate) in &jobs {
+                        if &candidate.stage == needed_stage_name {
+                            // Only depend on jobs in the same workflow
+                            if candidate.job.workflow == concrete_job.job.workflow {
+                                new_needs.insert(candidate_id.clone());
+                                graph.update_edge(node_map[candidate_id], dependent_node, ());
                             }
                         }
                     }
                 }
             }
-        }
 
-        // 3. Add explicit dependency edges
-        for (instance_id, concrete_job) in &jobs {
-            let dependent_node = node_map[instance_id];
-
-            for needed_job_id in &concrete_job.job.needs {
-                // Resolve needed_job_id. It could be:
-                // 1. An exact instance ID.
-                // 2. A base job ID (implies all instances of that job).
-                // 3. A short name (needs resolution relative to current job path?) 
-                //    - Loader should have resolved short names to full IDs (e.g. "deploy/approve").
-                
-                let needed_instances: Vec<_> = jobs
-                    .iter()
-                    .filter(|(_, instance)| {
-                        instance.instance_id == *needed_job_id || instance.job_id == *needed_job_id
-                    })
-                    .collect();
-
-                if needed_instances.is_empty() {
-                    bail!(
-                        "Job '{instance_id}' depends on '{needed_job_id}', but that job doesn't exist"
-                    );
-                }
-
-                // Add edge from each instance of the needed job to this job
-                for (needed_instance_id, _) in needed_instances {
-                    let needed_node = node_map[needed_instance_id];
-                    // Add edge: needed_job -> dependent_job
-                    graph.update_edge(needed_node, dependent_node, ());
-                }
-            }
+            // Update the job with fully resolved needs
+            concrete_job.job.needs = new_needs.into_iter().collect();
+            concrete_job.job.needs.sort(); // Deterministic output
+            jobs.insert(instance_id, concrete_job);
         }
 
         let dag = Self {
@@ -211,216 +237,188 @@ impl JobDAG {
 }
 
 /// Expand a job with matrix into multiple concrete instances
-
-fn expand_matrix_job(job_id: &str, job: &Job) -> Result<Vec<ConcreteJob>> {
-
-    let base_short_name = job_id.split('/').last().unwrap_or(job_id);
-
+fn expand_matrix_job(
+    job_id: &str,
+    job: &Job,
+    wf_config: &WorkflowConfig,
+) -> Result<Vec<ConcreteJob>> {
     let default_stage = job.stage.clone().unwrap_or_else(|| "default".to_string());
 
+    // Derive base name by stripping path prefix if it matches stage?
+    // Actually, we want to strip the directory path entirely for the base name used in ID generation
+    // e.g. "deploy/pre_release" -> "pre_release"
+    // But if we have "ci/rspec", stage="ci". "ci_rspec".
+    // If we have "deploy/pre_release", stage="deploy_us". "deploy_us_pre_release".
+    // So we just want the file stem.
+    let base_short_name = job_id.split('/').last().unwrap_or(job_id);
 
+    // Sanitize base name (replace / with _ just in case, though split should handle it)
+    let base_clean_name = base_short_name.replace('/', "_");
 
     match &job.matrix {
-
         None => {
-
-            // No matrix - single instance
-
-            let instance_id = format!("{}_{}", default_stage, base_short_name);
-
-            
+            let stage = default_stage;
+            let instance_id = if should_prefix(&stage, wf_config) {
+                format!(
+                    "{}{}{}",
+                    stage, wf_config.stage_prefix_separator, base_clean_name
+                )
+            } else {
+                base_clean_name.clone()
+            };
 
             Ok(vec![ConcreteJob {
-
                 job_id: job_id.to_string(),
-
                 instance_id,
-
-                stage: default_stage,
-
+                stage,
                 matrix_values: HashMap::new(),
-
                 job: job.clone(),
-
             }])
-
         }
-
         Some(JobMatrix::Explicit(rows)) => {
-
             let mut instances = Vec::new();
-
             for row in rows {
+                let stage = row
+                    .get("stage")
+                    .cloned()
+                    .unwrap_or_else(|| default_stage.clone());
 
-                let stage = row.get("stage").cloned().unwrap_or_else(|| default_stage.clone());
-
-                
-
-                // Generate suffix from non-stage values
-
-                let mut sorted_values: Vec<_> = row.iter()
-
-                    .filter(|(k, _)| k.as_str() != "stage")
-
-                    .map(|(_, v)| v)
-
-                    .collect();
-
-                sorted_values.sort();
-
-                
-
-                let suffix = if sorted_values.is_empty() {
-
-                    String::new()
-
+                let base_name_for_instance = if let Some(name) = row.get("job_name") {
+                    name.clone()
                 } else {
-
-                    let sorted_values_str: Vec<&str> = sorted_values.iter().map(|s| s.as_str()).collect();
-
-                    format!("-{}", sorted_values_str.join("-"))
-
+                    base_clean_name.clone()
                 };
 
-                
+                let suffix = if let Some(s) = row.get("job_name_suffix") {
+                    if s.is_empty() {
+                        String::new()
+                    } else {
+                        format!("-{}", s)
+                    }
+                } else {
+                    let mut sorted_values: Vec<_> = row
+                        .iter()
+                        .filter(|(k, _)| {
+                            k.as_str() != "stage"
+                                && k.as_str() != "job_name"
+                                && k.as_str() != "job_name_suffix"
+                        })
+                        .map(|(_, v)| v)
+                        .collect();
+                    sorted_values.sort();
 
-                let instance_id = format!("{}_{}{}", stage, base_short_name, suffix);
+                    if sorted_values.is_empty() {
+                        String::new()
+                    } else {
+                        let sorted_values_str: Vec<&str> =
+                            sorted_values.iter().map(|s| s.as_str()).collect();
+                        format!("-{}", sorted_values_str.join("-"))
+                    }
+                };
 
-
+                let instance_id = if should_prefix(&stage, wf_config) {
+                    format!(
+                        "{}{}{}{}",
+                        stage, wf_config.stage_prefix_separator, base_name_for_instance, suffix
+                    )
+                } else {
+                    format!("{}{}", base_name_for_instance, suffix)
+                };
 
                 let mut substituted_job = job.clone();
-
                 for need in substituted_job.needs.iter_mut() {
-
                     *need = substitute_matrix_in_string(need, &row);
-
                 }
 
-
-
                 instances.push(ConcreteJob {
-
                     job_id: job_id.to_string(),
-
                     instance_id,
-
                     stage,
-
                     matrix_values: row.clone(),
-
                     job: substituted_job,
-
                 });
-
             }
-
             Ok(instances)
-
         }
-
         Some(JobMatrix::Dimensions(dims)) => {
-
-            // Extract matrix dimensions and sort by key for consistent ordering
-
             let mut dimensions: Vec<(String, Vec<String>)> = Vec::new();
-
             for (key, values) in dims {
-
                 dimensions.push((key.clone(), values.clone()));
-
             }
-
-            // Sort by key name for consistent instance ID generation
-
             dimensions.sort_by(|a, b| a.0.cmp(&b.0));
-
-
-
-            // Generate cartesian product of all matrix dimensions
 
             let combinations = cartesian_product(&dimensions);
 
-
-
-            // Create a concrete job instance for each combination
-
             let mut instances = Vec::new();
-
             for combination in combinations {
+                let matrix_values: HashMap<String, String> =
+                    combination.clone().into_iter().collect();
+                let stage = matrix_values
+                    .get("stage")
+                    .cloned()
+                    .unwrap_or_else(|| default_stage.clone());
 
-                let matrix_values: HashMap<String, String> = combination.clone().into_iter().collect();
-
-                let stage = matrix_values.get("stage").cloned().unwrap_or_else(|| default_stage.clone());
-
-
-
-                // Generate instance ID
-
-                // Filter out 'stage' from suffix
-
-                let suffix_values: Vec<_> = combination.iter()
-
-                    .filter(|(k, _)| k != "stage")
-
-                    .map(|(_, v)| v.as_str())
-
-                    .collect();
-
-                
-
-                let suffix = if suffix_values.is_empty() {
-
-                    String::new()
-
+                let base_name_for_instance = if let Some(name) = matrix_values.get("job_name") {
+                    name.clone()
                 } else {
-
-                    format!("-{}", suffix_values.join("-"))
-
+                    base_clean_name.clone()
                 };
 
+                let suffix = if let Some(s) = matrix_values.get("job_name_suffix") {
+                    if s.is_empty() {
+                        String::new()
+                    } else {
+                        format!("-{}", s)
+                    }
+                } else {
+                    let suffix_values: Vec<_> = combination
+                        .iter()
+                        .filter(|(k, _)| k != "stage" && k != "job_name" && k != "job_name_suffix")
+                        .map(|(_, v)| v.as_str())
+                        .collect();
 
+                    if suffix_values.is_empty() {
+                        String::new()
+                    } else {
+                        format!("-{}", suffix_values.join("-"))
+                    }
+                };
 
-                let instance_id = format!("{}_{}{}", stage, base_short_name, suffix);
-
-
+                let instance_id = if should_prefix(&stage, wf_config) {
+                    format!(
+                        "{}{}{}{}",
+                        stage, wf_config.stage_prefix_separator, base_name_for_instance, suffix
+                    )
+                } else {
+                    format!("{}{}", base_name_for_instance, suffix)
+                };
 
                 let mut substituted_job = job.clone();
-
                 for need in substituted_job.needs.iter_mut() {
-
                     *need = substitute_matrix_in_string(need, &matrix_values);
-
                 }
 
-
-
                 instances.push(ConcreteJob {
-
                     job_id: job_id.to_string(),
-
                     instance_id,
-
                     stage,
-
                     matrix_values,
-
                     job: substituted_job,
-
                 });
-
             }
 
-
-
             Ok(instances)
-
         }
-
     }
-
 }
 
-
+fn should_prefix(stage: &str, config: &WorkflowConfig) -> bool {
+    if stage == "default" {
+        config.default_stage_prefix
+    } else {
+        config.stage_prefix
+    }
+}
 
 /// Perform matrix variable substitution in a string.
 fn substitute_matrix_in_string(input: &str, matrix: &HashMap<String, String>) -> String {
@@ -555,7 +553,7 @@ mod tests {
             ),
         ])));
 
-        let instances = expand_matrix_job("test", &job).unwrap();
+        let instances = expand_matrix_job("test", &job, &WorkflowConfig::default()).unwrap();
         assert_eq!(instances.len(), 4);
 
         // Check instance IDs are unique and follow pattern
@@ -566,7 +564,7 @@ mod tests {
         assert!(ids.contains(&&"test-arm64-3.2".to_string()));
         assert!(ids.contains(&&"test-arm64-3.3".to_string()));
     }
-    
+
     #[test]
     fn test_matrix_expansion_explicit() {
         let mut job = create_simple_job();
@@ -575,14 +573,13 @@ mod tests {
             HashMap::from([("env".to_string(), "staging".to_string())]),
         ]));
 
-        let instances = expand_matrix_job("test", &job).unwrap();
+        let instances = expand_matrix_job("test", &job, &WorkflowConfig::default()).unwrap();
         assert_eq!(instances.len(), 2);
 
         let ids: Vec<_> = instances.iter().map(|i| &i.instance_id).collect();
         assert!(ids.contains(&&"test-production".to_string()));
         assert!(ids.contains(&&"test-staging".to_string()));
     }
-
 
     #[test]
     fn test_matrix_job_dependencies() {
