@@ -250,7 +250,7 @@ fn expand_matrix_job(
     // But if we have "ci/rspec", stage="ci". "ci_rspec".
     // If we have "deploy/pre_release", stage="deploy_us". "deploy_us_pre_release".
     // So we just want the file stem.
-    let base_short_name = job_id.split('/').last().unwrap_or(job_id);
+    let base_short_name = job_id.split('/').next_back().unwrap_or(job_id);
 
     // Sanitize base name (replace / with _ just in case, though split should handle it)
     let base_clean_name = base_short_name.replace('/', "_");
@@ -327,7 +327,7 @@ fn expand_matrix_job(
 
                 let mut substituted_job = job.clone();
                 for need in substituted_job.needs.iter_mut() {
-                    *need = substitute_matrix_in_string(need, &row);
+                    *need = substitute_matrix_in_string(need, row);
                 }
 
                 instances.push(ConcreteJob {
@@ -472,6 +472,7 @@ mod tests {
             artifacts: vec![],
             extra: HashMap::new(),
             workflow: None,
+            stage: None,
         }
     }
 
@@ -686,7 +687,12 @@ mod tests {
 
         let result = JobDAG::build(&config);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("doesn't exist"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("no matching job instance exists")
+        );
     }
 
     #[test]

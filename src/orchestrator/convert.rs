@@ -373,6 +373,7 @@ mod tests {
                 artifacts: vec![],
                 extra: HashMap::new(),
                 workflow: None,
+                stage: None,
             },
         );
 

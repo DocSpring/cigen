@@ -292,12 +292,16 @@ matrix:
 "#;
 
         let job: Job = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(job.matrix.len(), 2);
 
-        if let Some(MatrixDimension::List(values)) = job.matrix.get("ruby") {
-            assert_eq!(values, &vec!["3.2", "3.3"]);
-        } else {
-            panic!("Expected ruby matrix dimension");
+        match job.matrix {
+            Some(JobMatrix::Dimensions(dims)) => {
+                assert_eq!(dims.len(), 2);
+                assert_eq!(
+                    dims.get("ruby").unwrap(),
+                    &vec!["3.2".to_string(), "3.3".to_string()]
+                );
+            }
+            _ => panic!("Expected dimensions matrix"),
         }
     }
 

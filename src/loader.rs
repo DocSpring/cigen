@@ -255,14 +255,6 @@ fn resolve_job_dependencies(jobs: &mut HashMap<String, Job>) {
     }
 }
 
-fn should_prefix_job(config: &WorkflowConfig, stage: &str) -> bool {
-    if stage == "default" {
-        config.default_stage_prefix
-    } else {
-        config.stage_prefix
-    }
-}
-
 fn load_workflow_config(workflow_path: &Path) -> Result<WorkflowConfig> {
     for candidate in ["config.yml", "config.yaml"] {
         let candidate_path = workflow_path.join(candidate);

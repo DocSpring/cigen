@@ -1,5 +1,5 @@
 /// Tests for parsing example cigen.yml configs
-use cigen::schema::CigenConfig;
+use cigen::schema::{CigenConfig, JobMatrix};
 use std::fs;
 
 #[test]
@@ -32,9 +32,13 @@ fn test_parse_rails_app_example() {
 
     // Check test job has matrix
     let test_job = &config.jobs["test"];
-    assert!(!test_job.matrix.is_empty());
-    assert!(test_job.matrix.contains_key("ruby"));
-    assert!(test_job.matrix.contains_key("arch"));
+    if let Some(JobMatrix::Dimensions(dims)) = &test_job.matrix {
+        assert!(!dims.is_empty());
+        assert!(dims.contains_key("ruby"));
+        assert!(dims.contains_key("arch"));
+    } else {
+        panic!("Expected Dimensions matrix for test job");
+    }
 
     // Check services
     assert_eq!(test_job.services.len(), 2);
@@ -105,7 +109,11 @@ jobs:
     let config = CigenConfig::from_yaml(yaml).unwrap();
     let test_job = &config.jobs["test"];
 
-    assert_eq!(test_job.matrix.len(), 2);
-    assert!(test_job.matrix.contains_key("ruby"));
-    assert!(test_job.matrix.contains_key("node"));
+    if let Some(JobMatrix::Dimensions(dims)) = &test_job.matrix {
+        assert_eq!(dims.len(), 2);
+        assert!(dims.contains_key("ruby"));
+        assert!(dims.contains_key("node"));
+    } else {
+        panic!("Expected Dimensions matrix for test job");
+    }
 }

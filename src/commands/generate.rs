@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::path::PathBuf;
 
+#[allow(clippy::collapsible_if)]
 /// Generate CI configs from cigen.yml
 pub fn generate_command(file: Option<String>, output: Option<String>) -> Result<()> {
     // Find cigen.yml

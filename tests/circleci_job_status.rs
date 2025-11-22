@@ -167,14 +167,16 @@ fn circleci_job_status_steps_for_rails_fixture() {
     let jobs = load_jobs_map(&output.path().join(".circleci/main.yml"));
 
     for job_id in &with_sources {
-        let job_value = jobs.get(job_id).unwrap_or_else(|| {
-            panic!("expected job {job_id} in generated main.yml");
+        let sanitized_id = job_id.replace(['/', '\\'], "_");
+        let job_value = jobs.get(&sanitized_id).unwrap_or_else(|| {
+            panic!("expected job {sanitized_id} (from {job_id}) in generated main.yml");
         });
         assert_has_job_status_steps(job_id, job_value);
     }
 
     for job_id in &without_sources {
-        if let Some(job_value) = jobs.get(job_id) {
+        let sanitized_id = job_id.replace(['/', '\\'], "_");
+        if let Some(job_value) = jobs.get(&sanitized_id) {
             assert_absent_job_status_steps(job_id, job_value);
         }
     }
@@ -197,14 +199,16 @@ fn circleci_job_status_steps_for_docspring_config() {
     let jobs = load_jobs_map(&output.path().join(".circleci/main.yml"));
 
     for job_id in &with_sources {
-        let job_value = jobs.get(job_id).unwrap_or_else(|| {
-            panic!("expected job {job_id} in generated main.yml");
+        let sanitized_id = job_id.replace(['/', '\\'], "_");
+        let job_value = jobs.get(&sanitized_id).unwrap_or_else(|| {
+            panic!("expected job {sanitized_id} (from {job_id}) in generated main.yml");
         });
         assert_has_job_status_steps(job_id, job_value);
     }
 
     for job_id in &without_sources {
-        if let Some(job_value) = jobs.get(job_id) {
+        let sanitized_id = job_id.replace(['/', '\\'], "_");
+        if let Some(job_value) = jobs.get(&sanitized_id) {
             assert_absent_job_status_steps(job_id, job_value);
         }
     }
