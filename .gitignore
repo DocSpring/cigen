@@ -2,6 +2,8 @@
 circleci_config_reference
 
 PROJECT_PLAN.md
+internal_docs/DOCSPRING_CI_COMPARISON.md
+docspring
 
 examples/**/build/
 examples/**/.circleci/
