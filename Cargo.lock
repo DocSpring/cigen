@@ -325,6 +325,7 @@ dependencies = [
  "hex",
  "insta",
  "jsonschema",
+ "libyaml-safer",
  "miette",
  "minijinja",
  "once_cell",
@@ -1179,9 +1180,9 @@ dependencies = [
 
 [[package]]
 name = "libyaml-safer"
-version = "0.1.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cff24caa08828851c9b7ed1bce365b1d2496b9323dd0d4b241c1d10135f5bd6"
+checksum = "d325b93a27b93b93b7cf4a57d681c5b6a4d8f910e695db989c055eb1e4f657df"
 
 [[package]]
 name = "linux-raw-sys"
@@ -2854,9 +2855,9 @@ checksum = "ea2f10b9bb0928dfb1b42b65e1f9e36f7f54dbdf08457afefb38afcdec4fa2bb"
 
 [[package]]
 name = "yaml-spanned"
-version = "0.0.2"
+version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01364598fe4779d88c10973d79c6b6ee63e2f656206a9825cae59dd81c7eadfb"
+checksum = "48df29917f67a777c67df15650631c215c71699232e1c44e38010afb0dda90cf"
 dependencies = [
  "codespan-reporting",
  "indexmap",

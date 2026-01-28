@@ -15,7 +15,7 @@ This document outlines the complete plan to:
 - **Workflow generation**: `.cigen/` split config rendered through the GitHub provider plugin — the old workspace-specific scaffolding has been removed
 - **Caching**: Uses the skip-cache flow (via `actions/cache@v4`) plus a small build artifact for the `cigen` binary
 - **Package management**: Rust toolchain managed through rustup inside the `rust:latest` container; Node/pnpm steps only run when `act` needs them
-- **Plugin architecture**: Core spawns `cigen-provider-github` during `cargo run -- generate --file .cigen`
+- **Plugin architecture**: Core spawns `cigen-provider-github` during `cargo run -- --config .cigen generate`
 
 ## Goals
 

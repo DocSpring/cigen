@@ -49,13 +49,14 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 which = "8.0.0"
-yaml-spanned = "0.0.2"
+yaml-spanned = "0.0.3"
 globwalk = "0.9.1"
 walkdir = "2.5.0"
 tonic = { workspace = true }
 prost = { workspace = true }
 tonic-prost = { workspace = true }
 hex = "0.4.3"
+libyaml-safer = "0.3.0"
 
 [dev-dependencies]
 assert_cmd = "2.0.17"

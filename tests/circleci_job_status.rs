@@ -32,11 +32,11 @@ fn jobs_with_sources(config_dir: &Path, workflow: &str) -> (HashSet<String>, Has
     (with_sources, without_sources)
 }
 
-fn run_generate(file: &Path, output_dir: &Path) {
+fn run_generate(config_dir: &Path, output_dir: &Path) {
     let mut cmd = Command::cargo_bin("cigen").expect("cigen binary not found");
     cmd.arg("generate")
         .arg("--file")
-        .arg(file)
+        .arg(config_dir)
         .arg("--output")
         .arg(output_dir)
         .current_dir(repo_root())

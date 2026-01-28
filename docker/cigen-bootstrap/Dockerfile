@@ -13,6 +13,8 @@ RUN set -euxo pipefail \
         ca-certificates \
         curl \
         git \
+        openssh-client \
+        sudo \
         jq \
         tar \
         unzip \

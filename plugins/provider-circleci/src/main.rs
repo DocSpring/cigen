@@ -2,12 +2,11 @@
 
 use anyhow::{Context, Result, anyhow, bail};
 use cigen::plugin::protocol::{
-    self, CigenSchema, CommandDefinition, CommandParameter, CustomStep, Fragment, GenerateRequest,
+    CigenSchema, CommandDefinition, CommandParameter, CustomStep, Fragment, GenerateRequest,
     GenerateResult, Hello, JobDefinition, PlanRequest, PlanResult, PluginInfo, RunStep, Step,
     UsesStep, WorkflowCondition as ProtoWorkflowCondition,
     WorkflowConditionKind as ProtoWorkflowConditionKind,
 };
-use cigen::schema::WorkflowConfig;
 use serde_yaml::{Mapping, Value};
 use std::collections::HashMap;
 use std::convert::TryFrom;
@@ -334,7 +333,7 @@ fn generate_setup_config(context: &CircleciContext) -> Result<Value> {
         grouped_jobs.entry(wf.to_string()).or_default().push(job);
     }
 
-    for (wf_id, _) in &grouped_jobs {
+    for wf_id in grouped_jobs.keys() {
         let variants = collect_job_variants_for_workflow(context, wf_id)?;
         all_variants.extend(variants);
     }
@@ -399,7 +398,7 @@ fn generate_main_config(context: &CircleciContext) -> Result<Value> {
     let mut all_variants = Vec::new();
     let mut workflow_variants_map: HashMap<String, Vec<JobVariant>> = HashMap::new();
 
-    for (wf_id, _) in &grouped_jobs {
+    for wf_id in grouped_jobs.keys() {
         let variants = collect_job_variants_for_workflow(context, wf_id)?;
         workflow_variants_map.insert(wf_id.clone(), variants.clone());
         all_variants.extend(variants);
@@ -465,10 +464,10 @@ fn build_workflow_def(
 ) -> Result<Value> {
     let mut workflow_map = Mapping::new();
 
-    if let Some(conditions) = context.workflow_conditions.get(workflow_id) {
-        if let Some(when_value) = build_circleci_when(conditions)? {
-            workflow_map.insert(Value::String("when".into()), when_value);
-        }
+    if let Some(conditions) = context.workflow_conditions.get(workflow_id)
+        && let Some(when_value) = build_circleci_when(conditions)?
+    {
+        workflow_map.insert(Value::String("when".into()), when_value);
     }
 
     workflow_map.insert(
@@ -543,12 +542,11 @@ fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Option
     let job = variant.job;
 
     // Skip approval jobs in definition list (they only appear in workflows)
-    if let Some(extra_type) = job.extra.get("type") {
-        if let Ok(val) = parse_yaml_value(extra_type) {
-            if val.as_str() == Some("approval") {
-                return Ok(None);
-            }
-        }
+    if let Some(extra_type) = job.extra.get("type")
+        && let Ok(val) = parse_yaml_value(extra_type)
+        && val.as_str() == Some("approval")
+    {
+        return Ok(None);
     }
 
     let mut map = Mapping::new();
@@ -636,12 +634,6 @@ fn convert_job(variant: &JobVariant, context: &CircleciContext) -> Result<Option
     map.insert(Value::String("steps".into()), Value::Sequence(steps));
 
     Ok(Some(Value::Mapping(map)))
-}
-
-// ... (rest of the file: helper functions build_checkout_invocation, etc. - copied from original, no substitution logic)
-
-fn sanitize_job_name(name: &str) -> String {
-    name.replace(['/', '\\'], "_")
 }
 
 fn convert_steps_list(steps: &[Step]) -> Result<Vec<Value>> {
@@ -1577,14 +1569,6 @@ fn extract_checkout_config(raw_config: &Value) -> CheckoutConfig {
     }
 
     config
-}
-
-fn extract_mapping(raw_config: &Value, key: &str) -> Option<Mapping> {
-    raw_config
-        .as_mapping()
-        .and_then(|map| map.get(&Value::String(key.into())))
-        .and_then(Value::as_mapping)
-        .cloned()
 }
 
 fn build_circleci_when(conditions: &[WorkflowRunCondition]) -> Result<Option<Value>> {

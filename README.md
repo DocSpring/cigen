@@ -2,7 +2,7 @@
 
 CIGen generates CI configuration from reusable, provider-agnostic files. The project is undergoing a major migration to a Terraform-style plugin architecture: the new Rust core spawns provider binaries over a length-prefixed stdio transport, and those plugins emit provider-specific YAML.
 
-Today the GitHub Actions provider plugin powers our own CI (`cargo run -- generate --file .cigen`), while the legacy CircleCI emitter is being rebuilt on top of the same plugin system. The CLI still provides the templating, schema validation, and hashing utilities that powered the earlier monolithic implementation.
+Today the GitHub Actions provider plugin powers our own CI (`cargo run -- --config .cigen generate`), while the legacy CircleCI emitter is being rebuilt on top of the same plugin system. The CLI still provides the templating, schema validation, and hashing utilities that powered the earlier monolithic implementation.
 
 ## Features (Current)
 
