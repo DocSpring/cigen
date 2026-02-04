@@ -41,7 +41,7 @@ pub fn generate_command(file: Option<String>, output: Option<String>) -> Result<
     for (path, content) in &result.files {
         let mut relative_path = PathBuf::from(path);
 
-        if output_dir != PathBuf::from(".") && relative_path.is_relative() {
+        if output_dir.as_os_str() != "." && relative_path.is_relative() {
             if let Some(output_name) = output_dir.file_name() {
                 if relative_path.starts_with(output_name) {
                     if let Ok(stripped) = relative_path.strip_prefix(output_name) {
@@ -51,7 +51,7 @@ pub fn generate_command(file: Option<String>, output: Option<String>) -> Result<
             }
         }
 
-        let full_path = if output_dir == PathBuf::from(".") {
+        let full_path = if output_dir.as_os_str() == "." {
             relative_path.clone()
         } else if relative_path.as_os_str().is_empty() {
             output_dir.clone()
