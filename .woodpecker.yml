@@ -1,0 +1,38 @@
+# Woodpecker CI Pipeline for CIGen
+
+when:
+  - event: [push, pull_request]
+    branch: main
+
+steps:
+  install-deps:
+    image: rust:1.85
+    commands:
+      - apt-get update
+      - apt-get install -y nodejs npm protobuf-compiler
+
+  fmt:
+    image: rust:1.85
+    commands:
+      - apt-get update
+      - apt-get install -y protobuf-compiler
+      - rustup component add rustfmt
+      - cargo fmt -- --check
+    depends_on: [install-deps]
+
+  clippy:
+    image: rust:1.85
+    commands:
+      - apt-get update
+      - apt-get install -y protobuf-compiler
+      - rustup component add clippy
+      - cargo clippy --all-targets --all-features -- -D warnings
+    depends_on: [install-deps]
+
+  test:
+    image: rust:1.85
+    commands:
+      - apt-get update
+      - apt-get install -y protobuf-compiler
+      - cargo test
+    depends_on: [install-deps]
