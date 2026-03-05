@@ -327,9 +327,17 @@ fn render_workflow_file(
 ) -> anyhow::Result<String> {
     let mut workflow_map = metadata.cloned().unwrap_or_else(Mapping::new);
 
-    // Remove steps key if present (we'll rebuild it)
+    // Remove steps/services keys if present (we'll rebuild them)
     let steps_key = Value::String("steps".into());
+    let services_key = Value::String("services".into());
     workflow_map.remove(&steps_key);
+    workflow_map.remove(&services_key);
+
+    // Collect all unique services referenced by jobs
+    let services = collect_services_for_jobs(jobs);
+    if !services.is_empty() {
+        workflow_map.insert(services_key, Value::Mapping(services));
+    }
 
     // Build all steps for all jobs
     let steps = build_steps_sequence(jobs)?;
@@ -344,6 +352,50 @@ fn render_workflow_file(
         serde_yaml::to_string(&workflow_map).context("Failed to serialize Woodpecker workflow")?;
     yaml.push_str(&rendered);
     Ok(yaml)
+}
+
+fn collect_services_for_jobs(jobs: &[JobDefinition]) -> Mapping {
+    let mut services_map = Mapping::new();
+    let mut seen_services = std::collections::HashSet::new();
+
+    for job in jobs {
+        for service_name in &job.services {
+            if !seen_services.contains(service_name) {
+                seen_services.insert(service_name.clone());
+
+                // Create basic service definition
+                // In a real implementation, we'd look up service details from config
+                let mut service_def = Mapping::new();
+
+                // Parse service name for common patterns like "postgres:16"
+                let (name, tag) = if service_name.contains(':') {
+                    let parts: Vec<&str> = service_name.splitn(2, ':').collect();
+                    (parts[0], parts.get(1).copied().unwrap_or("latest"))
+                } else {
+                    (service_name.as_str(), "latest")
+                };
+
+                // Map common service names to official images
+                let image = match name {
+                    "postgres" | "postgresql" => format!("postgres:{tag}"),
+                    "redis" => format!("redis:{tag}"),
+                    "mysql" => format!("mysql:{tag}"),
+                    "mongodb" | "mongo" => format!("mongo:{tag}"),
+                    "minio" => service_name.clone(), // Keep full name for minio
+                    _ => service_name.clone(),
+                };
+
+                service_def.insert(Value::String("image".into()), Value::String(image));
+
+                services_map.insert(
+                    Value::String(service_name.clone()),
+                    Value::Mapping(service_def),
+                );
+            }
+        }
+    }
+
+    services_map
 }
 
 fn build_steps_sequence(jobs: &[JobDefinition]) -> anyhow::Result<Vec<Value>> {
@@ -600,5 +652,48 @@ mod tests {
         let paths: Vec<_> = fragments.iter().map(|f| f.path.as_str()).collect();
         assert!(paths.contains(&".woodpecker/ci.yaml"));
         assert!(paths.contains(&".woodpecker/deploy.yaml"));
+    }
+
+    #[test]
+    fn test_services_collection() {
+        let mut job1 = job_with_run_step("test", "rust:latest", "cargo test");
+        job1.services = vec!["postgres:16".to_string(), "redis:7".to_string()];
+
+        let mut job2 = job_with_run_step(
+            "integration",
+            "rust:latest",
+            "cargo test --test integration",
+        );
+        job2.services = vec!["postgres:16".to_string()]; // Duplicate, should only appear once
+
+        let jobs = vec![job1, job2];
+        let services = collect_services_for_jobs(&jobs);
+
+        assert_eq!(services.len(), 2);
+        assert!(services.contains_key(&Value::String("postgres:16".into())));
+        assert!(services.contains_key(&Value::String("redis:7".into())));
+
+        // Check postgres service has correct image
+        let postgres = services
+            .get(&Value::String("postgres:16".into()))
+            .and_then(Value::as_mapping)
+            .unwrap();
+        assert_eq!(
+            postgres.get(&Value::String("image".into())),
+            Some(&Value::String("postgres:16".into()))
+        );
+    }
+
+    #[test]
+    fn test_workflow_with_services() {
+        let mut job = job_with_run_step("test", "rust:latest", "cargo test");
+        job.services = vec!["postgres:16".to_string()];
+
+        let result = render_workflow_file("ci", &[job], None).unwrap();
+
+        // Should contain services section
+        assert!(result.contains("services:"));
+        assert!(result.contains("postgres:16"));
+        assert!(result.contains("image: postgres:16"));
     }
 }
