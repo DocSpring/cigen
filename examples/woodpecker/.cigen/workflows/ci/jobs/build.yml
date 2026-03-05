@@ -1,0 +1,8 @@
+image: rust:latest
+needs:
+  - test
+  - lint
+packages:
+  - rust
+steps:
+  - run: cargo build --release

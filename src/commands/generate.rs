@@ -109,10 +109,10 @@ fn find_cigen_yml(file: Option<String>) -> Result<PathBuf> {
 /// Determine where plugin binaries are located
 fn determine_plugin_dir() -> PathBuf {
     // Respect explicit plugin directory override
-    if let Ok(dir) = std::env::var("CIGEN_PLUGIN_DIR") {
-        if !dir.trim().is_empty() {
-            return PathBuf::from(dir);
-        }
+    if let Ok(dir) = std::env::var("CIGEN_PLUGIN_DIR")
+        && !dir.trim().is_empty()
+    {
+        return PathBuf::from(dir);
     }
 
     // Default installation path for packaged binaries

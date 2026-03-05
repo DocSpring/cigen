@@ -1,0 +1,5 @@
+image: rust:latest
+packages:
+  - rust
+steps:
+  - run: cargo test --workspace

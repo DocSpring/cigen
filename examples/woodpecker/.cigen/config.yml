@@ -1,0 +1,5 @@
+providers:
+  - woodpecker
+
+project:
+  name: woodpecker-demo

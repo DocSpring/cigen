@@ -2,24 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## CRITICAL: Read Notes Before Starting
-
-**BEFORE beginning ANY work session and AFTER any context reset/compaction:**
-
-1. Read ALL .md files in the `notes/` directory
-2. These are YOUR working notes - keep them up to date
-3. Remove any inaccurate or outdated information
-4. Add new learnings and discoveries
-5. These notes contain critical architectural decisions and implementation details
-
-Key notes files:
-
-- `notes/CACHING.md` - Automatic cache injection system, NO manual cache steps
-- `notes/CONFIG_FORMAT.md` - Configuration structure and conventions
-- `notes/TEMPLATING.md` - Template engine details and syntax
-- `notes/REQUIREMENTS.md` - Core requirements and architecture
-- `notes/PROJECT_PLAN.md` - Implementation roadmap
-
 ## CRITICAL: Git Commit Rules
 
 **NEVER EVER use `--no-verify` flag when committing**. This bypasses important checks and is lazy and unprofessional. If pre-commit hooks fail:
@@ -97,9 +79,7 @@ Skipping or reordering these steps is not acceptable—they keep our feedback lo
 
 ## Project Overview
 
-`cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It is migrating to a plugin-based architecture that currently targets GitHub Actions for our self-hosting work, with CircleCI support being rebuilt on top of the same system.
-
-See `PRD.txt` for the complete product requirements and specifications.
+`cigen` is a Rust CLI tool that generates CI pipeline configurations from templates. It uses a plugin-based architecture that currently supports GitHub Actions and CircleCI, with plans to support additional CI providers like Woodpecker CI.
 
 ## Shell Script Compatibility
 
@@ -245,14 +225,6 @@ This keeps the codebase maintainable and easier to understand.
 **CRITICAL**: NEVER say "quickly" or "let me quickly" - nothing should be done quickly. Everything requires careful thought and proper implementation. Speed is not a priority; correctness is.
 
 **IMPORTANT**: Work on one small piece at a time. Do not attempt to build the entire project at once.
-
-**CRITICAL: Follow PROJECT_PLAN.md EXACTLY**
-
-- Complete ONLY the current task in PROJECT_PLAN.md
-- Do NOT jump ahead to future tasks
-- Do NOT create files or features that aren't explicitly requested
-- After completing a task, COMMIT it before moving to the next
-- Check off completed items in PROJECT_PLAN.md
 
 1. Set up foundation first (Cargo.toml, basic CLI with --help and --version)
 2. Establish testing infrastructure before adding features
