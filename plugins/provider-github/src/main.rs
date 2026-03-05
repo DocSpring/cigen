@@ -237,8 +237,8 @@ fn main() -> Result<()> {
                 send_message(&plan_result, &mut stdout)?;
                 tracing::info!("Sent PlanResult");
             }
-            Err(e) => {
-                tracing::warn!("Stopping plugin loop: {e}");
+            Err(_) => {
+                // Parent closed the pipe - normal termination
                 break;
             }
         }
@@ -255,14 +255,14 @@ fn main() -> Result<()> {
                 );
                 send_message(&gen_result, &mut stdout)?;
             }
-            Err(e) => {
-                tracing::warn!("Failed to receive GenerateRequest: {e}");
+            Err(_) => {
+                // Parent closed the pipe - normal termination
                 break;
             }
         }
     }
 
-    tracing::info!("Plugin loop terminated");
+    tracing::debug!("Plugin loop terminated");
     Ok(())
 }
 
@@ -440,6 +440,7 @@ fn render_job(
         );
     }
 
+    // Auto-add dependency on builder job if one exists
     if has_builder && job.id != "build_cigen" {
         let needs_key = Value::String("needs".into());
         match job_map.get_mut(&needs_key) {
@@ -467,55 +468,69 @@ fn render_job(
         }
     }
 
+    // Determine if this job uses skip flow (has source_files and is not the builder)
     tracing::debug!("Job {} source_files: {:?}", job.id, job.source_files);
     let has_source_files = !job.source_files.is_empty();
-    let skip_flow = if job.id == "build_cigen" || !has_source_files {
+    let is_builder_job = job.id == "build_cigen";
+    let skip_flow = if is_builder_job || !has_source_files {
         None
     } else {
         Some(build_skip_flow(&job.id))
     };
 
+    // Check what dependencies are actually needed
     let package_cache_steps = build_package_cache_steps(job);
+    let needs_protobuf = job_needs_protobuf(job);
+    let has_download_step = has_builder && !is_builder_job;
+    let needs_node_runtime = job_needs_node_runtime(
+        job,
+        skip_flow.is_some(),
+        has_download_step,
+        &package_cache_steps,
+    );
 
-    let mut requires_node_runtime = skip_flow.is_some() || !package_cache_steps.is_empty();
-    if !requires_node_runtime {
-        for step in &job.steps {
-            if let Some(step_type) = &step.step_type
-                && step_requires_node(step_type)
-            {
-                requires_node_runtime = true;
-                break;
-            }
-        }
-    }
+    let skip_condition = skip_flow.as_ref().map(|flow| flow.condition.as_str());
 
     let mut steps: Vec<Value> = Vec::new();
 
-    if requires_node_runtime {
-        steps.push(Value::Mapping(install_node_runtime_step()));
-    }
-
-    if job.id != "build_cigen" {
-        steps.push(Value::Mapping(install_protobuf_step()));
-    }
-
+    // PHASE 1: Minimal setup for skip check (checkout + cigen binary)
     let checkout_step = build_checkout_step(job);
     steps.push(Value::Mapping(checkout_step));
 
-    if skip_flow.is_some() && job.id != "build_cigen" {
+    // Download cigen binary if there's a builder job and this isn't it
+    // The binary is needed for skip flow hash computation and may be used by job steps
+    if has_builder && !is_builder_job {
         steps.push(Value::Mapping(download_cigen_step()));
-        steps.push(Value::Mapping(ensure_cigen_binary_step()));
         steps.push(Value::Mapping(make_cigen_executable_step()));
     }
 
+    // PHASE 2: Skip check (before installing any heavy dependencies)
     if let Some(flow) = &skip_flow {
         steps.push(Value::Mapping(flow.compute_step.clone()));
         steps.push(Value::Mapping(flow.restore_step.clone()));
         steps.push(Value::Mapping(flow.skip_step.clone()));
     }
 
-    let skip_condition = skip_flow.as_ref().map(|flow| flow.condition.as_str());
+    // PHASE 3: Dependencies (only if not skipped)
+    // Node runtime for actions (only when needed and not skipped)
+    if needs_node_runtime {
+        let mut node_step = install_node_runtime_step();
+        if let Some(condition) = skip_condition {
+            apply_condition(&mut node_step, condition);
+        }
+        steps.push(Value::Mapping(node_step));
+    }
 
+    // Protobuf (only when needed and not skipped)
+    if needs_protobuf {
+        let mut protobuf_step = install_protobuf_step();
+        if let Some(condition) = skip_condition {
+            apply_condition(&mut protobuf_step, condition);
+        }
+        steps.push(Value::Mapping(protobuf_step));
+    }
+
+    // Package cache steps (only if not skipped)
     for mut cache_step in package_cache_steps.into_iter() {
         if let Some(condition) = skip_condition {
             apply_condition(&mut cache_step, condition);
@@ -523,6 +538,7 @@ fn render_job(
         steps.push(Value::Mapping(cache_step));
     }
 
+    // PHASE 4: User-defined steps (only if not skipped)
     for step in &job.steps {
         if let Some(step_type) = &step.step_type {
             let mut rendered = match step_type {
@@ -540,6 +556,7 @@ fn render_job(
         }
     }
 
+    // PHASE 5: Record completion (only if not skipped)
     if let Some(flow) = skip_flow {
         steps.push(Value::Mapping(flow.record_step));
     }
@@ -547,6 +564,60 @@ fn render_job(
     job_map.insert(Value::String("steps".into()), Value::Sequence(steps));
 
     Ok(job_map)
+}
+
+/// Check if job needs protobuf compiler
+fn job_needs_protobuf(job: &JobDefinition) -> bool {
+    // Only needed for Rust projects that use tonic/prost (check for build.rs or proto files)
+    // For now, check if it's a Rust job that builds (has cargo build/test commands)
+    let is_rust_job = job.image.contains("rust") || job.packages.iter().any(|p| p == "rust");
+    if !is_rust_job {
+        return false;
+    }
+
+    // Check if any step runs cargo build or cargo test
+    for step in &job.steps {
+        if let Some(step::StepType::Run(run)) = &step.step_type
+            && (run.command.contains("cargo build") || run.command.contains("cargo test"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if job needs Node runtime (for GitHub Actions that require it)
+fn job_needs_node_runtime(
+    job: &JobDefinition,
+    has_skip_flow: bool,
+    has_download_step: bool,
+    package_cache_steps: &[Mapping],
+) -> bool {
+    // Skip flow uses actions/cache which needs Node
+    if has_skip_flow {
+        return true;
+    }
+
+    // Download artifact step needs Node
+    if has_download_step {
+        return true;
+    }
+
+    // Package cache steps use actions/cache
+    if !package_cache_steps.is_empty() {
+        return true;
+    }
+
+    // Check user steps for Node-requiring actions
+    for step in &job.steps {
+        if let Some(step_type) = &step.step_type
+            && step_requires_node(step_type)
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn determine_runner(image: &str) -> (Option<Value>, Option<Value>) {
@@ -746,25 +817,6 @@ fn download_cigen_step() -> Mapping {
     step
 }
 
-fn ensure_cigen_binary_step() -> Mapping {
-    let mut step = Mapping::new();
-    step.insert(
-        Value::String("name".into()),
-        Value::String("Ensure cigen binary".into()),
-    );
-    let script = concat!(
-        "set -e\n",
-        "if [ ! -x .cigen/bin/cigen ]; then\n",
-        "  echo 'cigen binary not found; building from source'\n",
-        "  cargo build --release --bin cigen\n",
-        "  mkdir -p .cigen/bin\n",
-        "  cp target/release/cigen .cigen/bin/cigen\n",
-        "fi\n",
-    );
-    step.insert(Value::String("run".into()), Value::String(script.into()));
-    step
-}
-
 fn make_cigen_executable_step() -> Mapping {
     let mut step = Mapping::new();
     step.insert(
@@ -924,7 +976,15 @@ fn convert_uses_step(uses: &UsesStep) -> Mapping {
 fn apply_condition(step: &mut Mapping, condition: &str) {
     let key = Value::String("if".into());
     if let Some(existing) = step.get(&key).and_then(Value::as_str) {
-        let combined = format!("({existing}) && ({condition})");
+        // Strip ${{ }} from existing condition if present
+        let existing_expr = existing
+            .trim()
+            .strip_prefix("${{")
+            .and_then(|s| s.strip_suffix("}}"))
+            .map(|s| s.trim())
+            .unwrap_or(existing);
+        // Combine expressions properly
+        let combined = format!("({existing_expr}) && ({condition})");
         step.insert(key, Value::String(combined));
     } else {
         step.insert(

@@ -132,8 +132,8 @@ fn main() -> Result<()> {
                 };
                 send_message(&plan_result, &mut stdout).context("Failed to send PlanResult")?;
             }
-            Err(err) => {
-                tracing::warn!("Failed to receive PlanRequest: {err}");
+            Err(_) => {
+                // Parent closed the pipe - normal termination
                 break;
             }
         }
@@ -167,8 +167,8 @@ fn main() -> Result<()> {
 
                 send_message(&result, &mut stdout).context("Failed to send GenerateResult")?;
             }
-            Err(err) => {
-                tracing::warn!("Exiting plugin loop: {err}");
+            Err(_) => {
+                // Parent closed the pipe - normal termination
                 break;
             }
         }

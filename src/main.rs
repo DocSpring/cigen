@@ -23,9 +23,9 @@ struct Cli {
 enum Commands {
     /// Generate CI configuration (default command)
     Generate {
-        /// Path to cigen.yml (default: ./cigen.yml or .cigen/cigen.yml)
+        /// Path to .cigen directory or cigen.yml file
         #[arg(short, long)]
-        file: Option<String>,
+        config: Option<String>,
 
         /// Output directory for generated files (default: .)
         #[arg(short, long)]
@@ -43,8 +43,8 @@ fn main() -> Result<()> {
     init_logging(cli.verbose);
 
     match cli.command {
-        Some(Commands::Generate { file, output }) => {
-            commands::generate_command(file, output)?;
+        Some(Commands::Generate { config, output }) => {
+            commands::generate_command(config, output)?;
         }
         Some(Commands::Hash { args }) => {
             commands::hash_command(args)?;

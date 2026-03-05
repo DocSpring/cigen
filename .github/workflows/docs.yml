@@ -134,8 +134,8 @@ jobs:
     needs:
     - build
     env:
-      name: github-pages
       url: https://docspring.github.io/cigen/
+      name: github-pages
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4

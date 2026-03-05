@@ -16,8 +16,8 @@ jobs:
     needs:
     - release_create
     env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -179,11 +179,11 @@ jobs:
         EOF
     - uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ env.RELEASE_TAG }}
         prerelease: ${{ contains(env.RELEASE_TAG, '-') }}
+        body_path: changelog.md
         files: |-
           artifacts/**/*.tar.gz
           artifacts/**/*.sha256
-        draft: false
         name: CIGen v${{ env.RELEASE_VERSION }}
-        body_path: changelog.md
+        draft: false
+        tag_name: ${{ env.RELEASE_TAG }}

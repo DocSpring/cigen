@@ -56,6 +56,41 @@
       "items": {
         "$ref": "./definitions.json#/definitions/workflowCondition"
       }
+    },
+    "stages": {
+      "type": "array",
+      "description": "Ordered workflow stages and their dependencies",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "needs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "default": []
+    },
+    "stage_prefix": {
+      "type": "boolean",
+      "description": "Prefix job names with their stage name",
+      "default": false
+    },
+    "default_stage_prefix": {
+      "type": "boolean",
+      "description": "Prefix jobs in the default stage as well",
+      "default": false
+    },
+    "stage_prefix_separator": {
+      "type": "string",
+      "description": "Separator between stage name and job name when stage_prefix is enabled",
+      "default": "_"
     }
   },
   "additionalProperties": false

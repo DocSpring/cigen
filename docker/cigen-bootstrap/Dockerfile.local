@@ -1,0 +1,47 @@
+FROM rust:1.88-bookworm AS builder
+
+WORKDIR /src
+
+RUN set -eu \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . .
+
+RUN set -eu \
+    && cargo build --release -p cigen -p cigen-provider-circleci -p cigen-provider-github
+
+FROM debian:bookworm-slim AS runtime
+
+ENV CIGEN_PLUGIN_DIR=/usr/local/lib/cigen/plugins
+
+RUN set -eu \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        bash \
+        ca-certificates \
+        curl \
+        git \
+        jq \
+        openssh-client \
+        sudo \
+        tar \
+        unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/target/release/cigen /usr/local/bin/cigen
+COPY --from=builder /src/target/release/cigen-provider-circleci "${CIGEN_PLUGIN_DIR}/cigen-provider-circleci"
+COPY --from=builder /src/target/release/cigen-provider-github "${CIGEN_PLUGIN_DIR}/cigen-provider-github"
+
+RUN adduser --disabled-password --gecos "" cigen \
+    && mkdir -p /workspace \
+    && chown -R cigen:cigen /workspace
+
+USER cigen
+WORKDIR /workspace
+
+ENTRYPOINT ["/bin/bash"]

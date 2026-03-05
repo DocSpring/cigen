@@ -1,0 +1,14 @@
+image: rust:latest
+
+steps:
+  - run:
+      name: Regenerate workflows
+      command: ./.cigen/bin/cigen generate --file .cigen
+  - run:
+      name: Check for uncommitted changes
+      command: |
+        if ! git diff --exit-code .github/workflows/; then
+          echo "ERROR: Generated workflows are out of sync with .cigen config"
+          echo "Please run 'cargo run -- generate --file .cigen' and commit the changes"
+          exit 1
+        fi

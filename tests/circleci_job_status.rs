@@ -35,7 +35,7 @@ fn jobs_with_sources(config_dir: &Path, workflow: &str) -> (HashSet<String>, Has
 fn run_generate(config_dir: &Path, output_dir: &Path) {
     let mut cmd = Command::cargo_bin("cigen").expect("cigen binary not found");
     cmd.arg("generate")
-        .arg("--file")
+        .arg("--config")
         .arg(config_dir)
         .arg("--output")
         .arg(output_dir)

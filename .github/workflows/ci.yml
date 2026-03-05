@@ -42,8 +42,8 @@ jobs:
         apt-get install -y nodejs npm protobuf-compiler
     - uses: actions/cache@v4
       with:
-        key: target-release-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
         path: target/release
+        key: target-release-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
     - name: Build cigen binary
       run: cargo build --release --bin cigen
     - name: Prepare artifact bundle
@@ -197,6 +197,43 @@ jobs:
         date > "$MARKER"
       env:
         JOB_HASH: ${{ steps.compute_hash.outputs.job_hash }}
+  self_check:
+    runs-on: ubuntu-latest
+    container:
+      image: rust:latest
+    needs:
+    - build_cigen
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Download cigen binary
+      uses: actions/download-artifact@v4
+      with:
+        name: cigen-bin
+        path: .cigen/bin
+      continue-on-error: true
+    - name: Prepare cigen binary
+      run: |
+        set -e
+        mkdir -p .cigen/bin
+        chmod +x .cigen/bin/cigen
+    - name: Prepare Node runtime for actions
+      if: ${{ env.ACT == 'true' }}
+      run: |
+        set -e
+        if ! command -v node >/dev/null 2>&1 || ! command -v protoc >/dev/null 2>&1; then
+          apt-get update
+          apt-get install -y nodejs npm protobuf-compiler
+        fi
+    - name: Regenerate workflows
+      run: ./.cigen/bin/cigen generate --file .cigen
+    - name: Check for uncommitted changes
+      run: |
+        if ! git diff --exit-code .github/workflows/; then
+          echo "ERROR: Generated workflows are out of sync with .cigen config"
+          echo "Please run 'cargo run -- generate --file .cigen' and commit the changes"
+          exit 1
+        fi
   test:
     runs-on: ubuntu-latest
     container:

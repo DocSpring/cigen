@@ -6,7 +6,7 @@ ARG CIGEN_VERSION
 ENV CIGEN_VERSION=${CIGEN_VERSION}
 ENV CIGEN_PLUGIN_DIR=/usr/local/lib/cigen/plugins
 
-RUN set -euxo pipefail \
+RUN set -eu \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         bash \
@@ -20,7 +20,7 @@ RUN set -euxo pipefail \
         unzip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN set -euxo pipefail; \
+RUN set -eu; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
         amd64) asset_suffix="linux_amd64" ;; \
