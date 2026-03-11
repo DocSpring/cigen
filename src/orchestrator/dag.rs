@@ -87,22 +87,17 @@ impl JobDAG {
                         continue;
                     }
 
-                    // Match base job ID (scoped to same stage if prefixing active)
+                    // Match base job ID (the job_id from split config)
+                    // NOTE: This must work across stages. When stage prefixing is enabled, the
+                    // *generated* instance IDs are stage-scoped, but the job_id is still the
+                    // canonical identifier users reference in `needs` (e.g. "build/build_app_image").
+                    //
+                    // We intentionally add *all* concrete instances that share this job_id
+                    // (e.g. matrix-expanded jobs).
                     if &candidate.job_id == needed_job_id {
-                        if should_prefix(&concrete_job.stage, wf_config)
-                            && should_prefix(&candidate.stage, wf_config)
-                        {
-                            if concrete_job.stage == candidate.stage {
-                                new_needs.insert(candidate_id.clone());
-                                graph.update_edge(node_map[candidate_id], dependent_node, ());
-                                found_match = true;
-                            }
-                        } else {
-                            // Global match (e.g. no stage prefixing)
-                            new_needs.insert(candidate_id.clone());
-                            graph.update_edge(node_map[candidate_id], dependent_node, ());
-                            found_match = true;
-                        }
+                        new_needs.insert(candidate_id.clone());
+                        graph.update_edge(node_map[candidate_id], dependent_node, ());
+                        found_match = true;
                     }
                 }
                 if !found_match {
